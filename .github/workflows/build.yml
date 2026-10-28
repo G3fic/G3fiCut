@@ -1,5 +1,9 @@
 name: Build Audio Cutter
 
+concurrency:
+  group: audio-cutter-build-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main, master]
@@ -25,6 +29,8 @@ jobs:
           cache: true
       - name: Generate platform scaffolding
         run: flutter create --platforms=android,windows --project-name audio_cutter .
+      - name: Set Android minimum SDK
+        run: sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 24/' android/app/build.gradle.kts
       - run: flutter pub get
       - run: flutter build apk --release
       - uses: actions/upload-artifact@v4
