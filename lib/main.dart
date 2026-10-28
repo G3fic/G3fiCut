@@ -101,7 +101,7 @@ class _CutterPageState extends State<CutterPage> {
       }
       args.add(output);
 
-      if (Platform.isWindows) {
+      if (false) {
         final result = await Process.run('ffmpeg', args);
         if (result.exitCode != 0) {
           throw Exception('FFmpeg не запустился или завершился с ошибкой. Установите ffmpeg.exe и добавьте его в PATH. ${result.stderr}');
