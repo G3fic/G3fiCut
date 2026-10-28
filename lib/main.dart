@@ -101,18 +101,11 @@ class _CutterPageState extends State<CutterPage> {
       }
       args.add(output);
 
-      if (false) {
-        final result = await Process.run('ffmpeg', args);
-        if (result.exitCode != 0) {
-          throw Exception('FFmpeg не запустился или завершился с ошибкой. Установите ffmpeg.exe и добавьте его в PATH. ${result.stderr}');
-        }
-      } else {
         final session = await FFmpegKit.execute(args.map(_quote).join(' '));
         final code = await session.getReturnCode();
         if (!ReturnCode.isSuccess(code)) {
           throw Exception('FFmpeg не смог обработать файл. Проверьте формат видео и поддержку кодеков.');
         }
-      }
       if (mounted) setState(() => _status = 'Готово! Файл сохранён:\n$output');
     } catch (e) {
       if (mounted) setState(() => _status = 'Ошибка: $e');
