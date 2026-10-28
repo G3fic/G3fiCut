@@ -1,0 +1,59 @@
+name: Build Audio Cutter
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate platform scaffolding
+        run: flutter create --platforms=android,windows --project-name audio_cutter .
+      - run: flutter pub get
+      - run: flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: audio-cutter-android-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    name: Windows desktop
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate platform scaffolding
+        shell: pwsh
+        run: flutter create --platforms=android,windows --project-name audio_cutter .
+      - run: flutter pub get
+      - run: flutter build windows --release
+      - name: Package Windows build
+        shell: pwsh
+        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath audio-cutter-windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: audio-cutter-windows
+          path: audio-cutter-windows.zip
+          if-no-files-found: error
+          retention-days: 14
