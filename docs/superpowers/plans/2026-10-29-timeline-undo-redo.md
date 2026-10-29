@@ -14,7 +14,7 @@
 - Flutter SDK: stable channel (the existing workflow).
 - Dart SDK constraint: `>=3.3.0 <4.0.0`.
 - No added package dependencies.
-- Version in `pubspec.yaml`: `0.2.6+6` for the current published line; next feature release versioning is handled separately.
+- Version in `pubspec.yaml`: `0.2.7+7` for this feature release; release assets must only be announced after CI succeeds.
 - Keep user-visible text in Russian.
 
 ## Review Focus
