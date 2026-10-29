@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:path/path.dart' as p;
@@ -227,8 +228,56 @@ class _EditorPageState extends State<EditorPage> {
     return '$m:$s';
   }
 
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+    final keyboard = HardwareKeyboard.instance;
+    final control = keyboard.isControlPressed;
+    final key = event.logicalKey;
+    if (control && key == LogicalKeyboardKey.keyO) {
+      unawaited(pickVideo());
+      return KeyEventResult.handled;
+    }
+    if (control && key == LogicalKeyboardKey.keyE) {
+      unawaited(extractAudio());
+      return KeyEventResult.handled;
+    }
+    if (control && (key == LogicalKeyboardKey.equal || key == LogicalKeyboardKey.add || key == LogicalKeyboardKey.numpadAdd)) {
+      setState(() => zoom = math.min(80, zoom + 4).toDouble());
+      return KeyEventResult.handled;
+    }
+    if (control && (key == LogicalKeyboardKey.minus || key == LogicalKeyboardKey.numpadSubtract)) {
+      setState(() => zoom = math.max(12, zoom - 4).toDouble());
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.space) {
+      unawaited(togglePlayback());
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      unawaited(seek(position - const Duration(seconds: 5)));
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowRight) {
+      unawaited(seek(position + const Duration(seconds: 5)));
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.home) {
+      unawaited(seek(Duration.zero));
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.end) {
+      unawaited(seek(duration));
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => Focus(
+        autofocus: true,
+        onKeyEvent: _handleKeyEvent,
+        child: Scaffold(
         body: SafeArea(
           child: Column(
             children: [
@@ -244,7 +293,7 @@ class _EditorPageState extends State<EditorPage> {
             ],
           ),
         ),
-      );
+      ));
 
   Widget topBar() => Container(
         height: 52,
@@ -463,6 +512,15 @@ class _EditorPageState extends State<EditorPage> {
               const SizedBox(height: 8),
               const Text('Файл сохранён в Documents/ClipForge/Media.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
             ],
+            const SizedBox(height: 14),
+            const Text('ГОРЯЧИЕ КЛАВИШИ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            shortcutRow('Пробел', 'Воспроизведение / пауза'),
+            shortcutRow('← / →', 'Назад / вперёд на 5 секунд'),
+            shortcutRow('Home / End', 'Начало / конец видео'),
+            shortcutRow('Ctrl + O', 'Импортировать видео'),
+            shortcutRow('Ctrl + E', 'Извлечь аудио'),
+            shortcutRow('Ctrl + + / −', 'Масштаб таймлайна'),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(10),
@@ -475,6 +533,14 @@ class _EditorPageState extends State<EditorPage> {
             ),
           ]),
         ),
+      );
+
+  Widget shortcutRow(String keys, String description) => Padding(
+        padding: const EdgeInsets.only(bottom: 7),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(width: 82, child: Text(keys, style: const TextStyle(color: Color(0xFFD5D1FF), fontSize: 10, fontWeight: FontWeight.w700))),
+          Expanded(child: Text(description, style: const TextStyle(color: muted, fontSize: 10, height: 1.35))),
+        ]),
       );
 
   Widget property(String label, String value) => Padding(
@@ -562,6 +628,8 @@ class _EditorPageState extends State<EditorPage> {
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTapDown: duration.inMilliseconds > 0 ? (d) => seekTimeline(d.localPosition.dx) : null,
+            onHorizontalDragStart: duration.inMilliseconds > 0 ? (d) => seekTimeline(d.localPosition.dx) : null,
+            onHorizontalDragUpdate: duration.inMilliseconds > 0 ? (d) => seekTimeline(d.localPosition.dx) : null,
             child: Stack(clipBehavior: Clip.hardEdge, children: [
               Positioned.fill(child: CustomPaint(painter: TimelineGridPainter(seconds: timelineSeconds, pixelsPerSecond: zoom))),
               if (path != null)
