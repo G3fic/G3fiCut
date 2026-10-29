@@ -455,7 +455,7 @@ class _EditorPageState extends State<EditorPage> {
         videoClips: videoClips.map((clip) => ProjectClipRange(clip.start, clip.end)).toList(),
         selectedClipIndex: videoClips.isEmpty ? 0 : selectedClipIndex.clamp(0, videoClips.length - 1).toInt(),
         audioPath: audioPath,
-        audioDurationMs: audioDuration.inMilliseconds,
+        audioDurationMs: audioPath == null ? 0 : audioDuration.inMilliseconds,
         audioClipStart: audioClipStart,
         audioClipEnd: audioClipEnd,
         timelineZoom: zoom,
