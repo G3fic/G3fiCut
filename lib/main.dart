@@ -44,7 +44,7 @@ class EditorPage extends StatefulWidget {
 
 class _EditorPageState extends State<EditorPage> {
   static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.2.0');
-  static const releaseApi = 'https://api.github.com/repos/G3fic/124/releases/latest';
+  static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF171820);
   static const muted = Color(0xFF9295A7);
@@ -133,7 +133,7 @@ class _EditorPageState extends State<EditorPage> {
       if (downloadUri == null ||
           downloadUri.scheme != 'https' ||
           downloadUri.host != 'github.com' ||
-          !downloadUri.path.startsWith('/G3fic/124/releases/download/')) {
+          !downloadUri.path.startsWith('/G3fic/G3fiCut/releases/download/')) {
         throw const FormatException('Ссылка на установщик не принадлежит официальным GitHub Releases ClipForge.');
       }
 
