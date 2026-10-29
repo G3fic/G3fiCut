@@ -82,6 +82,12 @@ class _EditorPageState extends State<EditorPage> {
   double brightness = 0.0;
   double contrast = 1.0;
   double saturation = 1.0;
+  bool filtersEnabled = true;
+  bool motionBlurEnabled = false;
+  double previewZoom = 1.0;
+  String inspectorTab = 'video';
+  List<String> videoThumbnails = [];
+  String? thumbnailDirectory;
   bool busy = false;
   bool _switchingMedia = false;
   bool _seekingAcrossCut = false;
@@ -336,6 +342,28 @@ class _EditorPageState extends State<EditorPage> {
     super.dispose();
   }
 
+  Future<void> _generateVideoThumbnails(String source, Duration videoDuration) async {
+    try {
+      final directory = await Directory.systemTemp.createTemp('gifcut-thumbnails-');
+      final seconds = videoDuration.inMilliseconds / 1000;
+      if (seconds <= 0) return;
+      final result = await Process.run(await findFfmpeg(), [
+        '-hide_banner', '-loglevel', 'error', '-y', '-i', source,
+        '-vf', 'fps=12/${seconds.toStringAsFixed(3)},scale=120:-1',
+        '-frames:v', '12', p.join(directory.path, 'frame_%02d.jpg'),
+      ]);
+      if (result.exitCode != 0) return;
+      final files = directory.listSync().whereType<File>().where((file) => file.path.toLowerCase().endsWith('.jpg')).toList()..sort((a, b) => a.path.compareTo(b.path));
+      if (!mounted || videoPath != source) return;
+      setState(() {
+        thumbnailDirectory = directory.path;
+        videoThumbnails = files.map((file) => file.path).toList();
+      });
+    } catch (_) {
+      // The timeline remains usable with its fallback thumbnails if FFmpeg cannot extract frames.
+    }
+  }
+
   Future<void> pickVideo() async {
     if (busy) return;
 
@@ -403,8 +431,10 @@ class _EditorPageState extends State<EditorPage> {
           ..clear()
           ..add(TimelineClip(start: 0, end: openedDuration.inMilliseconds / 1000));
         selectedClipIndex = 0;
-        status = 'Видео загружено. Правый клик по клипу открывает монтажные инструменты.';
+        videoThumbnails = [];
+        status = 'Видео загружено. Создаю миниатюры для таймлайна…';
       });
+      unawaited(_generateVideoThumbnails(path, openedDuration));
     } catch (e) {
       if (previousVideoPath != null) {
         try {
@@ -1123,7 +1153,15 @@ class _EditorPageState extends State<EditorPage> {
                         ])
                       : ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: Video(controller: videoController!, controls: NoVideoControls),
+                          child: ClipRect(
+                            child: Transform.scale(
+                              scale: previewZoom,
+                              child: ColorFiltered(
+                                colorFilter: ColorFilter.matrix(filtersEnabled ? previewColorMatrix : const <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0]),
+                                child: Video(controller: videoController!, controls: NoVideoControls),
+                              ),
+                            ),
+                          ),
                         ),
             ),
           ),
@@ -1164,14 +1202,82 @@ class _EditorPageState extends State<EditorPage> {
         ]),
       );
 
+  List<double> get previewColorMatrix {
+    final s = saturation;
+    final c = contrast;
+    final offset = brightness * 255 + 128 * (1 - c);
+    return <double>[
+      (0.213 + 0.787 * s) * c, (0.715 - 0.715 * s) * c, (0.072 - 0.072 * s) * c, 0, offset,
+      (0.213 - 0.213 * s) * c, (0.715 + 0.285 * s) * c, (0.072 - 0.072 * s) * c, 0, offset,
+      (0.213 - 0.213 * s) * c, (0.715 - 0.715 * s) * c, (0.072 + 0.928 * s) * c, 0, offset,
+      0, 0, 0, 1, 0,
+    ];
+  }
+
+  Widget inspectorTabButton(String id, String label, IconData icon) => Expanded(
+    child: InkWell(
+      onTap: () => setState(() => inspectorTab = id),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 2),
+        decoration: BoxDecoration(color: inspectorTab == id ? const Color(0xFF303642) : Colors.transparent, borderRadius: BorderRadius.circular(6)),
+        child: Column(children: [Icon(icon, size: 16, color: inspectorTab == id ? accent : muted), const SizedBox(height: 4), Text(label, style: TextStyle(fontSize: 9, color: inspectorTab == id ? Colors.white : muted, fontWeight: FontWeight.w600))],),
+      ),
+    ),
+  );
+
   Widget inspectorPanel() => Container(
-        width: 238,
+        width: 258,
         color: panel,
-        padding: const EdgeInsets.fromLTRB(14, 16, 14, 12),
+        padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
         child: SingleChildScrollView(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('СВОЙСТВА', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.4, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 16),
+            Row(children: [
+              inspectorTabButton('video', 'Видео', Icons.movie_outlined),
+              inspectorTabButton('audio', 'Аудио', Icons.graphic_eq),
+              inspectorTabButton('speed', 'Скорость', Icons.speed),
+              inspectorTabButton('adjust', 'Цвет', Icons.tune),
+            ]),
+            const SizedBox(height: 12),
+            if (inspectorTab == 'video') ...[
+              const Text('ФИЛЬТРЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
+              SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, title: const Text('Цветокоррекция', style: TextStyle(fontSize: 12)), value: filtersEnabled, onChanged: (value) => setState(() => filtersEnabled = value)),
+              const SizedBox(height: 6),
+              const Text('ЭФФЕКТЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
+              SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, title: const Text('Размытие движения', style: TextStyle(fontSize: 12)), subtitle: const Text('Применяется при экспорте', style: TextStyle(fontSize: 9, color: muted)), value: motionBlurEnabled, onChanged: (value) => setState(() => motionBlurEnabled = value)),
+              const Divider(),
+              const Text('ПОЛОЖЕНИЕ И РАЗМЕР', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+              _adjustmentSlider('Масштаб предпросмотра', previewZoom, 0.5, 2.0, (value) => setState(() => previewZoom = value)),
+              const Text('Масштаб меняет только просмотр; исходный кадр не обрезается.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
+              const SizedBox(height: 12),
+              const Text('ТЕКУЩИЙ ПРОЕКТ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 8),
+              property('Видео', videoPath == null ? 'Не выбрано' : 'Загружено'),
+              property('Длительность', time(duration)),
+              property('Клипы на дорожке', '${videoClips.length}'),
+            ] else if (inspectorTab == 'audio') ...[
+              const Text('ГРОМКОСТЬ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
+              _adjustmentSlider('Уровень', exportVolume, 0, 2, (value) => setState(() => exportVolume = value)),
+              Text('${(exportVolume * 100).round()}% · применяется при экспорте', style: const TextStyle(color: muted, fontSize: 10)),
+              const Divider(),
+              property('Аудиодорожка', audioPath == null ? 'Не создана' : p.basename(audioPath!)),
+              if (audioPath != null) property('Длительность', time(audioDuration)),
+              const SizedBox(height: 8),
+              FilledButton.icon(onPressed: videoPath == null || busy ? null : extractAudio, icon: const Icon(Icons.graphic_eq, size: 16), label: const Text('Извлечь звук')),
+            ] else if (inspectorTab == 'speed') ...[
+              const Text('СКОРОСТЬ ПРЕДПРОСМОТРА', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 8),
+              Center(child: Text('${playbackRate.toStringAsFixed(playbackRate == playbackRate.roundToDouble() ? 0 : 2)}×', style: const TextStyle(fontSize: 26, color: accent, fontWeight: FontWeight.w800))),
+              Slider(min: 0.5, max: 2, divisions: 6, value: playbackRate, onChanged: videoPath == null ? null : (value) async { setState(() => playbackRate = value); await player?.setRate(value); }),
+              const Text('Изменяет скорость воспроизведения в окне просмотра.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
+            ] else ...[
+              const Text('КОРРЕКЦИЯ ИЗОБРАЖЕНИЯ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+              _adjustmentSlider('Яркость', brightness, -0.5, 0.5, (v) => setState(() { brightness = v; projectDirty = true; })),
+              _adjustmentSlider('Контраст', contrast, 0.5, 2.0, (v) => setState(() { contrast = v; projectDirty = true; })),
+              _adjustmentSlider('Насыщенность', saturation, 0.0, 2.0, (v) => setState(() { saturation = v; projectDirty = true; })),
+              Align(alignment: Alignment.centerRight, child: TextButton.icon(onPressed: () => setState(() { brightness = 0; contrast = 1; saturation = 1; filtersEnabled = true; projectDirty = true; }), icon: const Icon(Icons.restart_alt, size: 16), label: const Text('Сбросить'))),
+              const Text('Изменения видны сразу в предпросмотре и применяются при экспорте.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
+            ],
+            const SizedBox(height: 12),
             const Text('Текущий проект', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
             const SizedBox(height: 12),
             property('Видео', videoPath == null ? 'Не выбрано' : 'Загружено'),
@@ -1386,11 +1492,11 @@ class _EditorPageState extends State<EditorPage> {
                               border: Border.all(color: selectedClipIndex == i ? const Color(0xFFFFFFFF) : videoBlue, width: selectedClipIndex == i ? 2 : 1),
                               boxShadow: selectedClipIndex == i ? [BoxShadow(color: videoBlue.withValues(alpha: .2), blurRadius: 8)] : null,
                             ),
-                            child: ClipRRect(borderRadius: BorderRadius.circular(5), child: CustomPaint(
-                              painter: const VideoStripPainter(),
-                              child: Container(
+                            child: ClipRRect(borderRadius: BorderRadius.circular(5), child: Stack(children: [
+                              Positioned.fill(child: _videoThumbnailStrip(videoClips[i], math.max(12.0, videoClips[i].length * zoom - 2).toDouble())),
+                              Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10),
-                                color: const Color(0x442D76B8),
+                                color: const Color(0x552D76B8),
                                 alignment: Alignment.centerLeft,
                                 child: Row(children: [
                                   const Icon(Icons.movie_outlined, size: 14, color: Colors.white),
@@ -1402,7 +1508,7 @@ class _EditorPageState extends State<EditorPage> {
                                   ],
                                 ]),
                               ),
-                            )),
+                            ])),
                           ),
                           if (selectedClipIndex == i) ...[
                             Positioned(
@@ -1685,7 +1791,7 @@ class _EditorPageState extends State<EditorPage> {
         final args = [
           '-hide_banner', '-y', '-ss', clip.start.toStringAsFixed(3), '-i', source,
           '-t', clip.length.toStringAsFixed(3), '-c:v', 'libx264', '-preset', 'veryfast',
-          '-crf', '18', '-vf', 'eq=brightness=${brightness.toStringAsFixed(3)}:contrast=${contrast.toStringAsFixed(3)}:saturation=${saturation.toStringAsFixed(3)}',
+          '-crf', '18', '-vf', '${filtersEnabled ? 'eq=brightness=${brightness.toStringAsFixed(3)}:contrast=${contrast.toStringAsFixed(3)}:saturation=${saturation.toStringAsFixed(3)}' : 'null'}${motionBlurEnabled ? ',tmix=frames=3:weights=1 1 1' : ''}',
           '-af', 'volume=${exportVolume.toStringAsFixed(2)}', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', segmentPath,
         ];
         final result = await Process.run(await findFfmpeg(), args);
@@ -1723,6 +1829,18 @@ class _EditorPageState extends State<EditorPage> {
       if (temp != null && await temp.exists()) await temp.delete(recursive: true);
       if (mounted) setState(() => busy = false);
     }
+  }
+
+  Widget _videoThumbnailStrip(TimelineClip clip, double width) {
+    if (videoThumbnails.isEmpty || duration.inMilliseconds <= 0) {
+      return CustomPaint(painter: const VideoStripPainter(), child: const SizedBox.expand());
+    }
+    final sourceDuration = duration.inMilliseconds / 1000;
+    final tileWidth = width / math.max(1, (videoThumbnails.length * clip.length / sourceDuration).ceil());
+    final first = ((clip.start / sourceDuration) * videoThumbnails.length).floor().clamp(0, videoThumbnails.length - 1);
+    final last = ((clip.end / sourceDuration) * videoThumbnails.length).ceil().clamp(first + 1, videoThumbnails.length);
+    final visible = videoThumbnails.sublist(first, last);
+    return SizedBox(width: width, height: double.infinity, child: Row(children: [for (final path in visible) SizedBox(width: tileWidth.clamp(1.0, width).toDouble(), height: double.infinity, child: Image.file(File(path), fit: BoxFit.cover, errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFF234765))))]));
   }
 
   Widget videoClip(String path) => ClipRRect(
