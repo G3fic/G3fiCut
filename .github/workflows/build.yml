@@ -1,9 +1,5 @@
 name: Build ClipForge for Windows
 
-concurrency:
-  group: clipforge-windows-build
-  cancel-in-progress: true
-
 on:
   push:
     branches: [main, master, desktop-video-editor]
