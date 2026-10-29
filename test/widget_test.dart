@@ -58,4 +58,16 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('inspector switches render without Material or ink errors', (tester) async {
+    await tester.pumpWidget(const G3fiCutApp());
+    await tester.pump();
+
+    expect(find.byType(SwitchListTile), findsNWidgets(2));
+    expect(
+      tester.takeException(),
+      isNull,
+      reason: 'Inspector switch controls must render inside Material surfaces.',
+    );
+  });
+
 }

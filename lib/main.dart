@@ -54,7 +54,7 @@ class TimelineClip {
 }
 
 class _EditorPageState extends State<EditorPage> {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.2');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.3');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -1240,10 +1240,16 @@ class _EditorPageState extends State<EditorPage> {
             const SizedBox(height: 12),
             if (inspectorTab == 'video') ...[
               const Text('ФИЛЬТРЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
-              SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, title: const Text('Цветокоррекция', style: TextStyle(fontSize: 12)), value: filtersEnabled, onChanged: (value) => setState(() => filtersEnabled = value)),
+              Material(
+                color: panel,
+                child: SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, title: const Text('Цветокоррекция', style: TextStyle(fontSize: 12)), value: filtersEnabled, onChanged: (value) => setState(() => filtersEnabled = value)),
+              ),
               const SizedBox(height: 6),
               const Text('ЭФФЕКТЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
-              SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, title: const Text('Размытие движения', style: TextStyle(fontSize: 12)), subtitle: const Text('Применяется при экспорте', style: TextStyle(fontSize: 9, color: muted)), value: motionBlurEnabled, onChanged: (value) => setState(() => motionBlurEnabled = value)),
+              Material(
+                color: panel,
+                child: SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, title: const Text('Размытие движения', style: TextStyle(fontSize: 12)), subtitle: const Text('Применяется при экспорте', style: TextStyle(fontSize: 9, color: muted)), value: motionBlurEnabled, onChanged: (value) => setState(() => motionBlurEnabled = value)),
+              ),
               const Divider(),
               const Text('ПОЛОЖЕНИЕ И РАЗМЕР', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
               _adjustmentSlider('Масштаб предпросмотра', previewZoom, 0.5, 2.0, (value) => setState(() => previewZoom = value)),
