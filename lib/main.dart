@@ -264,69 +264,77 @@ class _EditorPageState extends State<EditorPage> {
       );
 
   Widget toolbar() => Container(
-        height: 58,
+        constraints: const BoxConstraints(minHeight: 58),
         color: const Color(0xFF14151C),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(children: [
-          OutlinedButton.icon(onPressed: busy ? null : pickVideo, icon: const Icon(Icons.add_to_photos_outlined, size: 18), label: const Text('Импорт видео')),
-          const SizedBox(width: 10),
-          FilledButton.icon(
-            onPressed: videoPath == null || busy ? null : extractAudio,
-            icon: busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.graphic_eq, size: 18),
-            label: Text(busy ? 'Обработка…' : 'Извлечь звук на таймлайн'),
-          ),
-          const SizedBox(width: 10),
-          OutlinedButton.icon(onPressed: null, icon: const Icon(Icons.ios_share, size: 18), label: const Text('Экспорт')),
-          const Spacer(),
-          if (audioPath != null)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              decoration: BoxDecoration(color: audioGreen.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8), border: Border.all(color: audioGreen.withValues(alpha: 0.35))),
-              child: const Row(children: [Icon(Icons.check_circle_outline, color: audioGreen, size: 15), SizedBox(width: 6), Text('Аудио на таймлайне', style: TextStyle(color: audioGreen, fontSize: 11, fontWeight: FontWeight.w600))]),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Wrap(
+          spacing: 10,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            OutlinedButton.icon(onPressed: busy ? null : pickVideo, icon: const Icon(Icons.add_to_photos_outlined, size: 18), label: const Text('Импорт видео')),
+            FilledButton.icon(
+              onPressed: videoPath == null || busy ? null : extractAudio,
+              icon: busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.graphic_eq, size: 18),
+              label: Text(busy ? 'Обработка…' : 'Извлечь звук на таймлайн'),
             ),
-        ]),
+            OutlinedButton.icon(onPressed: null, icon: const Icon(Icons.ios_share, size: 18), label: const Text('Экспорт')),
+            if (audioPath != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                decoration: BoxDecoration(color: audioGreen.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8), border: Border.all(color: audioGreen.withValues(alpha: 0.35))),
+                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.check_circle_outline, color: audioGreen, size: 15),
+                  SizedBox(width: 6),
+                  Text('Аудио на таймлайне', style: TextStyle(color: audioGreen, fontSize: 11, fontWeight: FontWeight.w600)),
+                ]),
+              ),
+          ],
+        ),
       );
 
   Widget mediaPanel() => Container(
         width: 218,
         color: panel,
         padding: const EdgeInsets.fromLTRB(12, 15, 12, 12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('МЕДИА', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.4, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 14),
-          InkWell(
-            onTap: busy ? null : pickVideo,
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10),
-              decoration: BoxDecoration(color: const Color(0xFF20212B), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFF333542))),
-              child: const Column(children: [
-                Icon(Icons.video_call_outlined, color: accent, size: 30),
-                SizedBox(height: 8),
-                Text('Добавить видео', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                SizedBox(height: 4),
-                Text('MP4 · MOV · MKV и другие', style: TextStyle(fontSize: 10, color: muted), textAlign: TextAlign.center),
-              ]),
-            ),
-          ),
-          if (videoPath != null) ...[
+        child: SingleChildScrollView(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('МЕДИА', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.4, fontWeight: FontWeight.w800)),
             const SizedBox(height: 14),
-            const Text('ФАЙЛЫ ПРОЕКТА', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.1, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            mediaItem(Icons.movie_outlined, p.basename(videoPath!), 'Видео', videoBlue),
-            if (audioPath != null) ...[
-              const SizedBox(height: 7),
-              mediaItem(Icons.graphic_eq, p.basename(audioPath!), 'Извлечённое аудио', audioGreen),
+            InkWell(
+              onTap: busy ? null : pickVideo,
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10),
+                decoration: BoxDecoration(color: const Color(0xFF20212B), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFF333542))),
+                child: const Column(children: [
+                  Icon(Icons.video_call_outlined, color: accent, size: 30),
+                  SizedBox(height: 8),
+                  Text('Добавить видео', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  SizedBox(height: 4),
+                  Text('MP4 · MOV · MKV и другие', style: TextStyle(fontSize: 10, color: muted), textAlign: TextAlign.center),
+                ]),
+              ),
+            ),
+            if (videoPath != null) ...[
+              const SizedBox(height: 14),
+              const Text('ФАЙЛЫ ПРОЕКТА', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.1, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              mediaItem(Icons.movie_outlined, p.basename(videoPath!), 'Видео', videoBlue),
+              if (audioPath != null) ...[
+                const SizedBox(height: 7),
+                mediaItem(Icons.graphic_eq, p.basename(audioPath!), 'Извлечённое аудио', audioGreen),
+              ],
             ],
-          ],
-          const Spacer(),
-          const Divider(),
-          const SizedBox(height: 8),
-          const Row(children: [Icon(Icons.tips_and_updates_outlined, color: muted, size: 15), SizedBox(width: 7), Text('Подсказка', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700))]),
-          const SizedBox(height: 5),
-          const Text('Извлеките звук, чтобы получить отдельный клип на аудиодорожке под видео.', style: TextStyle(color: muted, fontSize: 11, height: 1.4)),
-        ]),
+            const SizedBox(height: 12),
+            const Divider(),
+            const SizedBox(height: 8),
+            const Row(children: [Icon(Icons.tips_and_updates_outlined, color: muted, size: 15), SizedBox(width: 7), Text('Подсказка', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700))]),
+            const SizedBox(height: 5),
+            const Text('Извлеките звук, чтобы получить отдельный клип на аудиодорожке под видео.', style: TextStyle(color: muted, fontSize: 11, height: 1.4)),
+          ]),
+        ),
       );
 
   Widget mediaItem(IconData icon, String name, String kind, Color color) => Container(
@@ -363,13 +371,18 @@ class _EditorPageState extends State<EditorPage> {
               alignment: Alignment.center,
               padding: const EdgeInsets.all(18),
               child: videoPath == null
-                  ? const Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      Icon(Icons.slideshow_outlined, size: 54, color: Color(0xFF414451)),
-                      SizedBox(height: 14),
-                      Text('Ваше видео появится здесь', style: TextStyle(color: Color(0xFF9A9CAB), fontSize: 14, fontWeight: FontWeight.w600)),
-                      SizedBox(height: 5),
-                      Text('Нажмите «Импорт видео», чтобы начать', style: TextStyle(color: Color(0xFF646777), fontSize: 11)),
-                    ])
+                  ? SingleChildScrollView(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 120),
+                        child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Icon(Icons.slideshow_outlined, size: 54, color: Color(0xFF414451)),
+                          SizedBox(height: 14),
+                          Text('Ваше видео появится здесь', style: TextStyle(color: Color(0xFF9A9CAB), fontSize: 14, fontWeight: FontWeight.w600)),
+                          SizedBox(height: 5),
+                          Text('Нажмите «Импорт видео», чтобы начать', style: TextStyle(color: Color(0xFF646777), fontSize: 11)),
+                        ]),
+                      ),
+                    )
                   : videoController == null
                       ? const Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                           Icon(Icons.warning_amber_rounded, size: 42, color: Color(0xFFD5A35C)),
@@ -418,48 +431,50 @@ class _EditorPageState extends State<EditorPage> {
         width: 238,
         color: panel,
         padding: const EdgeInsets.fromLTRB(14, 16, 14, 12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('СВОЙСТВА', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.4, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 16),
-          const Text('Текущий проект', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 12),
-          property('Видео', videoPath == null ? 'Не выбрано' : 'Загружено'),
-          property('Длительность', time(duration)),
-          property('Аудиодорожка', audioPath == null ? 'Не создана' : 'Добавлена'),
-          const SizedBox(height: 18),
-          const Divider(),
-          const SizedBox(height: 12),
-          const Text('АУДИО', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 9),
-          if (audioPath == null)
-            const Text('После извлечения звук появится здесь и на отдельной дорожке таймлайна.', style: TextStyle(color: muted, fontSize: 11, height: 1.5))
-          else ...[
+        child: SingleChildScrollView(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('СВОЙСТВА', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.4, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 16),
+            const Text('Текущий проект', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 12),
+            property('Видео', videoPath == null ? 'Не выбрано' : 'Загружено'),
+            property('Длительность', time(duration)),
+            property('Аудиодорожка', audioPath == null ? 'Не создана' : 'Добавлена'),
+            const SizedBox(height: 18),
+            const Divider(),
+            const SizedBox(height: 12),
+            const Text('АУДИО', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 9),
+            if (audioPath == null)
+              const Text('После извлечения звук появится здесь и на отдельной дорожке таймлайна.', style: TextStyle(color: muted, fontSize: 11, height: 1.5))
+            else ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: audioGreen.withValues(alpha: 0.09), border: Border.all(color: audioGreen.withValues(alpha: 0.3)), borderRadius: BorderRadius.circular(8)),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Icon(Icons.graphic_eq, color: audioGreen, size: 20),
+                  const SizedBox(height: 7),
+                  Text(p.basename(audioPath!), maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 6),
+                  Text('WAV · ${time(audioDuration)}', style: const TextStyle(color: audioGreen, fontSize: 10)),
+                ]),
+              ),
+              const SizedBox(height: 8),
+              const Text('Файл сохранён в Documents/ClipForge/Media.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
+            ],
+            const SizedBox(height: 12),
             Container(
-              width: double.infinity,
               padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: audioGreen.withValues(alpha: 0.09), border: Border.all(color: audioGreen.withValues(alpha: 0.3)), borderRadius: BorderRadius.circular(8)),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Icon(Icons.graphic_eq, color: audioGreen, size: 20),
-                const SizedBox(height: 7),
-                Text(p.basename(audioPath!), maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 6),
-                Text('WAV · ${time(audioDuration)}', style: const TextStyle(color: audioGreen, fontSize: 10)),
+              decoration: BoxDecoration(color: const Color(0xFF22232D), borderRadius: BorderRadius.circular(8)),
+              child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Icon(Icons.construction_outlined, size: 17, color: accent),
+                SizedBox(width: 8),
+                Expanded(child: Text('MVP: импорт, просмотр, воспроизведение и извлечение звука. Остальные инструменты добавим позже.', style: TextStyle(color: Color(0xFFB6B7C5), fontSize: 10, height: 1.45))),
               ]),
             ),
-            const SizedBox(height: 8),
-            const Text('Файл сохранён в Documents/ClipForge/Media.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
-          ],
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: const Color(0xFF22232D), borderRadius: BorderRadius.circular(8)),
-            child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(Icons.construction_outlined, size: 17, color: accent),
-              SizedBox(width: 8),
-              Expanded(child: Text('MVP: импорт, просмотр, воспроизведение и извлечение звука. Остальные инструменты добавим позже.', style: TextStyle(color: Color(0xFFB6B7C5), fontSize: 10, height: 1.45))),
-            ]),
-          ),
-        ]),
+          ]),
+        ),
       );
 
   Widget property(String label, String value) => Padding(
