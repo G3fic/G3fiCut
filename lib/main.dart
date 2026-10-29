@@ -1465,6 +1465,33 @@ class _EditorPageState extends State<EditorPage> {
                 _adjustmentSlider('Прозрачность фото', photoOverlays[selectedPhotoOverlay].opacity, 0.05, 1, (v) => setState(() { photoOverlays[selectedPhotoOverlay].opacity = v; projectDirty = true; })),
               ],
               const Divider(),
+              const Text('ТРАНСФОРМАЦИЯ ВИДЕО', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+              _adjustmentSlider('Ширина видео', videoScaleX, 0.2, 3, (v) => setState(() { videoScaleX = v; projectDirty = true; })),
+              _adjustmentSlider('Высота видео', videoScaleY, 0.2, 3, (v) => setState(() { videoScaleY = v; projectDirty = true; })),
+              _adjustmentSlider('Поворот видео', videoRotation, -180, 180, (v) => setState(() { videoRotation = v; projectDirty = true; })),
+              const SizedBox(height: 8),
+              Row(children: [
+                const Expanded(child: Text('ФОТО ПОВЕРХ ВИДЕО', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800))),
+                IconButton(tooltip: 'Добавить фото', visualDensity: VisualDensity.compact, onPressed: busy || videoPath == null ? null : importPhotoOverlay, icon: const Icon(Icons.add_photo_alternate_outlined, size: 18)),
+              ]),
+              for (var i = 0; i < photoOverlays.length; i++)
+                ListTile(
+                  dense: true, contentPadding: EdgeInsets.zero, selected: selectedPhotoOverlay == i,
+                  leading: const Icon(Icons.image_outlined, size: 18, color: accent),
+                  title: Text(p.basename(photoOverlays[i].path), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10)),
+                  trailing: IconButton(tooltip: 'Удалить фото', visualDensity: VisualDensity.compact, onPressed: () => setState(() {
+                    photoOverlays.removeAt(i);
+                    if (selectedPhotoOverlay >= photoOverlays.length) selectedPhotoOverlay = photoOverlays.length - 1;
+                    projectDirty = true;
+                  }), icon: const Icon(Icons.delete_outline, size: 16)),
+                  onTap: () => setState(() => selectedPhotoOverlay = i),
+                ),
+              if (selectedPhotoOverlay >= 0 && selectedPhotoOverlay < photoOverlays.length) ...[
+                _adjustmentSlider('Размер фото', photoOverlays[selectedPhotoOverlay].scale, 0.2, 3, (v) => setState(() { photoOverlays[selectedPhotoOverlay].scale = v; projectDirty = true; })),
+                _adjustmentSlider('Поворот фото', photoOverlays[selectedPhotoOverlay].rotation, -180, 180, (v) => setState(() { photoOverlays[selectedPhotoOverlay].rotation = v; projectDirty = true; })),
+                _adjustmentSlider('Прозрачность фото', photoOverlays[selectedPhotoOverlay].opacity, 0.05, 1, (v) => setState(() { photoOverlays[selectedPhotoOverlay].opacity = v; projectDirty = true; })),
+              ],
+              const Divider(),
               const Text('ПОЛОЖЕНИЕ И РАЗМЕР', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
               _adjustmentSlider('Масштаб предпросмотра', previewZoom, 0.5, 2.0, (value) => setState(() => previewZoom = value)),
               const Text('Масштаб меняет только просмотр; исходный кадр не обрезается.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
