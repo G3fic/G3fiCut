@@ -37,10 +37,14 @@ jobs:
           RELEASE_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           $pubspecVersionLine = Get-Content 'pubspec.yaml' | Where-Object { $_ -match '^version:' } | Select-Object -First 1
-          if ($null -eq $pubspecVersionLine -or $pubspecVersionLine -notmatch '^version:\s*(\d+\.\d+\.\d+)(?:\+\d+)?\s*$') {
+          if ($null -eq $pubspecVersionLine) {
+            throw 'Could not read version from pubspec.yaml.'
+          }
+          if ($pubspecVersionLine -match '^version:\s*(\d+\.\d+\.\d+)(?:\+\d+)?\s*$') {
+            $version = $Matches[1]
+          } else {
             throw 'Could not read semantic version from pubspec.yaml.'
           }
-          $version = $Matches[1]
           if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch' -and -not [string]::IsNullOrWhiteSpace($env:RELEASE_VERSION_INPUT)) {
             if ($env:RELEASE_VERSION_INPUT -notmatch '^\d+\.\d+\.\d+$') {
               throw 'Release version must use MAJOR.MINOR.PATCH, for example 0.2.5.'
