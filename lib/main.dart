@@ -670,7 +670,7 @@ class _EditorPageState extends State<EditorPage> {
     try {
       await player?.setRate(next);
       if (mounted) setState(() => playbackRate = next);
-      setStatus('Скорость предпросмотра: ${next}×. На экспорт это не влияет.');
+      setStatus('Скорость предпросмотра: $next×. На экспорт это не влияет.');
     } catch (e) {
       setStatus('Не удалось изменить скорость предпросмотра: $e');
     }
@@ -1112,7 +1112,7 @@ class _EditorPageState extends State<EditorPage> {
                 tooltip: 'Скорость предпросмотра',
                 visualDensity: VisualDensity.compact,
                 onPressed: videoPath == null ? null : cyclePlaybackRate,
-                icon: Text('${playbackRate}×', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: accent)),
+                icon: Text('$playbackRate×', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: accent)),
               ),
               const SizedBox(width: 4),
               IconButton.filledTonal(
