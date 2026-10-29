@@ -1776,7 +1776,7 @@ class _EditorPageState extends State<EditorPage> {
 
   Widget _videoThumbnailStrip(TimelineClip clip, double width) {
     if (videoThumbnails.isEmpty || duration.inMilliseconds <= 0) {
-      return CustomPaint(painter: const VideoStripPainter(), child: const SizedBox.expand());
+      return const CustomPaint(painter: VideoStripPainter(), child: SizedBox.expand());
     }
     final sourceDuration = duration.inMilliseconds / 1000;
     final tileWidth = width / math.max(1, (videoThumbnails.length * clip.length / sourceDuration).ceil());
