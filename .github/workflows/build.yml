@@ -110,7 +110,7 @@ jobs:
         run: |
           $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $compiler)) { throw "Inno Setup compiler not found: $compiler" }
-          & $compiler "/DMyAppVersion=$env:G3FICUT_VERSION" installer\G3fiCut.iss
+          & $compiler "/DMyAppVersion=$env:G3FICUT_VERSION" installer\ClipForge.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
 
       - uses: actions/upload-artifact@v4
