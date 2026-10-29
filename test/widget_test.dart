@@ -1,0 +1,23 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:clipforge/main.dart';
+
+void main() {
+  testWidgets('ClipForge editor opens with import and timeline controls', (tester) async {
+    await tester.pumpWidget(const ClipForgeApp());
+    await tester.pump();
+
+    expect(find.text('ClipForge'), findsOneWidget);
+    expect(find.text('Импорт видео'), findsOneWidget);
+    expect(find.text('ТАЙМЛАЙН'), findsOneWidget);
+    expect(find.text('Ваше видео появится здесь'), findsOneWidget);
+    expect(tester.takeException(), isNull, reason: 'The editor must open without layout or initialization exceptions.');
+  });
+
+  test('version comparison detects newer semantic versions', () {
+    expect(isVersionNewer('v0.3.0', '0.2.0'), isTrue);
+    expect(isVersionNewer('0.2.1', '0.2.0'), isTrue);
+    expect(isVersionNewer('0.2.0', '0.2.0'), isFalse);
+    expect(isVersionNewer('0.1.9', '0.2.0'), isFalse);
+    expect(isVersionNewer('1.0.0', '0.99.99'), isTrue);
+  });
+}
