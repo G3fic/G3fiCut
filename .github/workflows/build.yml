@@ -60,13 +60,9 @@ jobs:
           ) -join [Environment]::NewLine
           Set-Content -Path (Join-Path $release 'FFmpeg-LICENSE-NOTICE.txt') -Value $notice -Encoding utf8
 
-      - name: Package Windows build
-        shell: pwsh
-        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath ClipForge-Windows.zip -Force
-
       - uses: actions/upload-artifact@v4
         with:
           name: clipforge-windows
-          path: ClipForge-Windows.zip
+          path: build/windows/x64/runner/Release/*
           if-no-files-found: error
           retention-days: 14
