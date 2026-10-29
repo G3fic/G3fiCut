@@ -7,7 +7,7 @@ void main() {
     await tester.pumpWidget(const G3fiCutApp());
     await tester.pump();
 
-    expect(find.text('GifCut'), findsOneWidget);
+    expect(find.text('gifcut'), findsOneWidget);
     expect(find.text('Импорт видео'), findsOneWidget);
     expect(find.text('ТАЙМЛАЙН'), findsOneWidget);
     expect(find.text('Ваше видео появится здесь'), findsOneWidget);
