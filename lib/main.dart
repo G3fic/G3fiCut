@@ -859,7 +859,7 @@ class _EditorPageState extends State<EditorPage> {
                     left: videoClips[i].start * zoom + 4,
                     top: 7,
                     bottom: 7,
-                    width: math.max(12.0, videoClips[i].length * zoom - 2),
+                    width: math.max(12.0, videoClips[i].length * zoom - 2).toDouble(),
                     child: GestureDetector(
                       onTap: () => setState(() => selectedClipIndex = i),
                       onSecondaryTapDown: (details) => showClipMenu(details.globalPosition, i),
@@ -978,7 +978,7 @@ class _EditorPageState extends State<EditorPage> {
     if (videoClips.isEmpty || selectedClipIndex < 0 || selectedClipIndex >= videoClips.length) return;
     setState(() {
       videoClips.removeAt(selectedClipIndex);
-      selectedClipIndex = videoClips.isEmpty ? 0 : selectedClipIndex.clamp(0, videoClips.length - 1);
+      selectedClipIndex = videoClips.isEmpty ? 0 : selectedClipIndex.clamp(0, videoClips.length - 1).toInt();
       status = videoClips.isEmpty ? 'На таймлайне нет видеоклипов.' : 'Клип удалён с таймлайна.';
     });
   }
