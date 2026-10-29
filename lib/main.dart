@@ -1780,8 +1780,8 @@ class _EditorPageState extends State<EditorPage> {
     }
     final sourceDuration = duration.inMilliseconds / 1000;
     final tileWidth = width / math.max(1, (videoThumbnails.length * clip.length / sourceDuration).ceil());
-    final first = ((clip.start / sourceDuration) * videoThumbnails.length).floor().clamp(0, videoThumbnails.length - 1);
-    final last = ((clip.end / sourceDuration) * videoThumbnails.length).ceil().clamp(first + 1, videoThumbnails.length);
+    final first = ((clip.start / sourceDuration) * videoThumbnails.length).floor().clamp(0, videoThumbnails.length - 1).toInt();
+    final last = ((clip.end / sourceDuration) * videoThumbnails.length).ceil().clamp(first + 1, videoThumbnails.length).toInt();
     final visible = videoThumbnails.sublist(first, last);
     return SizedBox(width: width, height: double.infinity, child: Row(children: [for (final path in visible) SizedBox(width: tileWidth.clamp(1.0, width).toDouble(), height: double.infinity, child: Image.file(File(path), fit: BoxFit.cover, errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFF234765))))]));
   }
