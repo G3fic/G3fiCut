@@ -1606,10 +1606,53 @@ class _EditorPageState extends State<EditorPage> {
                   trackRow(audio: false),
                   const SizedBox(height: 5),
                   trackRow(audio: true),
+                  if (photoOverlays.isNotEmpty) ...[
+                    const SizedBox(height: 5),
+                    photoTrackRow(),
+                  ],
                 ]),
               ),
               ),
             ),
+          ),
+        ]),
+      );
+
+  Widget photoTrackRow() => SizedBox(
+        width: 140 + timelineWidth,
+        height: 54,
+        child: Row(children: [
+          Container(
+            width: 140, height: 54, padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
+            child: const Row(children: [
+              Icon(Icons.image_outlined, size: 17, color: Color(0xFFB18CFF)),
+              SizedBox(width: 8),
+              Expanded(child: Text('Фото / оверлеи', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700))),
+            ]),
+          ),
+          SizedBox(
+            width: timelineWidth, height: 54,
+            child: Stack(children: [
+              Positioned.fill(child: CustomPaint(painter: TimelineGridPainter(seconds: timelineSeconds, pixelsPerSecond: zoom))),
+              for (var i = 0; i < photoOverlays.length; i++)
+                Positioned(
+                  left: 4, top: 5 + i * 2.0, bottom: 5,
+                  width: math.max(20, timelineWidth - 8),
+                  child: GestureDetector(
+                    onTap: () => setState(() => selectedPhotoOverlay = i),
+                    child: Container(
+                      decoration: BoxDecoration(color: const Color(0x443D2C69), borderRadius: BorderRadius.circular(5), border: Border.all(color: selectedPhotoOverlay == i ? Colors.white : const Color(0xFFB18CFF), width: selectedPhotoOverlay == i ? 2 : 1)),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Row(children: [
+                        const Icon(Icons.image_outlined, size: 13, color: Colors.white),
+                        const SizedBox(width: 6),
+                        Flexible(child: Text(p.basename(photoOverlays[i].path), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9, color: Colors.white))),
+                      ]),
+                    ),
+                  ),
+                ),
+            ]),
           ),
         ]),
       );
