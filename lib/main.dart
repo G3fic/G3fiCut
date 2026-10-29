@@ -76,6 +76,8 @@ class _EditorPageState extends State<EditorPage> {
   double zoom = 32;
   final List<TimelineClip> videoClips = [];
   int selectedClipIndex = 0;
+  double audioClipStart = 0;
+  double audioClipEnd = 0;
   String status = 'Импортируйте видео, чтобы начать монтаж.';
 
   double get timelineSeconds => duration.inMilliseconds > 0 ? math.max(1, duration.inMilliseconds / 1000).toDouble() : 30;
@@ -274,7 +276,15 @@ class _EditorPageState extends State<EditorPage> {
       player = created;
       videoController = controller;
       durationSub = created.stream.duration.listen((v) {
-        if (mounted) setState(() => duration = v);
+        if (!mounted) return;
+        setState(() {
+          duration = v;
+          // Some containers report duration only after the first stream event.
+          // Keep the initial clip full-width instead of leaving a tiny zero-length block.
+          if (videoClips.length == 1 && videoClips.first.start == 0 && videoClips.first.end <= 0 && v > Duration.zero) {
+            videoClips.first.end = v.inMilliseconds / 1000;
+          }
+        });
       });
       positionSub = created.stream.position.listen((v) {
         if (mounted) setState(() => position = v);
@@ -326,6 +336,8 @@ class _EditorPageState extends State<EditorPage> {
       videoPath = path;
       audioPath = null;
       audioDuration = Duration.zero;
+      audioClipStart = 0;
+      audioClipEnd = 0;
       duration = Duration.zero;
       position = Duration.zero;
       playing = false;
@@ -387,7 +399,9 @@ class _EditorPageState extends State<EditorPage> {
       setState(() {
         audioPath = output;
         audioDuration = duration;
-        status = 'Готово: извлечённый звук добавлен на отдельную дорожку под видео.';
+        audioClipStart = 0;
+        audioClipEnd = duration.inMilliseconds / 1000;
+        status = 'Готово: звук добавлен на отдельную дорожку. Его можно обрезать независимо от видео правым кликом.';
       });
     } on ProcessException {
       if (mounted) setState(() => status = 'FFmpeg не найден. В архиве из GitHub Actions ffmpeg.exe лежит рядом с GifCut.exe. Для локального запуска добавьте FFmpeg в PATH.');
@@ -792,7 +806,14 @@ class _EditorPageState extends State<EditorPage> {
             ]),
           ),
           Expanded(
-            child: SingleChildScrollView(
+            child: Listener(
+              onPointerSignal: (event) {
+                if (event is PointerScrollEvent) {
+                  final next = event.scrollDelta.dy < 0 ? zoom + 4 : zoom - 4;
+                  setState(() => zoom = next.clamp(8.0, 160.0).toDouble());
+                }
+              },
+              child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: SizedBox(
                 width: 140 + timelineWidth,
@@ -808,6 +829,7 @@ class _EditorPageState extends State<EditorPage> {
                   const SizedBox(height: 5),
                   trackRow(audio: true),
                 ]),
+              ),
               ),
             ),
           ),
@@ -851,8 +873,20 @@ class _EditorPageState extends State<EditorPage> {
             onHorizontalDragUpdate: duration.inMilliseconds > 0 ? (d) => seekTimeline(d.localPosition.dx) : null,
             child: Stack(clipBehavior: Clip.hardEdge, children: [
               Positioned.fill(child: CustomPaint(painter: TimelineGridPainter(seconds: timelineSeconds, pixelsPerSecond: zoom))),
-              if (path != null && audio)
-                Positioned(left: 4, top: 7, bottom: 7, width: clipWidth, child: audioClip(path)),
+              if (path != null && audio && audioClipEnd > audioClipStart)
+                Positioned(
+                  left: audioClipStart * zoom + 4,
+                  top: 7,
+                  bottom: 7,
+                  width: math.max(12.0, (audioClipEnd - audioClipStart) * zoom - 2).toDouble(),
+                  child: GestureDetector(
+                    onSecondaryTapDown: (details) => showAudioClipMenu(details.globalPosition),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: audioGreen, width: 1.5)),
+                      child: audioClip(path),
+                    ),
+                  ),
+                ),
               if (path != null && !audio)
                 for (var i = 0; i < videoClips.length; i++)
                   Positioned(
@@ -896,6 +930,45 @@ class _EditorPageState extends State<EditorPage> {
         ),
       ]),
     );
+  }
+
+  Future<void> showAudioClipMenu(Offset position) async {
+    if (audioPath == null || audioClipEnd <= audioClipStart) return;
+    final action = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx + 1, position.dy + 1),
+      items: const [
+        PopupMenuItem(value: 'audioTrimStart', child: ListTile(dense: true, leading: Icon(Icons.first_page), title: Text('Обрезать начало звука до курсора'))),
+        PopupMenuItem(value: 'audioTrimEnd', child: ListTile(dense: true, leading: Icon(Icons.last_page), title: Text('Обрезать конец звука по курсору'))),
+        PopupMenuItem(value: 'audioReset', child: ListTile(dense: true, leading: Icon(Icons.restart_alt), title: Text('Сбросить обрезку звука'))),
+        PopupMenuItem(value: 'audioDelete', child: ListTile(dense: true, leading: Icon(Icons.delete_outline, color: Colors.redAccent), title: Text('Удалить звуковой клип'))),
+      ],
+    );
+    if (!mounted || action == null) return;
+    final cut = playheadSeconds;
+    setState(() {
+      switch (action) {
+        case 'audioTrimStart':
+          if (cut > audioClipStart && cut < audioClipEnd - .08) { audioClipStart = cut; status = 'Начало звука обрезано независимо от видео.'; }
+          else { status = 'Курсор должен находиться внутри звукового клипа.'; }
+          break;
+        case 'audioTrimEnd':
+          if (cut > audioClipStart + .08 && cut < audioClipEnd) { audioClipEnd = cut; status = 'Конец звука обрезан независимо от видео.'; }
+          else { status = 'Курсор должен находиться внутри звукового клипа.'; }
+          break;
+        case 'audioReset':
+          audioClipStart = 0;
+          audioClipEnd = audioDuration.inMilliseconds / 1000;
+          status = 'Обрезка звука сброшена.';
+          break;
+        case 'audioDelete':
+          audioPath = null;
+          audioClipStart = 0;
+          audioClipEnd = 0;
+          status = 'Звуковой клип удалён. Видеоклипы не изменены.';
+          break;
+      }
+    });
   }
 
   Future<void> showClipMenu(Offset position, int index) async {
