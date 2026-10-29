@@ -675,7 +675,9 @@ class _EditorPageState extends State<EditorPage> {
   Future<void> _enforceEditedPlayback(Duration value) async {
     final activePlayer = player;
     if (!mounted || _switchingMedia || _seekingAcrossCut || !playing ||
-        activePlayer == null || videoPath == null) return;
+        activePlayer == null || videoPath == null) {
+      return;
+    }
 
     if (videoClips.isEmpty) {
       _seekingAcrossCut = true;
@@ -724,7 +726,7 @@ class _EditorPageState extends State<EditorPage> {
 
     _seekingAcrossCut = true;
     try {
-      await activePlayer.seek(Duration(milliseconds: (jumpTo! * 1000).round()));
+      await activePlayer.seek(Duration(milliseconds: (jumpTo * 1000).round()));
     } finally {
       _seekingAcrossCut = false;
     }
@@ -1358,7 +1360,7 @@ class _EditorPageState extends State<EditorPage> {
                                       color: Color(0xFFF1EDFF),
                                       borderRadius: BorderRadius.horizontal(left: Radius.circular(5)),
                                     ),
-                                    child: Center(child: Container(width: 2, height: 16, color: Color(0xFF6551D9))),
+                                    child: const Center(child: SizedBox(width: 2, height: 16, child: ColoredBox(color: Color(0xFF6551D9)))),
                                   ),
                                 ),
                               ),
