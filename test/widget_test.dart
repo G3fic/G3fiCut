@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:g3ficut/main.dart';
 
@@ -20,4 +21,21 @@ void main() {
     expect(isVersionNewer('0.1.9', '0.2.0'), isFalse);
     expect(isVersionNewer('1.0.0', '0.99.99'), isTrue);
   });
+  testWidgets('undo and redo controls are visible and disabled without edits', (tester) async {
+    await tester.pumpWidget(const G3fiCutApp());
+    await tester.pump();
+
+    expect(find.byTooltip('Отменить (Ctrl+Z)'), findsOneWidget);
+    expect(find.byTooltip('Повторить (Ctrl+Y, Ctrl+Shift+Z)'), findsOneWidget);
+    expect(
+      tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Отменить')).onPressed,
+      isNull,
+    );
+    expect(
+      tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Повторить')).onPressed,
+      isNull,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
 }
