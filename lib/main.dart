@@ -78,6 +78,7 @@ class _EditorPageState extends State<EditorPage> {
   Duration position = Duration.zero;
   bool playing = false;
   bool busy = false;
+  bool _switchingMedia = false;
   bool checkingForUpdates = false;
   double zoom = 32;
   final List<TimelineClip> videoClips = [];
@@ -283,7 +284,7 @@ class _EditorPageState extends State<EditorPage> {
       player = created;
       videoController = controller;
       durationSub = created.stream.duration.listen((v) {
-        if (!mounted) return;
+        if (!mounted || _switchingMedia) return;
         setState(() {
           duration = v;
           // Some containers report duration only after the first stream event.
@@ -294,10 +295,10 @@ class _EditorPageState extends State<EditorPage> {
         });
       });
       positionSub = created.stream.position.listen((v) {
-        if (mounted) setState(() => position = v);
+        if (mounted && !_switchingMedia) setState(() => position = v);
       });
       playingSub = created.stream.playing.listen((v) {
-        if (mounted) setState(() => playing = v);
+        if (mounted && !_switchingMedia) setState(() => playing = v);
       });
       return created;
     } catch (_) {
@@ -337,22 +338,14 @@ class _EditorPageState extends State<EditorPage> {
       setStatus('Не удалось получить путь к видео.');
       return;
     }
-
     if (!await _confirmReplaceIfDirty()) return;
 
-    _timelineHistory.clear();
+    // Keep the current project data intact until the replacement media opens.
+    final previousVideoPath = videoPath;
+    final previousPosition = position;
     setState(() {
       busy = true;
-      videoPath = path;
-      projectFilePath = null;
-      projectDirty = true;
-      audioPath = null;
-      audioDuration = Duration.zero;
-      audioClipStart = 0;
-      audioClipEnd = 0;
-      duration = Duration.zero;
-      position = Duration.zero;
-      playing = false;
+      _switchingMedia = true;
       status = 'Загрузка видео…';
     });
 
@@ -360,16 +353,48 @@ class _EditorPageState extends State<EditorPage> {
       final activePlayer = ensurePlayer();
       await activePlayer.stop();
       await activePlayer.open(Media(path), play: false);
+      final openedDuration = activePlayer.state.duration;
+      await activePlayer.seek(Duration.zero);
+
+      _timelineHistory.clear();
+      _switchingMedia = false;
       if (!mounted) return;
       setState(() {
-        duration = activePlayer.state.duration;
-        videoClips..clear()..add(TimelineClip(start: 0, end: duration.inMilliseconds / 1000));
+        videoPath = path;
+        projectFilePath = null;
+        projectDirty = true;
+        audioPath = null;
+        audioDuration = Duration.zero;
+        audioClipStart = 0;
+        audioClipEnd = 0;
+        duration = openedDuration;
+        position = Duration.zero;
+        playing = false;
+        videoClips
+          ..clear()
+          ..add(TimelineClip(start: 0, end: openedDuration.inMilliseconds / 1000));
         selectedClipIndex = 0;
         status = 'Видео загружено. Правый клик по клипу открывает монтажные инструменты.';
       });
     } catch (e) {
-      if (mounted) setState(() => status = 'Не удалось открыть видео: $e');
+      if (previousVideoPath != null) {
+        try {
+          final activePlayer = ensurePlayer();
+          await activePlayer.open(Media(previousVideoPath), play: false);
+          await activePlayer.seek(previousPosition);
+        } catch (_) {
+          // Preserve project metadata even if the old preview cannot be restored.
+        }
+      }
+      _switchingMedia = false;
+      if (mounted) {
+        setState(() {
+          position = previousPosition;
+          status = 'Не удалось открыть видео: $e';
+        });
+      }
     } finally {
+      _switchingMedia = false;
       if (mounted) setState(() => busy = false);
     }
   }
@@ -491,6 +516,7 @@ class _EditorPageState extends State<EditorPage> {
     final previousPosition = position;
     setState(() {
       busy = true;
+      _switchingMedia = true;
       status = 'Открываю проект…';
     });
     try {
@@ -518,6 +544,7 @@ class _EditorPageState extends State<EditorPage> {
         milliseconds: document.playheadMs.clamp(0, restoredDuration.inMilliseconds).toInt(),
       );
       _timelineHistory.clear();
+      _switchingMedia = false;
       if (!mounted) return;
       setState(() {
         videoPath = document.videoPath;
@@ -543,8 +570,10 @@ class _EditorPageState extends State<EditorPage> {
         setStatus('Проект открыт, но не удалось восстановить позицию курсора: $e');
       }
     } catch (e) {
+      _switchingMedia = false;
       if (mounted) setState(() => status = 'Не удалось открыть проект: $e');
     } finally {
+      _switchingMedia = false;
       if (mounted) setState(() => busy = false);
     }
   }
@@ -1129,7 +1158,7 @@ class _EditorPageState extends State<EditorPage> {
                     bottom: 7,
                     width: math.max(12.0, videoClips[i].length * zoom - 2).toDouble(),
                     child: GestureDetector(
-                      onTap: () => setState(() => selectedClipIndex = i),
+                      onTap: () => setState(() { selectedClipIndex = i; projectDirty = true; }),
                       onSecondaryTapDown: (details) => showClipMenu(details.globalPosition, i),
                       child: DecoratedBox(
                         decoration: BoxDecoration(
@@ -1256,7 +1285,7 @@ class _EditorPageState extends State<EditorPage> {
 
   Future<void> showClipMenu(Offset position, int index) async {
     if (index < 0 || index >= videoClips.length) return;
-    setState(() => selectedClipIndex = index);
+    setState(() { selectedClipIndex = index; projectDirty = true; });
     final action = await showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx + 1, position.dy + 1),

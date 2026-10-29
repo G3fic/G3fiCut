@@ -113,11 +113,15 @@ void main() {
 
     test('requires zero audio boundaries when the audio path is absent', () {
       expect(
-        () => makeProject(audioPath: null, audioClipStart: 0, audioClipEnd: 0),
+        () => makeProject(audioPath: null, audioDurationMs: 0, audioClipStart: 0, audioClipEnd: 0),
         returnsNormally,
       );
       expect(
-        () => makeProject(audioPath: null, audioClipStart: 1, audioClipEnd: 2),
+        () => makeProject(audioPath: null, audioDurationMs: 0, audioClipStart: 1, audioClipEnd: 2),
+        throwsFormatException,
+      );
+      expect(
+        () => makeProject(audioPath: null, audioDurationMs: 1, audioClipStart: 0, audioClipEnd: 0),
         throwsFormatException,
       );
     });

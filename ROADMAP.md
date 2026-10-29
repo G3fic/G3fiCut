@@ -5,12 +5,12 @@ This roadmap tracks real editing capabilities, not decorative controls. A featur
 ## 0.2.7 — Safe editing foundation
 - [x] Split, trim, duplicate, and delete a video clip.
 - [x] Extract source audio to a separate WAV clip and trim it independently.
-- [ ] Undo/redo video and detached-audio edits (current pull request).
-- [ ] Version-consistent local builds, CI artifacts, and stable release.
-- [ ] Validate that the installed release contains the same commit as the successful Windows workflow.
+- [x] Undo/redo video and detached-audio edits (released in v0.2.7).
+- [x] Version-consistent CI build and v0.2.7 stable release.
+- [x] Verify the v0.2.7 installer asset and successful release workflow.
 
 ## 0.3 — Project workflow and timeline manipulation
-- Project create/open/save using a versioned project document; store source file paths, clip ranges, track data, audio trim, zoom, and playhead.
+- [x] Implemented in feature branch: versioned .g3ficut project format, open/save/save-as, media existence checks, clip ranges, selected clip, audio trim, zoom and playhead (release validation still pending).
 - Autosave/recovery with clear handling of moved or missing media.
 - Media bin with multiple source video/audio/image files.
 - Drag clips to move them on the timeline; move/insert without overlapping unexpectedly.

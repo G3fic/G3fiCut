@@ -81,7 +81,7 @@ class ProjectDocument {
       throw const FormatException('Длительность и позиция не могут быть отрицательными.');
     }
     if (!_isFinite(timelineZoom) || timelineZoom < 8 || timelineZoom > 160) {
-      throw const FormatException('Масштаб таймлайна должен быть в диапазоне 12–80.');
+      throw const FormatException('Масштаб таймлайна должен быть в диапазоне 8–160.');
     }
     if (!_isFinite(audioClipStart) || !_isFinite(audioClipEnd)) {
       throw const FormatException('Границы аудиоклипа должны быть конечными числами.');
@@ -110,8 +110,8 @@ class ProjectDocument {
 
     final path = audioPath;
     if (path == null) {
-      if (audioClipStart != 0 || audioClipEnd != 0) {
-        throw const FormatException('Границы аудио должны быть равны 0, если аудиодорожки нет.');
+      if (audioDurationMs != 0 || audioClipStart != 0 || audioClipEnd != 0) {
+        throw const FormatException('Данные аудио должны быть обнулены, если аудиодорожки нет.');
       }
     } else {
       if (path.trim().isEmpty) {

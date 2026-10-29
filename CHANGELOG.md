@@ -1,6 +1,6 @@
 # Changelog
 
-## G3fiCut v0.2.7 — planned
+## G3fiCut v0.2.7 — 2026-10-29
 
 - Added undo and redo for video clip split, trim, duplicate, and delete operations.
 - Added undo and redo for detached-audio extraction, trim, reset, and delete operations.
