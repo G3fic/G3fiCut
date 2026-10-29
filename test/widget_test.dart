@@ -25,12 +25,14 @@ void main() {
     await tester.pumpWidget(const G3fiCutApp());
     await tester.pump();
 
-    expect(find.byTooltip('Отменить (Ctrl+Z)'), findsOneWidget);
+    // Undo is available in both the main toolbar and the timeline quick-actions.
+    expect(find.byTooltip('Отменить (Ctrl+Z)'), findsNWidgets(2));
     expect(find.byTooltip('Повторить (Ctrl+Y, Ctrl+Shift+Z)'), findsOneWidget);
-    expect(
-      tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Отменить')).onPressed,
-      isNull,
-    );
+    for (final button in tester.widgetList<OutlinedButton>(
+      find.widgetWithText(OutlinedButton, 'Отменить'),
+    )) {
+      expect(button.onPressed, isNull);
+    }
     expect(
       tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Повторить')).onPressed,
       isNull,
