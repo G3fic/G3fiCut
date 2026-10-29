@@ -841,7 +841,6 @@ class _EditorPageState extends State<EditorPage> {
     final path = audio ? audioPath : videoPath;
     final color = audio ? audioGreen : videoBlue;
     final clipDuration = audio ? audioDuration : duration;
-    final wantedWidth = clipDuration.inMilliseconds > 0 ? clipDuration.inMilliseconds / 1000 * zoom : 180.0;
     final playhead = (position.inMilliseconds / 1000 * zoom).clamp(0.0, timelineWidth - 2).toDouble();
 
     return SizedBox(
