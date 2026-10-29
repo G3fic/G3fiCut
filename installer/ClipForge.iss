@@ -10,7 +10,7 @@ AppId={{6B7F4C9D-21C3-4E88-9B13-CE9A4C1F6D27}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-DefaultDirName={autopf}\G3fiCut
+DefaultDirName={autopf}\GifCut
 DefaultGroupName=GifCut
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
@@ -32,8 +32,8 @@ Name: "desktopicon"; Description: "Создать ярлык на рабочем
 Source: "..\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\G3fiCut"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\G3fiCut"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autoprograms}\GifCut"; Filename: "{app}\{#MyAppExeName}"
+Name: "{autodesktop}\GifCut"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Запустить GifCut"; Flags: postinstall nowait
