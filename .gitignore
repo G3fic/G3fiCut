@@ -13,3 +13,25 @@ android/.gradle/
 android/local.properties
 android/key.properties
 windows/flutter/ephemeral/
+# Local environment variables and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+.secrets/
+secrets/
+**/credentials*.json
+**/service-account*.json
+
+# Private signing material and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.mobileprovision
+
+# Local machine metadata
+.DS_Store
+Thumbs.db
