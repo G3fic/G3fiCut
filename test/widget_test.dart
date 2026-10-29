@@ -8,7 +8,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('gifcut'), findsOneWidget);
-    expect(find.text('Импорт видео'), findsOneWidget);
+    expect(find.byTooltip('Импортировать видео'), findsOneWidget);
     expect(find.text('ТАЙМЛАЙН'), findsOneWidget);
     expect(find.text('Ваше видео появится здесь'), findsOneWidget);
     expect(tester.takeException(), isNull, reason: 'The editor must open without layout or initialization exceptions.');
@@ -44,15 +44,15 @@ void main() {
     await tester.pumpWidget(const G3fiCutApp());
     await tester.pump();
 
-    expect(find.text('Открыть проект'), findsOneWidget);
-    expect(find.text('Сохранить'), findsOneWidget);
-    expect(find.text('Сохранить как…'), findsOneWidget);
+    expect(find.byTooltip('Открыть проект'), findsOneWidget);
+    expect(find.byTooltip('Сохранить проект'), findsOneWidget);
+    expect(find.byTooltip('Сохранить как'), findsOneWidget);
     expect(
-      tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Сохранить')).onPressed,
+      tester.widget<IconButton>(find.byTooltip('Сохранить проект')).onPressed,
       isNull,
     );
     expect(
-      tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Сохранить как…')).onPressed,
+      tester.widget<IconButton>(find.byTooltip('Сохранить как')).onPressed,
       isNull,
     );
     expect(tester.takeException(), isNull);
