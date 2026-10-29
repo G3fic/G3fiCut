@@ -78,6 +78,23 @@ void main() {
       expect(redone?.audioClipEnd, 18.5);
     });
 
+    test('clear removes both undo and redo history', () {
+      final history = TimelineHistory();
+      final first = snapshot(selected: 0);
+      final second = snapshot(selected: 1);
+
+      history.record(before: first, after: second);
+      expect(history.undo(second)?.sameContentAs(first), isTrue);
+      expect(history.canRedo, isTrue);
+
+      history.clear();
+
+      expect(history.canUndo, isFalse);
+      expect(history.canRedo, isFalse);
+      expect(history.undo(first), isNull);
+      expect(history.redo(first), isNull);
+    });
+
     test('keeps only the newest states when max history depth is reached', () {
       final history = TimelineHistory(maxEntries: 2);
       var state = snapshot(selected: 0);
