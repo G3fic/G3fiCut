@@ -112,11 +112,15 @@ jobs:
           if (-not (Test-Path $compiler)) { throw "Inno Setup compiler not found: $compiler" }
           & $compiler "/DMyAppVersion=$env:G3FICUT_VERSION" installer\ClipForge.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+          # Keep a legacy filename so already-installed ClipForge-branded updaters can find the new installer.
+          Copy-Item "build/installer/G3fiCut-Setup-$env:G3FICUT_VERSION.exe" "build/installer/ClipForge-Setup-$env:G3FICUT_VERSION.exe" -Force
 
       - uses: actions/upload-artifact@v4
         with:
           name: G3fiCut-Windows-Installer
-          path: build/installer/G3fiCut-Setup-${{ env.G3FICUT_VERSION }}.exe
+          path: |
+            build/installer/G3fiCut-Setup-${{ env.G3FICUT_VERSION }}.exe
+            build/installer/ClipForge-Setup-${{ env.G3FICUT_VERSION }}.exe
           if-no-files-found: error
           retention-days: 30
 
@@ -140,5 +144,7 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: G3fiCut v${{ needs.windows.outputs.release_version }}
           generate_release_notes: true
-          files: release-assets/G3fiCut-Setup-${{ needs.windows.outputs.release_version }}.exe
+          files: |
+            release-assets/G3fiCut-Setup-${{ needs.windows.outputs.release_version }}.exe
+            release-assets/ClipForge-Setup-${{ needs.windows.outputs.release_version }}.exe
           fail_on_unmatched_files: true
