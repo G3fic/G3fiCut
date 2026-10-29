@@ -1976,6 +1976,8 @@ class _EditorPageState extends State<EditorPage> {
         filters.add('crop=${parts[0]}:${parts[1]}');
       }
     }
+    if (videoScaleX != 1.0 || videoScaleY != 1.0) filters.add('scale=iw*${videoScaleX.toStringAsFixed(3)}:ih*${videoScaleY.toStringAsFixed(3)}');
+    if (videoRotation.abs() > 0.01) filters.add('rotate=${(videoRotation * math.pi / 180).toStringAsFixed(5)}:c=black');
     if (filtersEnabled) {
       filters.add('eq=brightness=${brightness.toStringAsFixed(3)}:contrast=${contrast.toStringAsFixed(3)}:saturation=${saturation.toStringAsFixed(3)}');
     }
@@ -2012,12 +2014,32 @@ class _EditorPageState extends State<EditorPage> {
       for (var i = 0; i < videoClips.length; i++) {
         final clip = videoClips[i];
         final segmentPath = p.join(temp.path, 'segment_${i.toString().padLeft(3, '0')}.mp4');
-        final args = [
+        final args = <String>[
           '-hide_banner', '-y', '-ss', clip.start.toStringAsFixed(3), '-i', source,
-          '-t', clip.length.toStringAsFixed(3), '-c:v', 'libx264', '-preset', 'veryfast',
-          '-crf', '18', '-vf', _buildExportVideoFilter(i, clip),
-          '-af', 'volume=${exportVolume.toStringAsFixed(2)}', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', segmentPath,
+          '-t', clip.length.toStringAsFixed(3),
         ];
+        for (final overlay in photoOverlays) {
+          args.addAll(['-loop', '1', '-framerate', '30', '-i', overlay.path]);
+        }
+        if (photoOverlays.isEmpty) {
+          args.addAll(['-vf', _buildExportVideoFilter(i, clip)]);
+        } else {
+          final graph = <String>['[0:v]${_buildExportVideoFilter(i, clip)}[base0]'];
+          var previous = 'base0';
+          for (var overlayIndex = 0; overlayIndex < photoOverlays.length; overlayIndex++) {
+            final overlay = photoOverlays[overlayIndex];
+            final inputIndex = overlayIndex + 1;
+            final overlayLabel = 'ov$overlayIndex';
+            final outputLabel = overlayIndex == photoOverlays.length - 1 ? 'vout' : 'base${overlayIndex + 1}';
+            final width = (360 * overlay.scale).round().clamp(24, 1800);
+            final angle = (overlay.rotation * math.pi / 180).toStringAsFixed(5);
+            graph.add('[$inputIndex:v]scale=$width:-1,format=rgba,rotate=$angle:c=none,colorchannelmixer=aa=${overlay.opacity.toStringAsFixed(3)}[$overlayLabel]');
+            graph.add('[$previous][$overlayLabel]overlay=x=(W-w)/2+(${overlay.x.toStringAsFixed(4)})*W:y=(H-h)/2+(${overlay.y.toStringAsFixed(4)})*H:shortest=1[$outputLabel]');
+            previous = outputLabel;
+          }
+          args.addAll(['-filter_complex', graph.join(';'), '-map', '[vout]', '-map', '0:a?']);
+        }
+        args.addAll(['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-af', 'volume=${exportVolume.toStringAsFixed(2)}', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', segmentPath]);
         final result = await Process.run(await findFfmpeg(), args);
         if (result.exitCode != 0 || !await File(segmentPath).exists()) {
           throw Exception('Не удалось обработать фрагмент ${i + 1}: ${result.stderr.toString().split('\n').last}');
