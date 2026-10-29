@@ -74,7 +74,7 @@ jobs:
 
       - name: Generate Windows platform scaffolding
         shell: pwsh
-        run: flutter create --platforms=windows --project-name g3ficut . --no-pub
+        run: flutter create --no-pub --platforms=windows --project-name g3ficut .
 
       - name: Apply GifCut Windows app icon
         shell: pwsh
