@@ -1379,7 +1379,7 @@ class _EditorPageState extends State<EditorPage> {
                                       color: Color(0xFFF1EDFF),
                                       borderRadius: BorderRadius.horizontal(right: Radius.circular(5)),
                                     ),
-                                    child: Center(child: Container(width: 2, height: 16, color: Color(0xFF6551D9))),
+                                    child: const Center(child: SizedBox(width: 2, height: 16, child: ColoredBox(color: Color(0xFF6551D9)))),
                                   ),
                                 ),
                               ),
