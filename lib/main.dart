@@ -15,6 +15,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'timeline_history.dart';
+import 'project_document.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -53,7 +54,7 @@ class TimelineClip {
 }
 
 class _EditorPageState extends State<EditorPage> {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.2.7');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.0');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF171820);
@@ -70,11 +71,15 @@ class _EditorPageState extends State<EditorPage> {
 
   String? videoPath;
   String? audioPath;
+  String? projectFilePath;
+  bool projectDirty = false;
   Duration duration = Duration.zero;
   Duration audioDuration = Duration.zero;
   Duration position = Duration.zero;
   bool playing = false;
   bool busy = false;
+  bool _switchingMedia = false;
+  Duration? _switchingMediaDuration;
   bool checkingForUpdates = false;
   double zoom = 32;
   final List<TimelineClip> videoClips = [];
@@ -281,6 +286,10 @@ class _EditorPageState extends State<EditorPage> {
       videoController = controller;
       durationSub = created.stream.duration.listen((v) {
         if (!mounted) return;
+        if (_switchingMedia) {
+          if (v > Duration.zero) _switchingMediaDuration = v;
+          return;
+        }
         setState(() {
           duration = v;
           // Some containers report duration only after the first stream event.
@@ -291,10 +300,10 @@ class _EditorPageState extends State<EditorPage> {
         });
       });
       positionSub = created.stream.position.listen((v) {
-        if (mounted) setState(() => position = v);
+        if (mounted && !_switchingMedia) setState(() => position = v);
       });
       playingSub = created.stream.playing.listen((v) {
-        if (mounted) setState(() => playing = v);
+        if (mounted && !_switchingMedia) setState(() => playing = v);
       });
       return created;
     } catch (_) {
@@ -334,18 +343,15 @@ class _EditorPageState extends State<EditorPage> {
       setStatus('Не удалось получить путь к видео.');
       return;
     }
+    if (!await _confirmReplaceIfDirty()) return;
 
-    _timelineHistory.clear();
+    // Keep the current project data intact until the replacement media opens.
+    final previousVideoPath = videoPath;
+    final previousPosition = position;
     setState(() {
       busy = true;
-      videoPath = path;
-      audioPath = null;
-      audioDuration = Duration.zero;
-      audioClipStart = 0;
-      audioClipEnd = 0;
-      duration = Duration.zero;
-      position = Duration.zero;
-      playing = false;
+      _switchingMedia = true;
+      _switchingMediaDuration = null;
       status = 'Загрузка видео…';
     });
 
@@ -353,16 +359,245 @@ class _EditorPageState extends State<EditorPage> {
       final activePlayer = ensurePlayer();
       await activePlayer.stop();
       await activePlayer.open(Media(path), play: false);
+      await activePlayer.seek(Duration.zero);
+      var openedDuration = activePlayer.state.duration;
+      if (openedDuration <= Duration.zero) {
+        openedDuration = _switchingMediaDuration ?? Duration.zero;
+      }
+      if (openedDuration <= Duration.zero) {
+        openedDuration = await activePlayer.stream.duration
+            .firstWhere((value) => value > Duration.zero)
+            .timeout(const Duration(seconds: 10));
+      }
+
+      _timelineHistory.clear();
+      _switchingMedia = false;
+      _switchingMediaDuration = null;
       if (!mounted) return;
       setState(() {
-        duration = activePlayer.state.duration;
-        videoClips..clear()..add(TimelineClip(start: 0, end: duration.inMilliseconds / 1000));
+        videoPath = path;
+        projectFilePath = null;
+        projectDirty = true;
+        audioPath = null;
+        audioDuration = Duration.zero;
+        audioClipStart = 0;
+        audioClipEnd = 0;
+        duration = openedDuration;
+        position = Duration.zero;
+        playing = false;
+        videoClips
+          ..clear()
+          ..add(TimelineClip(start: 0, end: openedDuration.inMilliseconds / 1000));
         selectedClipIndex = 0;
         status = 'Видео загружено. Правый клик по клипу открывает монтажные инструменты.';
       });
     } catch (e) {
-      if (mounted) setState(() => status = 'Не удалось открыть видео: $e');
+      if (previousVideoPath != null) {
+        try {
+          final activePlayer = ensurePlayer();
+          await activePlayer.open(Media(previousVideoPath), play: false);
+          await activePlayer.seek(previousPosition);
+        } catch (_) {
+          // Preserve project metadata even if the old preview cannot be restored.
+        }
+      }
+      _switchingMedia = false;
+      _switchingMediaDuration = null;
+      if (mounted) {
+        setState(() {
+          position = previousPosition;
+          status = 'Не удалось открыть видео: $e';
+        });
+      }
     } finally {
+      _switchingMedia = false;
+      _switchingMediaDuration = null;
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<bool> _confirmReplaceIfDirty() async {
+    if (!projectDirty || videoPath == null) return true;
+    final decision = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Есть несохранённые изменения'),
+        content: const Text('Сохранить текущий проект перед заменой?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop('cancel'), child: const Text('Отмена')),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop('discard'), child: const Text('Не сохранять')),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop('save'), child: const Text('Сохранить')),
+        ],
+      ),
+    );
+    if (decision == 'discard') return true;
+    if (decision == 'save') return saveProject();
+    return false;
+  }
+
+  Future<bool> saveProject({bool saveAs = false}) async {
+    if (busy) return false;
+    final source = videoPath;
+    if (source == null) {
+      setStatus('Сначала импортируйте видео, чтобы сохранить проект.');
+      return false;
+    }
+
+    var target = projectFilePath;
+    if (saveAs || target == null) {
+      try {
+        target = await FilePicker.platform.saveFile(
+          dialogTitle: 'Сохранить проект GifCut',
+          fileName: 'GifCut-Project.g3ficut',
+          type: FileType.custom,
+          allowedExtensions: ['g3ficut'],
+        );
+      } catch (e) {
+        setStatus('Не удалось открыть диалог сохранения проекта: $e');
+        return false;
+      }
+      if (target == null) return false;
+      if (p.extension(target).toLowerCase() != '.g3ficut') {
+        target = '${p.withoutExtension(target)}.g3ficut';
+      }
+    }
+
+    try {
+      final targetPath = target;
+      final document = ProjectDocument(
+        appVersion: appVersion,
+        videoPath: source,
+        videoDurationMs: duration.inMilliseconds,
+        videoClips: videoClips.map((clip) => ProjectClipRange(clip.start, clip.end)).toList(),
+        selectedClipIndex: videoClips.isEmpty ? 0 : selectedClipIndex.clamp(0, videoClips.length - 1).toInt(),
+        audioPath: audioPath,
+        audioDurationMs: audioPath == null ? 0 : audioDuration.inMilliseconds,
+        audioClipStart: audioClipStart,
+        audioClipEnd: audioClipEnd,
+        timelineZoom: zoom,
+        playheadMs: position.inMilliseconds.clamp(0, duration.inMilliseconds).toInt(),
+      );
+      await File(targetPath).writeAsString(document.encode(), flush: true);
+      if (!mounted) return true;
+      setState(() {
+        projectFilePath = targetPath;
+        projectDirty = false;
+        status = 'Проект сохранён: ${p.basename(targetPath)}';
+      });
+      return true;
+    } catch (e) {
+      setStatus('Не удалось сохранить проект: $e');
+      return false;
+    }
+  }
+
+  Future<void> openProject() async {
+    if (busy) return;
+    FilePickerResult? result;
+    try {
+      result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['g3ficut'],
+        allowMultiple: false,
+        dialogTitle: 'Открыть проект GifCut',
+      );
+    } catch (e) {
+      setStatus('Не удалось открыть диалог выбора проекта: $e');
+      return;
+    }
+    if (result == null || result.files.isEmpty) return;
+    final selectedPath = result.files.single.path;
+    if (selectedPath == null) {
+      setStatus('Не удалось получить путь к файлу проекта.');
+      return;
+    }
+
+    ProjectDocument document;
+    try {
+      document = ProjectDocument.decode(await File(selectedPath).readAsString());
+      if (!await File(document.videoPath).exists()) {
+        throw FileSystemException('Исходное видео проекта не найдено.', document.videoPath);
+      }
+      final audio = document.audioPath;
+      if (audio != null && !await File(audio).exists()) {
+        throw FileSystemException('Файл аудио проекта не найден.', audio);
+      }
+    } catch (e) {
+      setStatus('Не удалось прочитать проект: $e');
+      return;
+    }
+
+    if (!await _confirmReplaceIfDirty()) return;
+    final previousVideoPath = videoPath;
+    final previousPosition = position;
+    setState(() {
+      busy = true;
+      _switchingMedia = true;
+      _switchingMediaDuration = null;
+      status = 'Открываю проект…';
+    });
+    try {
+      final activePlayer = ensurePlayer();
+      await activePlayer.stop();
+      try {
+        await activePlayer.open(Media(document.videoPath), play: false);
+      } catch (error) {
+        if (previousVideoPath != null) {
+          try {
+            await activePlayer.open(Media(previousVideoPath), play: false);
+            await activePlayer.seek(previousPosition);
+          } catch (_) {
+            // Keep the previous project data if playback restoration fails.
+          }
+        }
+        rethrow;
+      }
+
+      final reportedDuration = activePlayer.state.duration;
+      final pendingDuration = _switchingMediaDuration;
+      final restoredDuration = reportedDuration > Duration.zero
+          ? reportedDuration
+          : (pendingDuration != null && pendingDuration > Duration.zero
+              ? pendingDuration
+              : Duration(milliseconds: document.videoDurationMs));
+      final restoredPosition = Duration(
+        milliseconds: document.playheadMs.clamp(0, restoredDuration.inMilliseconds).toInt(),
+      );
+      _timelineHistory.clear();
+      _switchingMedia = false;
+      _switchingMediaDuration = null;
+      if (!mounted) return;
+      setState(() {
+        videoPath = document.videoPath;
+        duration = restoredDuration;
+        videoClips
+          ..clear()
+          ..addAll(document.videoClips.map((clip) => TimelineClip(start: clip.start, end: clip.end)));
+        selectedClipIndex = document.selectedClipIndex;
+        audioPath = document.audioPath;
+        audioDuration = Duration(milliseconds: document.audioDurationMs);
+        audioClipStart = document.audioClipStart;
+        audioClipEnd = document.audioClipEnd;
+        zoom = document.timelineZoom;
+        position = restoredPosition;
+        projectFilePath = selectedPath;
+        projectDirty = false;
+        playing = false;
+        status = 'Проект открыт: ${p.basename(selectedPath)}';
+      });
+      try {
+        await activePlayer.seek(restoredPosition);
+      } catch (e) {
+        setStatus('Проект открыт, но не удалось восстановить позицию курсора: $e');
+      }
+    } catch (e) {
+      _switchingMedia = false;
+      _switchingMediaDuration = null;
+      if (mounted) setState(() => status = 'Не удалось открыть проект: $e');
+    } finally {
+      _switchingMedia = false;
+      _switchingMediaDuration = null;
       if (mounted) setState(() => busy = false);
     }
   }
@@ -434,6 +669,13 @@ class _EditorPageState extends State<EditorPage> {
     final ms = target.inMilliseconds.clamp(0, duration.inMilliseconds).toInt();
     await activePlayer.seek(Duration(milliseconds: ms));
   }
+  void setTimelineZoom(double next) {
+    setState(() {
+      zoom = next.clamp(8.0, 160.0).toDouble();
+      projectDirty = true;
+    });
+  }
+
   void seekTimeline(double x) {
     if (duration.inMilliseconds <= 0) return;
     final seconds = (x / zoom).clamp(0.0, timelineSeconds);
@@ -467,7 +709,19 @@ class _EditorPageState extends State<EditorPage> {
       return KeyEventResult.handled;
     }
     if (control && key == LogicalKeyboardKey.keyO) {
-      unawaited(pickVideo());
+      if (keyboard.isShiftPressed) {
+        unawaited(pickVideo());
+      } else {
+        unawaited(openProject());
+      }
+      return KeyEventResult.handled;
+    }
+    if (control && key == LogicalKeyboardKey.keyS) {
+      if (keyboard.isShiftPressed) {
+        saveProject(saveAs: true);
+      } else {
+        saveProject();
+      }
       return KeyEventResult.handled;
     }
     if (control && key == LogicalKeyboardKey.keyE) {
@@ -475,11 +729,11 @@ class _EditorPageState extends State<EditorPage> {
       return KeyEventResult.handled;
     }
     if (control && (key == LogicalKeyboardKey.equal || key == LogicalKeyboardKey.add || key == LogicalKeyboardKey.numpadAdd)) {
-      setState(() => zoom = math.min(80, zoom + 4).toDouble());
+      setTimelineZoom(zoom + 4);
       return KeyEventResult.handled;
     }
     if (control && (key == LogicalKeyboardKey.minus || key == LogicalKeyboardKey.numpadSubtract)) {
-      setState(() => zoom = math.max(12, zoom - 4).toDouble());
+      setTimelineZoom(zoom - 4);
       return KeyEventResult.handled;
     }
     if (control && key == LogicalKeyboardKey.keyB) {
@@ -544,7 +798,7 @@ class _EditorPageState extends State<EditorPage> {
           const SizedBox(width: 10),
           const Text('GifCut', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
           const SizedBox(width: 22),
-          const Text('Новый проект', style: TextStyle(fontSize: 12, color: Color(0xFFD3D3DF))),
+          Text((projectFilePath == null ? 'Новый проект' : p.basenameWithoutExtension(projectFilePath!)) + (projectDirty ? ' •' : ''), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Color(0xFFD3D3DF))),
           const Spacer(),
           IconButton(
             tooltip: checkingForUpdates ? 'Проверка обновлений…' : 'Проверить обновления',
@@ -569,6 +823,9 @@ class _EditorPageState extends State<EditorPage> {
           runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
+            OutlinedButton.icon(onPressed: busy ? null : openProject, icon: const Icon(Icons.folder_open_outlined, size: 18), label: const Text('Открыть проект')),
+            OutlinedButton.icon(onPressed: videoPath == null || busy ? null : () async { await saveProject(); }, icon: const Icon(Icons.save_outlined, size: 18), label: const Text('Сохранить')),
+            OutlinedButton.icon(onPressed: videoPath == null || busy ? null : () async { await saveProject(saveAs: true); }, icon: const Icon(Icons.drive_file_rename_outline, size: 18), label: const Text('Сохранить как…')),
             OutlinedButton.icon(onPressed: busy ? null : pickVideo, icon: const Icon(Icons.add_to_photos_outlined, size: 18), label: const Text('Импорт видео')),
             FilledButton.icon(
               onPressed: videoPath == null || busy ? null : extractAudio,
@@ -819,7 +1076,7 @@ class _EditorPageState extends State<EditorPage> {
       );
 
   Widget timelinePanel() => Container(
-        height: 276,
+        height: (MediaQuery.sizeOf(context).height * 0.38).clamp(210.0, 276.0).toDouble(),
         color: const Color(0xFF14151B),
         child: Column(children: [
           Container(
@@ -833,9 +1090,9 @@ class _EditorPageState extends State<EditorPage> {
               const SizedBox(width: 12),
               Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4), decoration: BoxDecoration(color: const Color(0xFF292A36), borderRadius: BorderRadius.circular(5)), child: const Text('V1', style: TextStyle(fontSize: 9, color: Color(0xFFB8B6D4), fontWeight: FontWeight.w800))),
               const Spacer(),
-              IconButton(tooltip: 'Уменьшить масштаб', visualDensity: VisualDensity.compact, onPressed: () => setState(() => zoom = math.max(12, zoom - 4).toDouble()), icon: const Icon(Icons.remove, size: 17)),
+              IconButton(tooltip: 'Уменьшить масштаб', visualDensity: VisualDensity.compact, onPressed: () => setTimelineZoom(zoom - 4), icon: const Icon(Icons.remove, size: 17)),
               SizedBox(width: 48, child: Text('${zoom.toInt()} px/s', textAlign: TextAlign.center, style: const TextStyle(color: muted, fontSize: 10))),
-              IconButton(tooltip: 'Увеличить масштаб', visualDensity: VisualDensity.compact, onPressed: () => setState(() => zoom = math.min(80, zoom + 4).toDouble()), icon: const Icon(Icons.add, size: 17)),
+              IconButton(tooltip: 'Увеличить масштаб', visualDensity: VisualDensity.compact, onPressed: () => setTimelineZoom(zoom + 4), icon: const Icon(Icons.add, size: 17)),
             ]),
           ),
           Expanded(
@@ -843,7 +1100,7 @@ class _EditorPageState extends State<EditorPage> {
               onPointerSignal: (event) {
                 if (event is PointerScrollEvent) {
                   final next = event.scrollDelta.dy < 0 ? zoom + 4 : zoom - 4;
-                  setState(() => zoom = next.clamp(8.0, 160.0).toDouble());
+                  setTimelineZoom(next);
                 }
               },
               child: SingleChildScrollView(
@@ -925,7 +1182,7 @@ class _EditorPageState extends State<EditorPage> {
                     bottom: 7,
                     width: math.max(12.0, videoClips[i].length * zoom - 2).toDouble(),
                     child: GestureDetector(
-                      onTap: () => setState(() => selectedClipIndex = i),
+                      onTap: () => setState(() { selectedClipIndex = i; projectDirty = true; }),
                       onSecondaryTapDown: (details) => showClipMenu(details.globalPosition, i),
                       child: DecoratedBox(
                         decoration: BoxDecoration(
@@ -984,7 +1241,10 @@ class _EditorPageState extends State<EditorPage> {
 
   void _performTimelineEdit(VoidCallback update) {
     final before = _captureTimelineSnapshot();
-    setState(update);
+    setState(() {
+      update();
+      projectDirty = true;
+    });
     _timelineHistory.record(before: before, after: _captureTimelineSnapshot());
   }
 
@@ -993,6 +1253,7 @@ class _EditorPageState extends State<EditorPage> {
     if (previous == null) return;
     setState(() {
       _restoreTimelineSnapshot(previous);
+      projectDirty = true;
       status = 'Действие отменено.';
     });
   }
@@ -1002,6 +1263,7 @@ class _EditorPageState extends State<EditorPage> {
     if (next == null) return;
     setState(() {
       _restoreTimelineSnapshot(next);
+      projectDirty = true;
       status = 'Действие повторено.';
     });
   }
@@ -1047,7 +1309,7 @@ class _EditorPageState extends State<EditorPage> {
 
   Future<void> showClipMenu(Offset position, int index) async {
     if (index < 0 || index >= videoClips.length) return;
-    setState(() => selectedClipIndex = index);
+    setState(() { selectedClipIndex = index; projectDirty = true; });
     final action = await showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx + 1, position.dy + 1),

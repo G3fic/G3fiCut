@@ -38,4 +38,22 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('project controls are visible and save is disabled without media', (tester) async {
+    await tester.pumpWidget(const G3fiCutApp());
+    await tester.pump();
+
+    expect(find.text('Открыть проект'), findsOneWidget);
+    expect(find.text('Сохранить'), findsOneWidget);
+    expect(find.text('Сохранить как…'), findsOneWidget);
+    expect(
+      tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Сохранить')).onPressed,
+      isNull,
+    );
+    expect(
+      tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Сохранить как…')).onPressed,
+      isNull,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
 }
