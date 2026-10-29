@@ -80,7 +80,7 @@ void main() {
         throwsFormatException,
       );
       expect(
-        () => makeProject(videoClips: [ProjectClipRange(0, double.infinity)]),
+        () => makeProject(videoClips: [const ProjectClipRange(0, double.infinity)]),
         throwsFormatException,
       );
       expect(
