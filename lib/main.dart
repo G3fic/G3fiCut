@@ -54,8 +54,14 @@ class TimelineClip {
   double get length => end - start;
 }
 
+class PhotoOverlay {
+  PhotoOverlay({required this.path, this.x = 0, this.y = 0, this.scale = 1, this.rotation = 0, this.opacity = 1});
+  final String path;
+  double x, y, scale, rotation, opacity;
+}
+
 class _EditorPageState extends State<EditorPage> {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.4');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.5');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -86,6 +92,11 @@ class _EditorPageState extends State<EditorPage> {
   bool filtersEnabled = true;
   bool motionBlurEnabled = false;
   double previewZoom = 1.0;
+  double videoScaleX = 1.0, videoScaleY = 1.0, videoRotation = 0, videoOffsetX = 0, videoOffsetY = 0;
+  final List<PhotoOverlay> photoOverlays = [];
+  int selectedPhotoOverlay = -1;
+  bool _timelineSeekInFlight = false;
+  Duration? _queuedTimelineSeek;
   String aspectRatioPreset = '16:9';
   String videoEffect = 'Оригинал';
   String transitionEffect = 'Нет';
@@ -707,6 +718,22 @@ class _EditorPageState extends State<EditorPage> {
     return exe;
   }
 
+  Future<void> importPhotoOverlay() async {
+    if (busy || videoPath == null) return;
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.image, allowMultiple: false, dialogTitle: 'Выберите изображение поверх видео', allowedExtensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp']);
+      if (result == null || result.files.isEmpty) return;
+      final path = result.files.single.path;
+      if (path == null || !await File(path).exists()) { setStatus('Не удалось прочитать изображение.'); return; }
+      setState(() {
+        photoOverlays.add(PhotoOverlay(path: path));
+        selectedPhotoOverlay = photoOverlays.length - 1;
+        projectDirty = true;
+        status = 'Фото добавлено поверх видео.';
+      });
+    } catch (e) { setStatus('Не удалось импортировать фото: $e'); }
+  }
+
   Future<void> extractAudio() async {
     final video = videoPath;
     if (video == null || busy) return;
@@ -886,8 +913,25 @@ class _EditorPageState extends State<EditorPage> {
 
   void seekTimeline(double x) {
     if (duration.inMilliseconds <= 0) return;
-    final seconds = (x / zoom).clamp(0.0, timelineSeconds);
-    seek(Duration(milliseconds: (seconds * 1000).round()));
+    final target = Duration(milliseconds: ((x / zoom).clamp(0.0, timelineSeconds) * 1000).round());
+    setState(() => position = target);
+    _queuedTimelineSeek = target;
+    if (!_timelineSeekInFlight) unawaited(_flushTimelineSeek());
+  }
+
+  Future<void> _flushTimelineSeek() async {
+    _timelineSeekInFlight = true;
+    try {
+      while (_queuedTimelineSeek != null && mounted) {
+        final target = _queuedTimelineSeek!;
+        _queuedTimelineSeek = null;
+        final activePlayer = player;
+        if (activePlayer != null) { try { await activePlayer.seek(target); } catch (_) {} }
+      }
+    } finally {
+      _timelineSeekInFlight = false;
+      if (_queuedTimelineSeek != null && mounted) unawaited(_flushTimelineSeek());
+    }
   }
   String time(Duration value) {
     final total = math.max(0, value.inSeconds);
@@ -1005,8 +1049,15 @@ class _EditorPageState extends State<EditorPage> {
           Container(width: 34, height: 34, decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF168CFF), Color(0xFF625BFF)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(10), boxShadow: [BoxShadow(color: accent.withValues(alpha: .18), blurRadius: 12, offset: const Offset(0, 3))]), child: const Icon(Icons.movie_creation_outlined, color: Colors.white, size: 20)),
           const SizedBox(width: 10),
           const Text('gifcut', style: TextStyle(fontSize: 18, letterSpacing: -.5, fontWeight: FontWeight.w900)),
-          const SizedBox(width: 22),
-          Text((projectFilePath == null ? 'Новый проект' : p.basenameWithoutExtension(projectFilePath!)) + (projectDirty ? ' •' : ''), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Color(0xFFD3D3DF))),
+          const SizedBox(width: 10),
+          IconButton(tooltip: 'Открыть проект', visualDensity: VisualDensity.compact, onPressed: busy ? null : openProject, icon: const Icon(Icons.folder_open_outlined, size: 18)),
+          IconButton(tooltip: 'Сохранить проект', visualDensity: VisualDensity.compact, onPressed: videoPath == null || busy ? null : () => unawaited(saveProject()), icon: const Icon(Icons.save_outlined, size: 18)),
+          IconButton(tooltip: 'Сохранить как', visualDensity: VisualDensity.compact, onPressed: videoPath == null || busy ? null : () => unawaited(saveProject(saveAs: true)), icon: const Icon(Icons.save_as_outlined, size: 18)),
+          IconButton(tooltip: 'Импортировать видео', visualDensity: VisualDensity.compact, onPressed: busy ? null : pickVideo, icon: const Icon(Icons.video_call_outlined, size: 18, color: accent)),
+          IconButton(tooltip: 'Добавить фото', visualDensity: VisualDensity.compact, onPressed: busy || videoPath == null ? null : importPhotoOverlay, icon: const Icon(Icons.add_photo_alternate_outlined, size: 18)),
+          IconButton(tooltip: 'Экспортировать видео', visualDensity: VisualDensity.compact, onPressed: videoClips.isEmpty || busy ? null : exportEditedVideo, icon: const Icon(Icons.ios_share, size: 18, color: accent)),
+          const SizedBox(width: 8),
+          Flexible(child: Text((projectFilePath == null ? 'Новый проект' : p.basenameWithoutExtension(projectFilePath!)) + (projectDirty ? ' •' : ''), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Color(0xFFD3D3DF)))),
           const Spacer(),
           IconButton(
             tooltip: checkingForUpdates ? 'Проверка обновлений…' : 'Проверить обновления',
@@ -1033,16 +1084,7 @@ class _EditorPageState extends State<EditorPage> {
             runSpacing: 0,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-            OutlinedButton.icon(onPressed: busy ? null : openProject, icon: const Icon(Icons.folder_open_outlined, size: 18), label: const Text('Открыть проект')),
-            OutlinedButton.icon(onPressed: videoPath == null || busy ? null : () async { await saveProject(); }, icon: const Icon(Icons.save_outlined, size: 18), label: const Text('Сохранить')),
-            OutlinedButton.icon(onPressed: videoPath == null || busy ? null : () async { await saveProject(saveAs: true); }, icon: const Icon(Icons.drive_file_rename_outline, size: 18), label: const Text('Сохранить как…')),
-            OutlinedButton.icon(onPressed: busy ? null : pickVideo, icon: const Icon(Icons.add_to_photos_outlined, size: 18), label: const Text('Импорт видео')),
-            FilledButton.icon(
-              onPressed: videoPath == null || busy ? null : extractAudio,
-              icon: busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.graphic_eq, size: 18),
-              label: Text(busy ? 'Обработка…' : 'Извлечь звук на таймлайн'),
-            ),
-            OutlinedButton.icon(onPressed: videoClips.isEmpty || busy ? null : exportEditedVideo, icon: const Icon(Icons.ios_share, size: 18), label: const Text('Экспорт')),
+            FilledButton.icon(onPressed: videoPath == null || busy ? null : extractAudio, icon: busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.graphic_eq, size: 18), label: Text(busy ? 'Обработка…' : 'Извлечь звук на таймлайн')),
             OutlinedButton.icon(
               onPressed: busy || videoClips.isEmpty ? null : showColorAdjustments,
               icon: const Icon(Icons.tune_rounded, size: 18),
