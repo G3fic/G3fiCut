@@ -132,11 +132,11 @@ void main() {
         throwsFormatException,
       );
       expect(
-        () => makeProject(timelineZoom: 11.9),
+        () => makeProject(timelineZoom: 7.9),
         throwsFormatException,
       );
       expect(
-        () => makeProject(timelineZoom: 80.1),
+        () => makeProject(timelineZoom: 160.1),
         throwsFormatException,
       );
     });
