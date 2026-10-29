@@ -58,9 +58,21 @@ jobs:
           ) -join [Environment]::NewLine
           Set-Content -Path (Join-Path $release 'FFmpeg-LICENSE-NOTICE.txt') -Value $notice -Encoding utf8
 
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $compiler)) { throw "Inno Setup compiler not found: $compiler" }
+          & $compiler installer\ClipForge.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+
       - uses: actions/upload-artifact@v4
         with:
-          name: clipforge-windows
-          path: build/windows/x64/runner/Release/*
+          name: ClipForge-Windows-Installer
+          path: build/installer/ClipForge-Setup-0.2.0.exe
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
