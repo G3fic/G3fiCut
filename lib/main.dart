@@ -79,6 +79,9 @@ class _EditorPageState extends State<EditorPage> {
   bool playing = false;
   double playbackRate = 1.0;
   double exportVolume = 1.0;
+  double brightness = 0.0;
+  double contrast = 1.0;
+  double saturation = 1.0;
   bool busy = false;
   bool _switchingMedia = false;
   bool _seekingAcrossCut = false;
@@ -956,6 +959,11 @@ class _EditorPageState extends State<EditorPage> {
               label: Text(busy ? 'Обработка…' : 'Извлечь звук на таймлайн'),
             ),
             OutlinedButton.icon(onPressed: videoClips.isEmpty || busy ? null : exportEditedVideo, icon: const Icon(Icons.ios_share, size: 18), label: const Text('Экспорт')),
+            OutlinedButton.icon(
+              onPressed: busy || videoClips.isEmpty ? null : showColorAdjustments,
+              icon: const Icon(Icons.tune_rounded, size: 18),
+              label: const Text('Цвет'),
+            ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(color: const Color(0xFF202630), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF343B47))),
@@ -1619,6 +1627,39 @@ class _EditorPageState extends State<EditorPage> {
     });
   }
 
+  Future<void> showColorAdjustments() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Коррекция изображения'),
+          content: SizedBox(
+            width: 360,
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              _adjustmentSlider('Яркость', brightness, -0.5, 0.5, (v) { setDialogState(() => brightness = v); setState(() {}); }),
+              _adjustmentSlider('Контраст', contrast, 0.5, 2.0, (v) { setDialogState(() => contrast = v); setState(() {}); }),
+              _adjustmentSlider('Насыщенность', saturation, 0.0, 2.0, (v) { setDialogState(() => saturation = v); setState(() {}); }),
+              Align(alignment: Alignment.centerRight, child: TextButton.icon(
+                onPressed: () { setDialogState(() { brightness = 0; contrast = 1; saturation = 1; }); setState(() {}); },
+                icon: const Icon(Icons.restart_alt), label: const Text('Сбросить'),
+              )),
+              const Text('Параметры применяются при экспорте видео.', style: TextStyle(color: muted, fontSize: 12)),
+            ]),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Готово'))],
+        ),
+      ),
+    );
+  }
+
+  Widget _adjustmentSlider(String label, double value, double min, double max, ValueChanged<double> onChanged) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [Expanded(child: Text(label)), Text(value.toStringAsFixed(2), style: const TextStyle(color: muted, fontSize: 12))]),
+      Slider(min: min, max: max, value: value, onChanged: onChanged),
+    ]),
+  );
+
   Future<void> exportEditedVideo() async {
     final source = videoPath;
     if (source == null || videoClips.isEmpty || busy) return;
@@ -1641,7 +1682,8 @@ class _EditorPageState extends State<EditorPage> {
         final args = [
           '-hide_banner', '-y', '-ss', clip.start.toStringAsFixed(3), '-i', source,
           '-t', clip.length.toStringAsFixed(3), '-c:v', 'libx264', '-preset', 'veryfast',
-          '-crf', '18', '-af', 'volume=${exportVolume.toStringAsFixed(2)}', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', segmentPath,
+          '-crf', '18', '-vf', 'eq=brightness=${brightness.toStringAsFixed(3)}:contrast=${contrast.toStringAsFixed(3)}:saturation=${saturation.toStringAsFixed(3)}',
+          '-af', 'volume=${exportVolume.toStringAsFixed(2)}', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', segmentPath,
         ];
         final result = await Process.run(await findFfmpeg(), args);
         if (result.exitCode != 0 || !await File(segmentPath).exists()) {
