@@ -1,5 +1,7 @@
 #define MyAppName "ClipForge"
-#define MyAppVersion "0.2.0"
+#ifndef MyAppVersion
+  #define MyAppVersion "0.2.0"
+#endif
 #define MyAppPublisher "ClipForge"
 #define MyAppExeName "clipforge.exe"
 
@@ -34,4 +36,4 @@ Name: "{autoprograms}\ClipForge"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\ClipForge"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Запустить ClipForge"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "Запустить ClipForge"; Flags: postinstall nowait
