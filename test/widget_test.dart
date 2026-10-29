@@ -2,11 +2,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:g3ficut/main.dart';
 
 void main() {
-  testWidgets('G3fiCut editor opens with import and timeline controls', (tester) async {
+  testWidgets('GifCut editor opens with import and timeline controls', (tester) async {
     await tester.pumpWidget(const G3fiCutApp());
     await tester.pump();
 
-    expect(find.text('G3fiCut'), findsOneWidget);
+    expect(find.text('GifCut'), findsOneWidget);
     expect(find.text('Импорт видео'), findsOneWidget);
     expect(find.text('ТАЙМЛАЙН'), findsOneWidget);
     expect(find.text('Ваше видео появится здесь'), findsOneWidget);
