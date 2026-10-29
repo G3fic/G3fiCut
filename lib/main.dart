@@ -45,8 +45,8 @@ class _EditorPageState extends State<EditorPage> {
   static const videoBlue = Color(0xFF65AFFF);
   static const audioGreen = Color(0xFF36C6A3);
 
-  late final Player player = Player();
-  late final VideoController videoController = VideoController(player);
+  Player? player;
+  VideoController? videoController;
   StreamSubscription<Duration>? durationSub;
   StreamSubscription<Duration>? positionSub;
   StreamSubscription<bool>? playingSub;
@@ -64,12 +64,29 @@ class _EditorPageState extends State<EditorPage> {
   double get timelineSeconds => duration.inMilliseconds > 0 ? math.max(1, duration.inMilliseconds / 1000).toDouble() : 30;
   double get timelineWidth => math.max(720, timelineSeconds * zoom).toDouble();
 
-  @override
-  void initState() {
-    super.initState();
-    durationSub = player.stream.duration.listen((v) { if (mounted) setState(() => duration = v); });
-    positionSub = player.stream.position.listen((v) { if (mounted) setState(() => position = v); });
-    playingSub = player.stream.playing.listen((v) { if (mounted) setState(() => playing = v); });
+  Player ensurePlayer() {
+    final current = player;
+    if (current != null) return current;
+
+    final created = Player();
+    try {
+      final controller = VideoController(created);
+      player = created;
+      videoController = controller;
+      durationSub = created.stream.duration.listen((v) {
+        if (mounted) setState(() => duration = v);
+      });
+      positionSub = created.stream.position.listen((v) {
+        if (mounted) setState(() => position = v);
+      });
+      playingSub = created.stream.playing.listen((v) {
+        if (mounted) setState(() => playing = v);
+      });
+      return created;
+    } catch (_) {
+      unawaited(created.dispose());
+      rethrow;
+    }
   }
 
   @override
@@ -77,18 +94,33 @@ class _EditorPageState extends State<EditorPage> {
     durationSub?.cancel();
     positionSub?.cancel();
     playingSub?.cancel();
-    unawaited(player.dispose());
+    final activePlayer = player;
+    if (activePlayer != null) unawaited(activePlayer.dispose());
     super.dispose();
   }
 
   Future<void> pickVideo() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.video, allowMultiple: false, dialogTitle: 'Выберите видео');
+    if (busy) return;
+
+    FilePickerResult? result;
+    try {
+      result = await FilePicker.platform.pickFiles(
+        type: FileType.video,
+        allowMultiple: false,
+        dialogTitle: 'Выберите видео',
+      );
+    } catch (e) {
+      setStatus('Не удалось открыть окно выбора видео: $e');
+      return;
+    }
     if (result == null || result.files.isEmpty) return;
+
     final path = result.files.single.path;
     if (path == null) {
       setStatus('Не удалось получить путь к видео.');
       return;
     }
+
     setState(() {
       busy = true;
       videoPath = path;
@@ -96,14 +128,17 @@ class _EditorPageState extends State<EditorPage> {
       audioDuration = Duration.zero;
       duration = Duration.zero;
       position = Duration.zero;
+      playing = false;
       status = 'Загрузка видео…';
     });
+
     try {
-      await player.stop();
-      await player.open(Media(path), play: false);
+      final activePlayer = ensurePlayer();
+      await activePlayer.stop();
+      await activePlayer.open(Media(path), play: false);
       if (!mounted) return;
       setState(() {
-        duration = player.state.duration;
+        duration = activePlayer.state.duration;
         status = 'Видео загружено. Нажмите «Извлечь звук», чтобы создать дорожку ниже видео.';
       });
     } catch (e) {
@@ -163,13 +198,20 @@ class _EditorPageState extends State<EditorPage> {
 
   void setStatus(String text) { if (mounted) setState(() => status = text); }
   Future<void> togglePlayback() async {
-    if (videoPath == null) return;
-    if (playing) { await player.pause(); } else { await player.play(); }
+    final activePlayer = player;
+    if (videoPath == null || activePlayer == null) return;
+    if (playing) {
+      await activePlayer.pause();
+    } else {
+      await activePlayer.play();
+    }
   }
+
   Future<void> seek(Duration target) async {
-    if (duration.inMilliseconds <= 0) return;
+    final activePlayer = player;
+    if (activePlayer == null || duration.inMilliseconds <= 0) return;
     final ms = target.inMilliseconds.clamp(0, duration.inMilliseconds).toInt();
-    await player.seek(Duration(milliseconds: ms));
+    await activePlayer.seek(Duration(milliseconds: ms));
   }
   void seekTimeline(double x) {
     if (duration.inMilliseconds <= 0) return;
@@ -328,7 +370,18 @@ class _EditorPageState extends State<EditorPage> {
                       SizedBox(height: 5),
                       Text('Нажмите «Импорт видео», чтобы начать', style: TextStyle(color: Color(0xFF646777), fontSize: 11)),
                     ])
-                  : ClipRRect(borderRadius: BorderRadius.circular(8), child: Video(controller: videoController, controls: NoVideoControls)),
+                  : videoController == null
+                      ? const Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Icon(Icons.warning_amber_rounded, size: 42, color: Color(0xFFD5A35C)),
+                          SizedBox(height: 12),
+                          Text('Предпросмотр недоступен', style: TextStyle(color: Color(0xFFD3D1D8), fontSize: 13, fontWeight: FontWeight.w600)),
+                          SizedBox(height: 5),
+                          Text('Можно продолжить извлечение аудио.', style: TextStyle(color: Color(0xFF8A8D9D), fontSize: 11)),
+                        ])
+                      : ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Video(controller: videoController!, controls: NoVideoControls),
+                        ),
             ),
           ),
           Container(
