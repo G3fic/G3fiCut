@@ -855,7 +855,7 @@ class _EditorPageState extends State<EditorPage> {
 }
 
 bool isVersionNewer(String candidate, String current) {
-  List<int> parts(String version) => RegExp(r'\\d+')
+  List<int> parts(String version) => RegExp(r'\d+')
       .allMatches(version)
       .take(3)
       .map((match) => int.parse(match.group(0)!))
