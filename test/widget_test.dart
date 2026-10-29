@@ -48,11 +48,11 @@ void main() {
     expect(find.byTooltip('Сохранить проект'), findsOneWidget);
     expect(find.byTooltip('Сохранить как'), findsOneWidget);
     expect(
-      tester.widget<IconButton>(find.byTooltip('Сохранить проект')).onPressed,
+      tester.widget<IconButton>(find.ancestor(of: find.byTooltip('Сохранить проект'), matching: find.byType(IconButton))).onPressed,
       isNull,
     );
     expect(
-      tester.widget<IconButton>(find.byTooltip('Сохранить как')).onPressed,
+      tester.widget<IconButton>(find.ancestor(of: find.byTooltip('Сохранить как'), matching: find.byType(IconButton))).onPressed,
       isNull,
     );
     expect(tester.takeException(), isNull);
