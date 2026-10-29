@@ -79,7 +79,13 @@ class _EditorPageState extends State<EditorPage> {
   bool playing = false;
   bool busy = false;
   bool _switchingMedia = false;
+  bool _seekingAcrossCut = false;
   Duration? _switchingMediaDuration;
+  int _edgeDragIndex = -1;
+  bool _edgeDragLeft = false;
+  double _edgeDragOriginalEdge = 0;
+  double _edgeDragPointerX = 0;
+  dynamic _edgeDragBefore;
   bool checkingForUpdates = false;
   double zoom = 32;
   final List<TimelineClip> videoClips = [];
@@ -300,7 +306,10 @@ class _EditorPageState extends State<EditorPage> {
         });
       });
       positionSub = created.stream.position.listen((v) {
-        if (mounted && !_switchingMedia) setState(() => position = v);
+        if (mounted && !_switchingMedia) {
+          setState(() => position = v);
+          unawaited(_enforceEditedPlayback(v));
+        }
       });
       playingSub = created.stream.playing.listen((v) {
         if (mounted && !_switchingMedia) setState(() => playing = v);
@@ -661,6 +670,103 @@ class _EditorPageState extends State<EditorPage> {
     } else {
       await activePlayer.play();
     }
+  }
+
+  Future<void> _enforceEditedPlayback(Duration value) async {
+    final activePlayer = player;
+    if (!mounted || _switchingMedia || _seekingAcrossCut || !playing ||
+        activePlayer == null || videoPath == null) return;
+
+    if (videoClips.isEmpty) {
+      _seekingAcrossCut = true;
+      try { await activePlayer.pause(); } finally { _seekingAcrossCut = false; }
+      return;
+    }
+
+    final seconds = value.inMilliseconds / 1000;
+    var currentIndex = -1;
+    for (var i = 0; i < videoClips.length; i++) {
+      final clip = videoClips[i];
+      if (seconds >= clip.start - .02 && seconds < clip.end - .04) {
+        currentIndex = i;
+        break;
+      }
+    }
+
+    double? jumpTo;
+    if (currentIndex >= 0) {
+      final clip = videoClips[currentIndex];
+      if (seconds < clip.end - .07) return;
+      if (currentIndex + 1 < videoClips.length) {
+        jumpTo = videoClips[currentIndex + 1].start;
+      } else {
+        _seekingAcrossCut = true;
+        try { await activePlayer.pause(); } finally { _seekingAcrossCut = false; }
+        return;
+      }
+    } else {
+      // If playback enters a removed section, jump to the next remaining clip.
+      for (final clip in videoClips) {
+        if (clip.start > seconds + .025) {
+          jumpTo = clip.start;
+          break;
+        }
+      }
+      if (jumpTo == null) {
+        final allPassed = videoClips.every((clip) => seconds >= clip.end - .04);
+        if (allPassed) {
+          _seekingAcrossCut = true;
+          try { await activePlayer.pause(); } finally { _seekingAcrossCut = false; }
+        }
+        return;
+      }
+    }
+
+    _seekingAcrossCut = true;
+    try {
+      await activePlayer.seek(Duration(milliseconds: (jumpTo! * 1000).round()));
+    } finally {
+      _seekingAcrossCut = false;
+    }
+  }
+
+  void _startEdgeDrag(int index, bool left) {
+    if (index < 0 || index >= videoClips.length) return;
+    _edgeDragBefore = _captureTimelineSnapshot();
+    _edgeDragIndex = index;
+    _edgeDragLeft = left;
+    _edgeDragOriginalEdge = left ? videoClips[index].start : videoClips[index].end;
+    _edgeDragPointerX = 0;
+    setState(() => selectedClipIndex = index);
+  }
+
+  void _updateEdgeDrag(DragUpdateDetails details) {
+    if (_edgeDragIndex < 0 || _edgeDragIndex >= videoClips.length) return;
+    _edgeDragPointerX += details.delta.dx;
+    final clip = videoClips[_edgeDragIndex];
+    final nextEdge = _edgeDragOriginalEdge + _edgeDragPointerX / zoom;
+    setState(() {
+      if (_edgeDragLeft) {
+        clip.start = nextEdge.clamp(0.0, clip.end - .08).toDouble();
+      } else {
+        final sourceEnd = duration.inMilliseconds > 0
+            ? duration.inMilliseconds / 1000
+            : _edgeDragOriginalEdge + 3600;
+        clip.end = nextEdge.clamp(clip.start + .08, math.max(clip.start + .08, sourceEnd)).toDouble();
+      }
+      projectDirty = true;
+    });
+  }
+
+  void _finishEdgeDrag() {
+    if (_edgeDragIndex < 0) return;
+    final before = _edgeDragBefore;
+    if (before != null) {
+      _timelineHistory.record(before: before, after: _captureTimelineSnapshot());
+    }
+    _edgeDragBefore = null;
+    _edgeDragIndex = -1;
+    if (mounted) setState(() => status = 'Длина клипа изменена. Ctrl+Z — отменить.');
   }
 
   Future<void> seek(Duration target) async {
@@ -1184,29 +1290,74 @@ class _EditorPageState extends State<EditorPage> {
                     child: GestureDetector(
                       onTap: () => setState(() { selectedClipIndex = i; projectDirty = true; }),
                       onSecondaryTapDown: (details) => showClipMenu(details.globalPosition, i),
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: selectedClipIndex == i ? const Color(0xFFFFFFFF) : videoBlue, width: selectedClipIndex == i ? 2 : 1),
-                          boxShadow: selectedClipIndex == i ? [BoxShadow(color: videoBlue.withValues(alpha: .2), blurRadius: 8)] : null,
-                        ),
-                        child: ClipRRect(borderRadius: BorderRadius.circular(5), child: CustomPaint(
-                          painter: const VideoStripPainter(),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            color: const Color(0x442D76B8),
-                            alignment: Alignment.centerLeft,
-                            child: Row(children: [
-                              const Icon(Icons.movie_outlined, size: 14, color: Colors.white),
-                              const SizedBox(width: 6),
-                              Flexible(child: Text(p.basename(path), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.w700))),
-                              if (videoClips[i].length * zoom > 110) ...[
-                                const Spacer(),
-                                Text('${videoClips[i].length.toStringAsFixed(1)}с', style: const TextStyle(fontSize: 9, color: Colors.white70)),
-                              ],
-                            ]),
+                      child: Stack(
+                        clipBehavior: Clip.hardEdge,
+                        children: [
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: selectedClipIndex == i ? const Color(0xFFFFFFFF) : videoBlue, width: selectedClipIndex == i ? 2 : 1),
+                              boxShadow: selectedClipIndex == i ? [BoxShadow(color: videoBlue.withValues(alpha: .2), blurRadius: 8)] : null,
+                            ),
+                            child: ClipRRect(borderRadius: BorderRadius.circular(5), child: CustomPaint(
+                              painter: const VideoStripPainter(),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10),
+                                color: const Color(0x442D76B8),
+                                alignment: Alignment.centerLeft,
+                                child: Row(children: [
+                                  const Icon(Icons.movie_outlined, size: 14, color: Colors.white),
+                                  const SizedBox(width: 6),
+                                  Flexible(child: Text(p.basename(path), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.w700))),
+                                  if (videoClips[i].length * zoom > 110) ...[
+                                    const Spacer(),
+                                    Text('${videoClips[i].length.toStringAsFixed(1)}с', style: const TextStyle(fontSize: 9, color: Colors.white70)),
+                                  ],
+                                ]),
+                              ),
+                            )),
                           ),
-                        )),
+                          if (selectedClipIndex == i) ...[
+                            Positioned(
+                              left: 0, top: 0, bottom: 0, width: 9,
+                              child: MouseRegion(
+                                cursor: SystemMouseCursors.resizeLeftRight,
+                                child: GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onHorizontalDragStart: (_) => _startEdgeDrag(i, true),
+                                  onHorizontalDragUpdate: _updateEdgeDrag,
+                                  onHorizontalDragEnd: (_) => _finishEdgeDrag(),
+                                  child: Container(
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFFF1EDFF),
+                                      borderRadius: BorderRadius.horizontal(left: Radius.circular(5)),
+                                    ),
+                                    child: Center(child: Container(width: 2, height: 16, color: Color(0xFF6551D9))),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              right: 0, top: 0, bottom: 0, width: 9,
+                              child: MouseRegion(
+                                cursor: SystemMouseCursors.resizeLeftRight,
+                                child: GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onHorizontalDragStart: (_) => _startEdgeDrag(i, false),
+                                  onHorizontalDragUpdate: _updateEdgeDrag,
+                                  onHorizontalDragEnd: (_) => _finishEdgeDrag(),
+                                  child: Container(
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFFF1EDFF),
+                                      borderRadius: BorderRadius.horizontal(right: Radius.circular(5)),
+                                    ),
+                                    child: Center(child: Container(width: 2, height: 16, color: Color(0xFF6551D9))),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   ),
