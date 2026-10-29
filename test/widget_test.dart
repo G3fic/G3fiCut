@@ -12,4 +12,12 @@ void main() {
     expect(find.text('Ваше видео появится здесь'), findsOneWidget);
     expect(tester.takeException(), isNull, reason: 'The editor must open without layout or initialization exceptions.');
   });
+
+  test('version comparison detects newer semantic versions', () {
+    expect(isVersionNewer('v0.3.0', '0.2.0'), isTrue);
+    expect(isVersionNewer('0.2.1', '0.2.0'), isTrue);
+    expect(isVersionNewer('0.2.0', '0.2.0'), isFalse);
+    expect(isVersionNewer('0.1.9', '0.2.0'), isFalse);
+    expect(isVersionNewer('1.0.0', '0.99.99'), isTrue);
+  });
 }
