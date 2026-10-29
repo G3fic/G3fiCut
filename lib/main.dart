@@ -78,6 +78,7 @@ class _EditorPageState extends State<EditorPage> {
   Duration position = Duration.zero;
   bool playing = false;
   double playbackRate = 1.0;
+  double exportVolume = 1.0;
   bool busy = false;
   bool _switchingMedia = false;
   bool _seekingAcrossCut = false;
@@ -955,6 +956,32 @@ class _EditorPageState extends State<EditorPage> {
               label: Text(busy ? 'Обработка…' : 'Извлечь звук на таймлайн'),
             ),
             OutlinedButton.icon(onPressed: videoClips.isEmpty || busy ? null : exportEditedVideo, icon: const Icon(Icons.ios_share, size: 18), label: const Text('Экспорт')),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(color: const Color(0xFF202630), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF343B47))),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(exportVolume == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded, size: 17, color: accent),
+                const SizedBox(width: 6),
+                const Text('Громкость', style: TextStyle(fontSize: 11, color: muted)),
+                SizedBox(
+                  width: 100,
+                  child: Slider(
+                    min: 0,
+                    max: 2,
+                    divisions: 20,
+                    value: exportVolume,
+                    onChanged: busy ? null : (value) => setState(() => exportVolume = value),
+                  ),
+                ),
+                SizedBox(width: 32, child: Text('${(exportVolume * 100).round()}%', textAlign: TextAlign.end, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700))),
+                IconButton(
+                  tooltip: 'Сбросить громкость',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: busy ? null : () => setState(() => exportVolume = 1.0),
+                  icon: const Icon(Icons.restart_alt, size: 16),
+                ),
+              ]),
+            ),
             Tooltip(
               message: 'Отменить (Ctrl+Z)',
               child: OutlinedButton.icon(
@@ -1614,7 +1641,7 @@ class _EditorPageState extends State<EditorPage> {
         final args = [
           '-hide_banner', '-y', '-ss', clip.start.toStringAsFixed(3), '-i', source,
           '-t', clip.length.toStringAsFixed(3), '-c:v', 'libx264', '-preset', 'veryfast',
-          '-crf', '18', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', segmentPath,
+          '-crf', '18', '-af', 'volume=${exportVolume.toStringAsFixed(2)}', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', segmentPath,
         ];
         final result = await Process.run(await findFfmpeg(), args);
         if (result.exitCode != 0 || !await File(segmentPath).exists()) {
@@ -1639,7 +1666,7 @@ class _EditorPageState extends State<EditorPage> {
           '-i', joinedVideo,
           '-ss', audioClipStart.toStringAsFixed(3), '-t', (audioClipEnd - audioClipStart).toStringAsFixed(3), '-i', detachedAudio,
           '-map', '0:v:0', '-map', '1:a:0',
-          '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart',
+          '-c:v', 'copy', '-af', 'volume=${exportVolume.toStringAsFixed(2)}', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart',
           savePath,
         ]);
         if (audioResult.exitCode != 0) throw Exception(audioResult.stderr.toString().split('\n').last);
