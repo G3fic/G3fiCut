@@ -840,7 +840,6 @@ class _EditorPageState extends State<EditorPage> {
   Widget trackRow({required bool audio}) {
     final path = audio ? audioPath : videoPath;
     final color = audio ? audioGreen : videoBlue;
-    final clipDuration = audio ? audioDuration : duration;
     final playhead = (position.inMilliseconds / 1000 * zoom).clamp(0.0, timelineWidth - 2).toDouble();
 
     return SizedBox(
