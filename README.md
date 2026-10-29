@@ -24,7 +24,7 @@ Trimming and splitting clips, multiple video/audio tracks, text and titles, tran
 3. ClipForge checks for a newer stable release on startup. You can also click the update icon in the title bar.
 4. When you accept an update, ClipForge downloads the published installer, verifies its SHA-256 digest from the GitHub Releases API, and launches the installer. Windows may request administrator permission.
 
-Updates are published from semantic version tags. For example, push a tag named **v0.2.1** to trigger a Windows build and publish the installer to GitHub Releases. The built-in updater uses the public endpoint https://api.github.com/repos/G3fic/124/releases/latest, so the repository must be public for unauthenticated clients to read release metadata and download assets.
+Updates are published from semantic version tags. For example, push a tag named **v0.2.1** to trigger a Windows build and publish the installer to GitHub Releases. The built-in updater uses the public endpoint https://api.github.com/repos/G3fic/G3fiCut/releases/latest, so the repository must be public for unauthenticated clients to read release metadata and download assets.
 
 ## Publish a release
 
