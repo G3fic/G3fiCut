@@ -53,7 +53,7 @@ class TimelineClip {
 }
 
 class _EditorPageState extends State<EditorPage> {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.2.5');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.2.6');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF171820);
@@ -576,17 +576,21 @@ class _EditorPageState extends State<EditorPage> {
               label: Text(busy ? 'Обработка…' : 'Извлечь звук на таймлайн'),
             ),
             OutlinedButton.icon(onPressed: videoClips.isEmpty || busy ? null : exportEditedVideo, icon: const Icon(Icons.ios_share, size: 18), label: const Text('Экспорт')),
-            OutlinedButton.icon(
-              onPressed: _timelineHistory.canUndo ? undoTimelineEdit : null,
-              icon: const Icon(Icons.undo, size: 18),
-              label: const Text('Отменить'),
-              tooltip: 'Отменить (Ctrl+Z)',
+            Tooltip(
+              message: 'Отменить (Ctrl+Z)',
+              child: OutlinedButton.icon(
+                onPressed: _timelineHistory.canUndo ? undoTimelineEdit : null,
+                icon: const Icon(Icons.undo, size: 18),
+                label: const Text('Отменить'),
+              ),
             ),
-            OutlinedButton.icon(
-              onPressed: _timelineHistory.canRedo ? redoTimelineEdit : null,
-              icon: const Icon(Icons.redo, size: 18),
-              label: const Text('Повторить'),
-              tooltip: 'Повторить (Ctrl+Y)',
+            Tooltip(
+              message: 'Повторить (Ctrl+Y, Ctrl+Shift+Z)',
+              child: OutlinedButton.icon(
+                onPressed: _timelineHistory.canRedo ? redoTimelineEdit : null,
+                icon: const Icon(Icons.redo, size: 18),
+                label: const Text('Повторить'),
+              ),
             ),
             if (audioPath != null)
               Container(
