@@ -16,6 +16,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'timeline_history.dart';
 import 'project_document.dart';
+import 'timeline_media_assets.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -73,6 +74,12 @@ class _EditorPageState extends State<EditorPage> {
   String? audioPath;
   String? projectFilePath;
   bool projectDirty = false;
+  List<String> _videoThumbnailPaths = const [];
+  String? _videoThumbnailSource;
+  int _videoThumbnailRequest = 0;
+  String? _audioWaveformPath;
+  String? _audioWaveformSource;
+  int _audioWaveformRequest = 0;
   Duration duration = Duration.zero;
   Duration audioDuration = Duration.zero;
   Duration position = Duration.zero;
@@ -376,6 +383,8 @@ class _EditorPageState extends State<EditorPage> {
       if (!mounted) return;
       setState(() {
         videoPath = path;
+        _videoThumbnailSource = null;
+        _videoThumbnailPaths = const [];
         projectFilePath = null;
         projectDirty = true;
         audioPath = null;
@@ -391,6 +400,7 @@ class _EditorPageState extends State<EditorPage> {
         selectedClipIndex = 0;
         status = 'Видео загружено. Правый клик по клипу открывает монтажные инструменты.';
       });
+      unawaited(_generateVideoThumbnails(path, openedDuration));
     } catch (e) {
       if (previousVideoPath != null) {
         try {
@@ -570,6 +580,8 @@ class _EditorPageState extends State<EditorPage> {
       if (!mounted) return;
       setState(() {
         videoPath = document.videoPath;
+        _videoThumbnailSource = null;
+        _videoThumbnailPaths = const [];
         duration = restoredDuration;
         videoClips
           ..clear()
@@ -586,6 +598,8 @@ class _EditorPageState extends State<EditorPage> {
         playing = false;
         status = 'Проект открыт: ${p.basename(selectedPath)}';
       });
+      unawaited(_generateVideoThumbnails(document.videoPath, restoredDuration));
+      if (document.audioPath != null) unawaited(_generateAudioWaveform(document.audioPath!));
       try {
         await activePlayer.seek(restoredPosition);
       } catch (e) {
@@ -610,6 +624,148 @@ class _EditorPageState extends State<EditorPage> {
     }
     return exe;
   }
+
+  Future<Directory> _mediaCacheDirectory(String source, String category) async {
+    final sourceFile = File(source);
+    final stat = await sourceFile.stat();
+    final identity = source + '|' + stat.size.toString() + '|' +
+        stat.modified.microsecondsSinceEpoch.toString();
+    final key = crypto.sha256.convert(utf8.encode(identity)).toString();
+    final temp = await getTemporaryDirectory();
+    final directory = Directory(p.join(temp.path, 'GifCutMediaCache', category, key));
+    await directory.create(recursive: true);
+    return directory;
+  }
+
+  Future<List<File>> _listCachedVideoThumbnails(Directory directory) async {
+    final files = <File>[];
+    await for (final entity in directory.list(followLinks: false)) {
+      if (entity is File &&
+          p.basename(entity.path).startsWith('frame_') &&
+          p.extension(entity.path).toLowerCase() == '.jpg') {
+        files.add(entity);
+      }
+    }
+    files.sort((left, right) => left.path.compareTo(right.path));
+    return files;
+  }
+
+  Future<void> _generateVideoThumbnails(String source, Duration sourceDuration) async {
+    final request = ++_videoThumbnailRequest;
+    try {
+      final directory = await _mediaCacheDirectory(source, 'video-thumbnails');
+      final marker = File(p.join(directory.path, '.complete'));
+      var frames = await _listCachedVideoThumbnails(directory);
+      if (!await marker.exists() || frames.isEmpty) {
+        for (final entity in await directory.list(followLinks: false).toList()) {
+          if (entity is File) await entity.delete();
+        }
+        final durationSeconds = sourceDuration.inMilliseconds > 0
+            ? sourceDuration.inMilliseconds / 1000
+            : 30.0;
+        final rate = math.min(1.0, 120.0 / math.max(1.0, durationSeconds));
+        final filter = 'fps=' + rate.toStringAsFixed(8) +
+            ',scale=144:81:force_original_aspect_ratio=increase,crop=144:81';
+        final result = await Process.run(await findFfmpeg(), [
+          '-hide_banner', '-loglevel', 'error', '-y', '-i', source,
+          '-vf', filter, '-q:v', '5', '-start_number', '0', '-f', 'image2',
+          p.join(directory.path, 'frame_%04d.jpg'),
+        ], runInShell: false);
+        if (result.exitCode != 0) {
+          throw ProcessException(await findFfmpeg(), const [], result.stderr.toString(), result.exitCode);
+        }
+        frames = await _listCachedVideoThumbnails(directory);
+        if (frames.isEmpty) throw StateError('FFmpeg не создал ни одного кадра.');
+        await marker.writeAsString('complete', flush: true);
+      }
+      if (!mounted || request != _videoThumbnailRequest || videoPath != source) return;
+      setState(() {
+        _videoThumbnailSource = source;
+        _videoThumbnailPaths = frames.map((frame) => frame.path).toList(growable: false);
+      });
+    } catch (_) {
+      if (!mounted || request != _videoThumbnailRequest || videoPath != source) return;
+      setState(() {
+        _videoThumbnailSource = null;
+        _videoThumbnailPaths = const [];
+        status = 'Миниатюры недоступны; отображается упрощённый таймлайн.';
+      });
+    }
+  }
+
+  Future<void> _generateAudioWaveform(String source) async {
+    final request = ++_audioWaveformRequest;
+    try {
+      final directory = await _mediaCacheDirectory(source, 'audio-waveforms');
+      final waveform = File(p.join(directory.path, 'waveform.png'));
+      if (!await waveform.exists() || await waveform.length() < 256) {
+        if (await waveform.exists()) await waveform.delete();
+        final result = await Process.run(await findFfmpeg(), [
+          '-hide_banner', '-loglevel', 'error', '-y', '-i', source,
+          '-filter_complex',
+          '[0:a:0]aformat=channel_layouts=mono,showwavespic=s=2400x60:colors=36C6A3[v]',
+          '-map', '[v]', '-frames:v', '1', waveform.path,
+        ], runInShell: false);
+        if (result.exitCode != 0 || !await waveform.exists() || await waveform.length() < 256) {
+          throw StateError('FFmpeg не смог построить форму аудиосигнала.');
+        }
+      }
+      if (!mounted || request != _audioWaveformRequest || audioPath != source) return;
+      setState(() {
+        _audioWaveformSource = source;
+        _audioWaveformPath = waveform.path;
+      });
+    } catch (_) {
+      if (!mounted || request != _audioWaveformRequest || audioPath != source) return;
+      setState(() {
+        _audioWaveformSource = null;
+        _audioWaveformPath = null;
+        status = 'Форма аудио недоступна; отображается упрощённая волна.';
+      });
+    }
+  }
+
+  void _refreshAudioWaveformForCurrentPath() {
+    final source = audioPath;
+    if (source != null &&
+        (_audioWaveformSource != source || _audioWaveformPath == null)) {
+      unawaited(_generateAudioWaveform(source));
+    }
+  }
+
+  Widget _videoThumbnailStrip(TimelineClip clip) => LayoutBuilder(
+        builder: (context, constraints) {
+          final thumbnails = _videoThumbnailSource == videoPath
+              ? _videoThumbnailPaths
+              : const <String>[];
+          if (thumbnails.isEmpty) {
+            return const CustomPaint(painter: VideoStripPainter());
+          }
+          final tileCount = (constraints.maxWidth / 72).ceil().clamp(1, 120).toInt();
+          final durationSeconds = duration.inMilliseconds / 1000;
+          return Row(
+            children: List.generate(tileCount, (tileIndex) {
+              final sampleTime = clip.start +
+                  clip.length * ((tileIndex + 0.5) / tileCount);
+              final frameIndex = thumbnailIndexForTime(
+                timeSeconds: sampleTime,
+                durationSeconds: durationSeconds,
+                thumbnailCount: thumbnails.length,
+              );
+              return Expanded(
+                child: Image.file(
+                  File(thumbnails[frameIndex],),
+                  fit: BoxFit.cover,
+                  cacheWidth: 144,
+                  gaplessPlayback: true,
+                  filterQuality: FilterQuality.low,
+                  errorBuilder: (context, error, stack) => const ColoredBox(color: Color(0xFF234765)),
+                ),
+              );
+            }),
+          );
+        },
+      );
 
   Future<void> extractAudio() async {
     final video = videoPath;
@@ -643,6 +799,7 @@ class _EditorPageState extends State<EditorPage> {
         audioClipEnd = duration.inMilliseconds / 1000;
         status = 'Готово: звук добавлен на отдельную дорожку. Его можно обрезать независимо от видео правым кликом.';
       });
+      unawaited(_generateAudioWaveform(output));
     } on ProcessException {
       if (mounted) setState(() => status = 'FFmpeg не найден. В архиве из GitHub Actions ffmpeg.exe лежит рядом с GifCut.exe. Для локального запуска добавьте FFmpeg в PATH.');
     } catch (e) {
@@ -1190,23 +1347,28 @@ class _EditorPageState extends State<EditorPage> {
                           border: Border.all(color: selectedClipIndex == i ? const Color(0xFFFFFFFF) : videoBlue, width: selectedClipIndex == i ? 2 : 1),
                           boxShadow: selectedClipIndex == i ? [BoxShadow(color: videoBlue.withValues(alpha: .2), blurRadius: 8)] : null,
                         ),
-                        child: ClipRRect(borderRadius: BorderRadius.circular(5), child: CustomPaint(
-                          painter: const VideoStripPainter(),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            color: const Color(0x442D76B8),
-                            alignment: Alignment.centerLeft,
-                            child: Row(children: [
-                              const Icon(Icons.movie_outlined, size: 14, color: Colors.white),
-                              const SizedBox(width: 6),
-                              Flexible(child: Text(p.basename(path), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.w700))),
-                              if (videoClips[i].length * zoom > 110) ...[
-                                const Spacer(),
-                                Text('${videoClips[i].length.toStringAsFixed(1)}с', style: const TextStyle(fontSize: 9, color: Colors.white70)),
-                              ],
-                            ]),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(5),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              _videoThumbnailStrip(videoClips[i]),
+                              const ColoredBox(color: Color(0x552D76B8)),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                child: Row(children: [
+                                  const Icon(Icons.movie_outlined, size: 14, color: Colors.white),
+                                  const SizedBox(width: 6),
+                                  Flexible(child: Text(p.basename(path), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.w700))),
+                                  if (videoClips[i].length * zoom > 110) ...[
+                                    const Spacer(),
+                                    Text('${videoClips[i].length.toStringAsFixed(1)}с', style: const TextStyle(fontSize: 9, color: Colors.white70)),
+                                  ],
+                                ]),
+                              ),
+                            ],
                           ),
-                        )),
+                        ),
                       ),
                     ),
                   ),
@@ -1256,6 +1418,7 @@ class _EditorPageState extends State<EditorPage> {
       projectDirty = true;
       status = 'Действие отменено.';
     });
+    _refreshAudioWaveformForCurrentPath();
   }
 
   void redoTimelineEdit() {
@@ -1266,6 +1429,7 @@ class _EditorPageState extends State<EditorPage> {
       projectDirty = true;
       status = 'Действие повторено.';
     });
+    _refreshAudioWaveformForCurrentPath();
   }
 
   Future<void> showAudioClipMenu(Offset position) async {
@@ -1471,19 +1635,52 @@ class _EditorPageState extends State<EditorPage> {
 
   Widget audioClip(String path) => ClipRRect(
         borderRadius: BorderRadius.circular(6),
-        child: CustomPaint(
-          painter: const WaveformPainter(color: audioGreen),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9),
-            decoration: BoxDecoration(border: Border.all(color: audioGreen), borderRadius: BorderRadius.circular(6), color: const Color(0x66205E51)),
-            child: Row(children: [
-              const Icon(Icons.graphic_eq, size: 15, color: Colors.white),
-              const SizedBox(width: 7),
-              Flexible(child: Text(p.basename(path), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.w700))),
-              const SizedBox(width: 8),
-              const Text('WAV', style: TextStyle(fontSize: 9, color: Colors.white70, fontWeight: FontWeight.w800)),
-            ]),
-          ),
+        child: Stack(
+          clipBehavior: Clip.hardEdge,
+          children: [
+            if (_audioWaveformSource == path && _audioWaveformPath != null)
+              Positioned.fill(
+                child: Stack(
+                  clipBehavior: Clip.hardEdge,
+                  children: [
+                    Positioned(
+                      left: -audioClipStart * zoom,
+                      top: 0,
+                      bottom: 0,
+                      width: math.max(1.0, audioDuration.inMilliseconds / 1000 * zoom).toDouble(),
+                      child: Image.file(
+                        File(_audioWaveformPath!),
+                        fit: BoxFit.fill,
+                        gaplessPlayback: true,
+                        errorBuilder: (context, error, stack) => const CustomPaint(painter: WaveformPainter(color: audioGreen)),
+                      ),
+                    ),
+                    const Positioned.fill(child: ColoredBox(color: Color(0x55163E37))),
+                  ],
+                ),
+              )
+            else
+              const Positioned.fill(child: CustomPaint(painter: WaveformPainter(color: audioGreen))),
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: audioGreen),
+                  borderRadius: BorderRadius.circular(6),
+                  color: const Color(0x33205E51),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 9),
+              child: Row(children: [
+                const Icon(Icons.graphic_eq, size: 15, color: Colors.white),
+                const SizedBox(width: 7),
+                Flexible(child: Text(p.basename(path), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.w700))),
+                const SizedBox(width: 8),
+                const Text('WAV', style: TextStyle(fontSize: 9, color: Colors.white70, fontWeight: FontWeight.w800)),
+              ]),
+            ),
+          ],
         ),
       );
 
