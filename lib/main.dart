@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -40,6 +42,9 @@ class EditorPage extends StatefulWidget {
 }
 
 class _EditorPageState extends State<EditorPage> {
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.2.0');
+  static const releaseApi = 'https://api.github.com/repos/G3fic/124/releases/latest';
+
   static const panel = Color(0xFF171820);
   static const muted = Color(0xFF9295A7);
   static const accent = Color(0xFF8B75FF);
@@ -59,11 +64,161 @@ class _EditorPageState extends State<EditorPage> {
   Duration position = Duration.zero;
   bool playing = false;
   bool busy = false;
+  bool checkingForUpdates = false;
   double zoom = 32;
   String status = 'Импортируйте видео, чтобы начать монтаж.';
 
   double get timelineSeconds => duration.inMilliseconds > 0 ? math.max(1, duration.inMilliseconds / 1000).toDouble() : 30;
   double get timelineWidth => math.max(720, timelineSeconds * zoom).toDouble();
+
+  @override
+  void initState() {
+    super.initState();
+    if (kReleaseMode && Platform.isWindows) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(checkForUpdates());
+      });
+    }
+  }
+
+  Future<void> checkForUpdates({bool showNoUpdateMessage = false}) async {
+    if (checkingForUpdates) return;
+    setState(() => checkingForUpdates = true);
+
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 12)
+      ..userAgent = 'ClipForge/$appVersion';
+    try {
+      final request = await client.getUrl(Uri.parse(releaseApi)).timeout(const Duration(seconds: 15));
+      request.headers.set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
+      final response = await request.close().timeout(const Duration(seconds: 20));
+      if (response.statusCode == HttpStatus.notFound) {
+        throw StateError('GitHub Releases пока недоступны. Репозиторий должен быть публичным и содержать опубликованный релиз.');
+      }
+      if (response.statusCode != HttpStatus.ok) {
+        throw HttpException('GitHub вернул HTTP ${response.statusCode}.');
+      }
+
+      final responseBody = await response.transform(utf8.decoder).join().timeout(const Duration(seconds: 20));
+      final decoded = jsonDecode(responseBody);
+      if (decoded is! Map<String, dynamic>) throw const FormatException('Некорректный ответ GitHub Releases.');
+
+      final latestTag = decoded['tag_name'] as String?;
+      if (latestTag == null || latestTag.trim().isEmpty) {
+        throw const FormatException('В ответе GitHub не найдена версия релиза.');
+      }
+      final latestVersion = latestTag.replaceFirst(RegExp(r'^[vV]'), '');
+      if (!isVersionNewer(latestVersion, appVersion)) {
+        if (showNoUpdateMessage && mounted) setStatus('Установлена последняя версия ClipForge $appVersion.');
+        return;
+      }
+
+      final assets = decoded['assets'];
+      if (assets is! List) throw const FormatException('В релизе не найден список файлов.');
+      Map<String, dynamic>? installerAsset;
+      final expectedName = 'ClipForge-Setup-$latestVersion.exe';
+      for (final item in assets) {
+        if (item is Map<String, dynamic> && item['name'] == expectedName) {
+          installerAsset = item;
+          break;
+        }
+      }
+      if (installerAsset == null) {
+        throw StateError('В релизе $latestTag нет установщика $expectedName.');
+      }
+
+      final rawUrl = installerAsset['browser_download_url'] as String?;
+      final downloadUri = rawUrl == null ? null : Uri.tryParse(rawUrl);
+      if (downloadUri == null ||
+          downloadUri.scheme != 'https' ||
+          downloadUri.host != 'github.com' ||
+          !downloadUri.path.startsWith('/G3fic/124/releases/download/')) {
+        throw const FormatException('Ссылка на установщик не принадлежит официальным GitHub Releases ClipForge.');
+      }
+
+      final digest = installerAsset['digest'] as String?;
+      if (mounted) setStatus('Доступно обновление v$latestVersion.');
+      if (!mounted) return;
+      final shouldUpdate = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Доступно обновление ClipForge'),
+          content: Text(
+            'Установлена версия $appVersion. Доступна версия $latestVersion.\n\n'
+            'ClipForge скачает установщик из GitHub, проверит файл и запустит установку. '
+            'Windows может запросить разрешение администратора.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Позже')),
+            FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Обновить')),
+          ],
+        ),
+      );
+      if (shouldUpdate == true && mounted) {
+        await _downloadAndRunInstaller(downloadUri, latestVersion, digest);
+      }
+    } catch (e) {
+      if (showNoUpdateMessage && mounted) {
+        setStatus('Не удалось проверить обновления: ${e.toString().replaceFirst('Bad state: ', '')}');
+      }
+    } finally {
+      client.close(force: true);
+      if (mounted) setState(() => checkingForUpdates = false);
+    }
+  }
+
+  Future<void> _downloadAndRunInstaller(Uri uri, String version, String? expectedDigest) async {
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 20)
+      ..userAgent = 'ClipForge/$appVersion';
+    File? installer;
+    try {
+      if (mounted) setStatus('Скачиваю обновление v$version…');
+      final tempDir = await Directory.systemTemp.createTemp('clipforge-update-');
+      installer = File(p.join(tempDir.path, 'ClipForge-Setup-$version.exe'));
+      final request = await client.getUrl(uri).timeout(const Duration(seconds: 25));
+      final response = await request.close().timeout(const Duration(seconds: 40));
+      if (response.statusCode != HttpStatus.ok) {
+        throw HttpException('Не удалось скачать установщик (HTTP ${response.statusCode}).');
+      }
+      await response.pipe(installer.openWrite()).timeout(const Duration(minutes: 10));
+      if (await installer.length() < 1024 * 1024) {
+        throw StateError('Скачанный установщик слишком мал или повреждён.');
+      }
+
+      if (expectedDigest != null && expectedDigest.startsWith('sha256:')) {
+        if (mounted) setStatus('Проверяю целостность обновления…');
+        final actual = await crypto.sha256.bind(installer.openRead()).first.timeout(const Duration(minutes: 2));
+        final expected = expectedDigest.substring('sha256:'.length).toLowerCase();
+        if (actual.toString().toLowerCase() != expected) {
+          throw StateError('Контрольная сумма установщика не совпала. Установка отменена.');
+        }
+      }
+
+      if (mounted) setStatus('Запускаю установщик v$version…');
+      await Process.start(
+        installer.path,
+        ['/SILENT', '/CLOSEAPPLICATIONS', '/NORESTART'],
+        mode: ProcessStartMode.detached,
+      );
+      final activePlayer = player;
+      if (activePlayer != null) await activePlayer.dispose();
+      exit(0);
+    } catch (e) {
+      if (mounted) {
+        setStatus('Не удалось установить обновление: ${e.toString().replaceFirst('Bad state: ', '')}');
+      }
+      if (installer != null) {
+        try {
+          if (await installer.exists()) await installer.delete();
+        } catch (_) {
+          // Keep the original installer error as the visible status.
+        }
+      }
+    } finally {
+      client.close(force: true);
+    }
+  }
 
   Player ensurePlayer() {
     final current = player;
@@ -306,6 +461,14 @@ class _EditorPageState extends State<EditorPage> {
           const SizedBox(width: 22),
           const Text('Новый проект', style: TextStyle(fontSize: 12, color: Color(0xFFD3D3DF))),
           const Spacer(),
+          IconButton(
+            tooltip: checkingForUpdates ? 'Проверка обновлений…' : 'Проверить обновления',
+            visualDensity: VisualDensity.compact,
+            onPressed: checkingForUpdates ? null : () => unawaited(checkForUpdates(showNoUpdateMessage: true)),
+            icon: checkingForUpdates
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.system_update_alt, size: 18, color: muted),
+          ),
           const Icon(Icons.desktop_windows_outlined, size: 16, color: muted),
           const SizedBox(width: 8),
           const Text('DESKTOP BETA', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w700)),
@@ -686,9 +849,26 @@ class _EditorPageState extends State<EditorPage> {
           const SizedBox(width: 8),
           Expanded(child: Text(status, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFFB9BAC8), fontSize: 10))),
           const SizedBox(width: 10),
-          const Text('ClipForge · Windows', style: TextStyle(color: Color(0xFF676A7A), fontSize: 9)),
+          Text('ClipForge $appVersion · Windows', style: const TextStyle(color: Color(0xFF676A7A), fontSize: 9)),
         ]),
       );
+}
+
+bool isVersionNewer(String candidate, String current) {
+  List<int> parts(String version) => RegExp(r'\\d+')
+      .allMatches(version)
+      .take(3)
+      .map((match) => int.parse(match.group(0)!))
+      .toList();
+
+  final candidateParts = parts(candidate);
+  final currentParts = parts(current);
+  for (var i = 0; i < 3; i++) {
+    final next = i < candidateParts.length ? candidateParts[i] : 0;
+    final installed = i < currentParts.length ? currentParts[i] : 0;
+    if (next != installed) return next > installed;
+  }
+  return false;
 }
 
 class RulerPainter extends CustomPainter {
