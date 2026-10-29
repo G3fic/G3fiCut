@@ -944,11 +944,13 @@ class _EditorPageState extends State<EditorPage> {
         constraints: const BoxConstraints(minHeight: 62),
         color: const Color(0xFF1B1D24),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        child: Wrap(
-          spacing: 10,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Wrap(
+            spacing: 10,
+            runSpacing: 0,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
             OutlinedButton.icon(onPressed: busy ? null : openProject, icon: const Icon(Icons.folder_open_outlined, size: 18), label: const Text('Открыть проект')),
             OutlinedButton.icon(onPressed: videoPath == null || busy ? null : () async { await saveProject(); }, icon: const Icon(Icons.save_outlined, size: 18), label: const Text('Сохранить')),
             OutlinedButton.icon(onPressed: videoPath == null || busy ? null : () async { await saveProject(saveAs: true); }, icon: const Icon(Icons.drive_file_rename_outline, size: 18), label: const Text('Сохранить как…')),
@@ -1016,7 +1018,8 @@ class _EditorPageState extends State<EditorPage> {
                   Text('Аудио на таймлайне', style: TextStyle(color: audioGreen, fontSize: 11, fontWeight: FontWeight.w600)),
                 ]),
               ),
-          ],
+            ],
+          ),
         ),
       );
 
