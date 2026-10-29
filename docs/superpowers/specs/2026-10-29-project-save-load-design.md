@@ -33,7 +33,7 @@ Media paths are stored as absolute local paths for this increment. Opening a pro
 
 ## Data integrity
 - Reject unknown format or unsupported schema versions.
-- Reject empty video paths, non-finite values, negative timestamps, reversed/zero-length video clip ranges, invalid selected index, zoom outside 12–80, and invalid audio boundaries.
+- Reject empty video paths, non-finite values, negative timestamps, reversed/zero-length video clip ranges, invalid selected index, zoom outside 8–160, and invalid audio boundaries.
 - A clip range may not extend past the recorded source-video duration (when duration is known).
 - Audio range is only valid when an audio path is present; if audio path is absent, audio in/out are zero.
 - When opening, verify every referenced media file exists before changing the active project. If a media file is missing, keep the current project intact and report the path.
