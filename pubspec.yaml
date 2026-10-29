@@ -1,7 +1,7 @@
-name: clipforge
-description: A desktop-first video editor MVP with timeline-based audio extraction.
+name: g3ficut
+description: A Windows-first video editor with timeline-based audio extraction.
 publish_to: "none"
-version: 0.2.0+1
+version: 0.2.2+2
 
 environment:
   sdk: ">=3.3.0 <4.0.0"

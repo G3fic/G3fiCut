@@ -16,14 +16,14 @@ import 'package:path_provider/path_provider.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
-  runApp(const ClipForgeApp());
+  runApp(const G3fiCutApp());
 }
 
-class ClipForgeApp extends StatelessWidget {
-  const ClipForgeApp({super.key});
+class G3fiCutApp extends StatelessWidget {
+  const G3fiCutApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'ClipForge',
+        title: 'G3fiCut',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           useMaterial3: true,
@@ -43,7 +43,7 @@ class EditorPage extends StatefulWidget {
 }
 
 class _EditorPageState extends State<EditorPage> {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.2.0');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.2.2');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF171820);
@@ -88,7 +88,7 @@ class _EditorPageState extends State<EditorPage> {
 
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 12)
-      ..userAgent = 'ClipForge/$appVersion';
+      ..userAgent = 'G3fiCut/$appVersion';
     try {
       final request = await client.getUrl(Uri.parse(releaseApi)).timeout(const Duration(seconds: 15));
       request.headers.set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
@@ -110,14 +110,14 @@ class _EditorPageState extends State<EditorPage> {
       }
       final latestVersion = latestTag.replaceFirst(RegExp(r'^[vV]'), '');
       if (!isVersionNewer(latestVersion, appVersion)) {
-        if (showNoUpdateMessage && mounted) setStatus('Установлена последняя версия ClipForge $appVersion.');
+        if (showNoUpdateMessage && mounted) setStatus('Установлена последняя версия G3fiCut $appVersion.');
         return;
       }
 
       final assets = decoded['assets'];
       if (assets is! List) throw const FormatException('В релизе не найден список файлов.');
       Map<String, dynamic>? installerAsset;
-      final expectedName = 'ClipForge-Setup-$latestVersion.exe';
+      final expectedName = 'G3fiCut-Setup-$latestVersion.exe';
       for (final item in assets) {
         if (item is Map<String, dynamic> && item['name'] == expectedName) {
           installerAsset = item;
@@ -134,7 +134,7 @@ class _EditorPageState extends State<EditorPage> {
           downloadUri.scheme != 'https' ||
           downloadUri.host != 'github.com' ||
           !downloadUri.path.startsWith('/G3fic/G3fiCut/releases/download/')) {
-        throw const FormatException('Ссылка на установщик не принадлежит официальным GitHub Releases ClipForge.');
+        throw const FormatException('Ссылка на установщик не принадлежит официальным GitHub Releases G3fiCut.');
       }
 
       final digest = installerAsset['digest'] as String?;
@@ -146,10 +146,10 @@ class _EditorPageState extends State<EditorPage> {
       final shouldUpdate = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('Доступно обновление ClipForge'),
+          title: const Text('Доступно обновление G3fiCut'),
           content: Text(
             'Установлена версия $appVersion. Доступна версия $latestVersion.\n\n'
-            'ClipForge скачает установщик из GitHub, проверит файл и запустит установку. '
+            'G3fiCut скачает установщик из GitHub, проверит файл и запустит установку. '
             'Windows может запросить разрешение администратора.',
           ),
           actions: [
@@ -174,12 +174,12 @@ class _EditorPageState extends State<EditorPage> {
   Future<void> _downloadAndRunInstaller(Uri uri, String version, String? expectedDigest) async {
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 20)
-      ..userAgent = 'ClipForge/$appVersion';
+      ..userAgent = 'G3fiCut/$appVersion';
     File? installer;
     try {
       if (mounted) setStatus('Скачиваю обновление v$version…');
-      final tempDir = await Directory.systemTemp.createTemp('clipforge-update-');
-      installer = File(p.join(tempDir.path, 'ClipForge-Setup-$version.exe'));
+      final tempDir = await Directory.systemTemp.createTemp('g3ficut-update-');
+      installer = File(p.join(tempDir.path, 'G3fiCut-Setup-$version.exe'));
       final request = await client.getUrl(uri).timeout(const Duration(seconds: 25));
       final response = await request.close().timeout(const Duration(seconds: 40));
       if (response.statusCode != HttpStatus.ok) {
@@ -323,7 +323,7 @@ class _EditorPageState extends State<EditorPage> {
     setState(() { busy = true; status = 'Извлекаю аудио и добавляю его на таймлайн…'; });
     try {
       final docs = await getApplicationDocumentsDirectory();
-      final outDir = Directory(p.join(docs.path, 'ClipForge', 'Media'));
+      final outDir = Directory(p.join(docs.path, 'G3fiCut', 'Media'));
       await outDir.create(recursive: true);
       final safeName = p.basenameWithoutExtension(video).replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
       final stamp = DateTime.now().millisecondsSinceEpoch.toString();
@@ -348,7 +348,7 @@ class _EditorPageState extends State<EditorPage> {
         status = 'Готово: извлечённый звук добавлен на отдельную дорожку под видео.';
       });
     } on ProcessException {
-      if (mounted) setState(() => status = 'FFmpeg не найден. В архиве из GitHub Actions ffmpeg.exe лежит рядом с ClipForge.exe. Для локального запуска добавьте FFmpeg в PATH.');
+      if (mounted) setState(() => status = 'FFmpeg не найден. В архиве из GitHub Actions ffmpeg.exe лежит рядом с G3fiCut.exe. Для локального запуска добавьте FFmpeg в PATH.');
     } catch (e) {
       if (mounted) setState(() => status = 'Ошибка извлечения звука: $e');
     } finally {
@@ -461,7 +461,7 @@ class _EditorPageState extends State<EditorPage> {
         child: Row(children: [
           Container(width: 32, height: 32, decoration: BoxDecoration(color: accent.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(9)), child: const Icon(Icons.movie_creation_outlined, color: accent, size: 20)),
           const SizedBox(width: 10),
-          const Text('ClipForge', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          const Text('G3fiCut', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
           const SizedBox(width: 22),
           const Text('Новый проект', style: TextStyle(fontSize: 12, color: Color(0xFFD3D3DF))),
           const Spacer(),
@@ -677,7 +677,7 @@ class _EditorPageState extends State<EditorPage> {
                 ]),
               ),
               const SizedBox(height: 8),
-              const Text('Файл сохранён в Documents/ClipForge/Media.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
+              const Text('Файл сохранён в Documents/G3fiCut/Media.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
             ],
             const SizedBox(height: 14),
             const Text('ГОРЯЧИЕ КЛАВИШИ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
@@ -853,7 +853,7 @@ class _EditorPageState extends State<EditorPage> {
           const SizedBox(width: 8),
           Expanded(child: Text(status, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFFB9BAC8), fontSize: 10))),
           const SizedBox(width: 10),
-          const Text('ClipForge $appVersion · Windows', style: TextStyle(color: Color(0xFF676A7A), fontSize: 9)),
+          const Text('G3fiCut $appVersion · Windows', style: TextStyle(color: Color(0xFF676A7A), fontSize: 9)),
         ]),
       );
 }

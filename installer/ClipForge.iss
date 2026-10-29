@@ -1,17 +1,17 @@
-#define MyAppName "ClipForge"
+#define MyAppName "G3fiCut"
 #ifndef MyAppVersion
   #define MyAppVersion "0.2.0"
 #endif
-#define MyAppPublisher "ClipForge"
-#define MyAppExeName "clipforge.exe"
+#define MyAppPublisher "G3fiCut"
+#define MyAppExeName "g3ficut.exe"
 
 [Setup]
 AppId={{6B7F4C9D-21C3-4E88-9B13-CE9A4C1F6D27}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-DefaultDirName={autopf}\ClipForge
-DefaultGroupName=ClipForge
+DefaultDirName={autopf}\G3fiCut
+DefaultGroupName=G3fiCut
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64
@@ -21,7 +21,7 @@ CloseApplications=yes
 RestartApplications=no
 UninstallDisplayIcon={app}\{#MyAppExeName}
 OutputDir=..\build\installer
-OutputBaseFilename=ClipForge-Setup-{#MyAppVersion}
+OutputBaseFilename=G3fiCut-Setup-{#MyAppVersion}
 Compression=lzma2
 SolidCompression=yes
 
@@ -32,8 +32,8 @@ Name: "desktopicon"; Description: "Создать ярлык на рабочем
 Source: "..\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\ClipForge"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\ClipForge"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autoprograms}\G3fiCut"; Filename: "{app}\{#MyAppExeName}"
+Name: "{autodesktop}\G3fiCut"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Запустить ClipForge"; Flags: postinstall nowait
+Filename: "{app}\{#MyAppExeName}"; Description: "Запустить G3fiCut"; Flags: postinstall nowait
