@@ -80,7 +80,7 @@ class ProjectDocument {
     if (videoDurationMs < 0 || audioDurationMs < 0 || playheadMs < 0) {
       throw const FormatException('Длительность и позиция не могут быть отрицательными.');
     }
-    if (!_isFinite(timelineZoom) || timelineZoom < 12 || timelineZoom > 80) {
+    if (!_isFinite(timelineZoom) || timelineZoom < 8 || timelineZoom > 160) {
       throw const FormatException('Масштаб таймлайна должен быть в диапазоне 12–80.');
     }
     if (!_isFinite(audioClipStart) || !_isFinite(audioClipEnd)) {
