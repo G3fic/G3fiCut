@@ -37,7 +37,7 @@ Use a new vMAJOR.MINOR.PATCH value for every release. GitHub Actions will analyz
 
 ## Build on GitHub
 
-For pull requests and normal branch builds, GitHub Actions produces a downloadable installer artifact for testing. Open the Actions tab, select the latest successful **Build GifCut for Windows** run, and download the **GifCut-Windows-Installer** artifact.
+For pull requests and normal branch builds, GitHub Actions produces a downloadable installer artifact for testing. Open the Actions tab, select the latest successful **Build GifCut for Windows** run, and download the **G3fiCut-Windows-Installer** artifact.
 
 For local development, install Flutter stable and Visual Studio with the **Desktop development with C++** workload. Run flutter pub get, then flutter run -d windows. For local audio extraction, put ffmpeg.exe in the app's executable folder or add FFmpeg to PATH.
 
