@@ -1214,9 +1214,13 @@ class _EditorPageState extends State<EditorPage> {
                                     colorFilter: ColorFilter.matrix(filtersEnabled ? previewColorMatrix : const <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0]),
                                     child: ColorFiltered(
                                       colorFilter: ColorFilter.matrix(effectColorMatrix),
-                                      child: videoEffect == 'Мягкое размытие'
-                                          ? ImageFiltered(imageFilter: ui.ImageFilter.blur(sigmaX: 2, sigmaY: 2), child: Video(controller: videoController!, controls: NoVideoControls, fit: BoxFit.cover))
-                                          : Video(controller: videoController!, controls: NoVideoControls, fit: BoxFit.cover),
+                                      child: ImageFiltered(
+                                        imageFilter: ui.ImageFilter.blur(
+                                          sigmaX: (videoEffect == 'Мягкое размытие' ? 2.0 : 0.0) + (motionBlurEnabled ? 1.2 : 0.0),
+                                          sigmaY: (videoEffect == 'Мягкое размытие' ? 2.0 : 0.0) + (motionBlurEnabled ? 1.2 : 0.0),
+                                        ),
+                                        child: Video(controller: videoController!, controls: NoVideoControls, fit: BoxFit.cover),
+                                      ),
                                     ),
                                   ),
                                   if (previewTransitionOverlay.opacity > 0)
@@ -1811,8 +1815,9 @@ class _EditorPageState extends State<EditorPage> {
 
   String _buildExportVideoFilter(int index, TimelineClip clip) {
     final filters = <String>[];
-    if (aspectRatioPreset != '16:9') {
+    {
       final dimensions = const {
+        '16:9': '1920:1080',
         '9:16': '1080:1920',
         '1:1': '1080:1080',
         '4:3': '1440:1080',
