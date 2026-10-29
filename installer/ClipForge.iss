@@ -1,8 +1,8 @@
-#define MyAppName "G3fiCut"
+#define MyAppName "GifCut"
 #ifndef MyAppVersion
   #define MyAppVersion "0.2.0"
 #endif
-#define MyAppPublisher "G3fiCut"
+#define MyAppPublisher "GifCut"
 #define MyAppExeName "g3ficut.exe"
 
 [Setup]
@@ -36,4 +36,4 @@ Name: "{autoprograms}\G3fiCut"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\G3fiCut"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Запустить G3fiCut"; Flags: postinstall nowait
+Filename: "{app}\{#MyAppExeName}"; Description: "Запустить GifCut"; Flags: postinstall nowait

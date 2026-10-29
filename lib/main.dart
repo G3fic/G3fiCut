@@ -23,7 +23,7 @@ class G3fiCutApp extends StatelessWidget {
   const G3fiCutApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'G3fiCut',
+        title: 'GifCut',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           useMaterial3: true,
@@ -43,7 +43,7 @@ class EditorPage extends StatefulWidget {
 }
 
 class _EditorPageState extends State<EditorPage> {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.2.3');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.2.4');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF171820);
@@ -141,7 +141,7 @@ class _EditorPageState extends State<EditorPage> {
       }
       final latestVersion = latestTag.replaceFirst(RegExp(r'^[vV]'), '');
       if (!isVersionNewer(latestVersion, appVersion)) {
-        if (showNoUpdateMessage && mounted) setStatus('Установлена последняя версия G3fiCut $appVersion.');
+        if (showNoUpdateMessage && mounted) setStatus('Установлена последняя версия GifCut $appVersion.');
         return;
       }
 
@@ -165,7 +165,7 @@ class _EditorPageState extends State<EditorPage> {
           downloadUri.scheme != 'https' ||
           downloadUri.host != 'github.com' ||
           !downloadUri.path.startsWith('/G3fic/G3fiCut/releases/download/')) {
-        throw const FormatException('Ссылка на установщик не принадлежит официальным GitHub Releases G3fiCut.');
+        throw const FormatException('Ссылка на установщик не принадлежит официальным GitHub Releases GifCut.');
       }
 
       final digest = installerAsset['digest'] as String?;
@@ -177,10 +177,10 @@ class _EditorPageState extends State<EditorPage> {
       final shouldUpdate = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('Доступно обновление G3fiCut'),
+          title: const Text('Доступно обновление GifCut'),
           content: Text(
             'Установлена версия $appVersion. Доступна версия $latestVersion.\n\n'
-            'G3fiCut скачает установщик из GitHub, проверит файл и запустит установку. '
+            'GifCut скачает установщик из GitHub, проверит файл и запустит установку. '
             'Windows может запросить разрешение администратора.',
           ),
           actions: [
@@ -354,7 +354,7 @@ class _EditorPageState extends State<EditorPage> {
     setState(() { busy = true; status = 'Извлекаю аудио и добавляю его на таймлайн…'; });
     try {
       final docs = await getApplicationDocumentsDirectory();
-      final outDir = Directory(p.join(docs.path, 'G3fiCut', 'Media'));
+      final outDir = Directory(p.join(docs.path, 'GifCut', 'Media'));
       await outDir.create(recursive: true);
       final safeName = p.basenameWithoutExtension(video).replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
       final stamp = DateTime.now().millisecondsSinceEpoch.toString();
@@ -379,7 +379,7 @@ class _EditorPageState extends State<EditorPage> {
         status = 'Готово: извлечённый звук добавлен на отдельную дорожку под видео.';
       });
     } on ProcessException {
-      if (mounted) setState(() => status = 'FFmpeg не найден. В архиве из GitHub Actions ffmpeg.exe лежит рядом с G3fiCut.exe. Для локального запуска добавьте FFmpeg в PATH.');
+      if (mounted) setState(() => status = 'FFmpeg не найден. В архиве из GitHub Actions ffmpeg.exe лежит рядом с GifCut.exe. Для локального запуска добавьте FFmpeg в PATH.');
     } catch (e) {
       if (mounted) setState(() => status = 'Ошибка извлечения звука: $e');
     } finally {
@@ -492,7 +492,7 @@ class _EditorPageState extends State<EditorPage> {
         child: Row(children: [
           Container(width: 32, height: 32, decoration: BoxDecoration(color: accent.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(9)), child: const Icon(Icons.movie_creation_outlined, color: accent, size: 20)),
           const SizedBox(width: 10),
-          const Text('G3fiCut', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          const Text('GifCut', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
           const SizedBox(width: 22),
           const Text('Новый проект', style: TextStyle(fontSize: 12, color: Color(0xFFD3D3DF))),
           const Spacer(),
@@ -708,7 +708,7 @@ class _EditorPageState extends State<EditorPage> {
                 ]),
               ),
               const SizedBox(height: 8),
-              const Text('Файл сохранён в Documents/G3fiCut/Media.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
+              const Text('Файл сохранён в Documents/GifCut/Media.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
             ],
             const SizedBox(height: 14),
             const Text('ГОРЯЧИЕ КЛАВИШИ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
@@ -884,7 +884,7 @@ class _EditorPageState extends State<EditorPage> {
           const SizedBox(width: 8),
           Expanded(child: Text(status, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFFB9BAC8), fontSize: 10))),
           const SizedBox(width: 10),
-          const Text('G3fiCut $appVersion · Windows', style: TextStyle(color: Color(0xFF676A7A), fontSize: 9)),
+          const Text('GifCut $appVersion · Windows', style: TextStyle(color: Color(0xFF676A7A), fontSize: 9)),
         ]),
       );
 }

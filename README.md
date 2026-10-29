@@ -1,6 +1,6 @@
-# G3fiCut — desktop video editor MVP
+# GifCut — desktop video editor MVP
 
-G3fiCut is a Windows-first desktop video editor prototype built with Flutter.
+GifCut is a Windows-first desktop video editor prototype built with Flutter.
 
 ## Included in this version
 
@@ -19,10 +19,10 @@ Trimming and splitting clips, multiple video/audio tracks, text and titles, tran
 
 ## Install and update
 
-1. Download the installer named **G3fiCut-Setup-X.Y.Z.exe** from the repository's **Releases** page.
+1. Download the installer named **GifCut-Setup-X.Y.Z.exe** from the repository's **Releases** page.
 2. Run the installer and follow the prompts.
-3. G3fiCut checks for a newer stable release on startup. You can also click the update icon in the title bar.
-4. When you accept an update, G3fiCut downloads the published installer, verifies its SHA-256 digest from the GitHub Releases API, and launches the installer. Windows may request administrator permission.
+3. GifCut checks for a newer stable release on startup. You can also click the update icon in the title bar.
+4. When you accept an update, GifCut downloads the published installer, verifies its SHA-256 digest from the GitHub Releases API, and launches the installer. Windows may request administrator permission.
 
 Updates are published from semantic version tags. For example, push a tag named **v0.2.2** to trigger a Windows build and publish the installer to GitHub Releases. The built-in updater uses the public endpoint https://api.github.com/repos/G3fic/G3fiCut/releases/latest, so the repository must be public for unauthenticated clients to read release metadata and download assets.
 
@@ -37,13 +37,13 @@ Use a new vMAJOR.MINOR.PATCH value for every release. GitHub Actions will analyz
 
 ## Build on GitHub
 
-For pull requests and normal branch builds, GitHub Actions produces a downloadable installer artifact for testing. Open the Actions tab, select the latest successful **Build G3fiCut for Windows** run, and download the **G3fiCut-Windows-Installer** artifact.
+For pull requests and normal branch builds, GitHub Actions produces a downloadable installer artifact for testing. Open the Actions tab, select the latest successful **Build GifCut for Windows** run, and download the **GifCut-Windows-Installer** artifact.
 
 For local development, install Flutter stable and Visual Studio with the **Desktop development with C++** workload. Run flutter pub get, then flutter run -d windows. For local audio extraction, put ffmpeg.exe in the app's executable folder or add FFmpeg to PATH.
 
 ## Technical notes
 
 - Video preview uses media_kit / media_kit_video.
-- Audio extraction runs FFmpeg as a local process and writes WAV files to Documents/G3fiCut/Media.
+- Audio extraction runs FFmpeg as a local process and writes WAV files to Documents/GifCut/Media.
 - The release workflow packages an FFmpeg LGPL Windows binary alongside the application. Review the upstream FFmpeg legal page and the included runtime notice before redistribution.
 - The updater only reads public GitHub Releases and contains no GitHub access token.

@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: 'Semantic version to publish (e.g. 0.2.2). Leave blank for a test build.'
+        description: 'Semantic version to publish (e.g. 0.2.4). Leave blank for a test build.'
         required: false
         type: string
         default: ''
@@ -36,10 +36,10 @@ jobs:
           RELEASE_VERSION_INPUT: ${{ inputs.release_version }}
           RELEASE_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
-          $version = '0.2.2'
+          $version = '0.2.4'
           if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch' -and -not [string]::IsNullOrWhiteSpace($env:RELEASE_VERSION_INPUT)) {
             if ($env:RELEASE_VERSION_INPUT -notmatch '^\d+\.\d+\.\d+$') {
-              throw 'Release version must use MAJOR.MINOR.PATCH, for example 0.2.2.'
+              throw 'Release version must use MAJOR.MINOR.PATCH, for example 0.2.4.'
             }
             $version = $env:RELEASE_VERSION_INPUT
           } elseif ($env:GITHUB_REF -like 'refs/tags/*') {
@@ -66,6 +66,15 @@ jobs:
       - name: Generate Windows platform scaffolding
         shell: pwsh
         run: flutter create --platforms=windows --project-name g3ficut .
+
+      - name: Apply GifCut Windows app icon
+        shell: pwsh
+        run: |
+          $icon = Join-Path $PWD 'assets/gifcut.ico'
+          $target = Join-Path $PWD 'windows/runner/resources/app_icon.ico'
+          if (-not (Test-Path $icon)) { throw "GifCut app icon not found: $icon" }
+          if (-not (Test-Path (Split-Path $target))) { New-Item -ItemType Directory -Path (Split-Path $target) -Force | Out-Null }
+          Copy-Item $icon $target -Force
 
       - name: Resolve Flutter dependencies
         run: flutter pub get
