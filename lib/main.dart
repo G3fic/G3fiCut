@@ -422,6 +422,8 @@ class _EditorPageState extends State<EditorPage> {
     }
 
     try {
+      final targetPath = target;
+      if (targetPath == null) return false;
       final document = ProjectDocument(
         appVersion: appVersion,
         videoPath: source,
@@ -435,12 +437,12 @@ class _EditorPageState extends State<EditorPage> {
         timelineZoom: zoom,
         playheadMs: position.inMilliseconds.clamp(0, duration.inMilliseconds).toInt(),
       );
-      await File(target).writeAsString(document.encode(), flush: true);
+      await File(targetPath).writeAsString(document.encode(), flush: true);
       if (!mounted) return true;
       setState(() {
-        projectFilePath = target;
+        projectFilePath = targetPath;
         projectDirty = false;
-        status = 'Проект сохранён: ' + p.basename(target!);
+        status = 'Проект сохранён: ' + p.basename(targetPath);
       });
       return true;
     } catch (e) {
@@ -675,11 +677,11 @@ class _EditorPageState extends State<EditorPage> {
       return KeyEventResult.handled;
     }
     if (control && (key == LogicalKeyboardKey.equal || key == LogicalKeyboardKey.add || key == LogicalKeyboardKey.numpadAdd)) {
-      setState(() => zoom = math.min(80, zoom + 4).toDouble());
+      setTimelineZoom(zoom + 4);
       return KeyEventResult.handled;
     }
     if (control && (key == LogicalKeyboardKey.minus || key == LogicalKeyboardKey.numpadSubtract)) {
-      setState(() => zoom = math.max(12, zoom - 4).toDouble());
+      setTimelineZoom(zoom - 4);
       return KeyEventResult.handled;
     }
     if (control && key == LogicalKeyboardKey.keyB) {
@@ -1036,9 +1038,9 @@ class _EditorPageState extends State<EditorPage> {
               const SizedBox(width: 12),
               Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4), decoration: BoxDecoration(color: const Color(0xFF292A36), borderRadius: BorderRadius.circular(5)), child: const Text('V1', style: TextStyle(fontSize: 9, color: Color(0xFFB8B6D4), fontWeight: FontWeight.w800))),
               const Spacer(),
-              IconButton(tooltip: 'Уменьшить масштаб', visualDensity: VisualDensity.compact, onPressed: () => setState(() => zoom = math.max(12, zoom - 4).toDouble()), icon: const Icon(Icons.remove, size: 17)),
+              IconButton(tooltip: 'Уменьшить масштаб', visualDensity: VisualDensity.compact, onPressed: () => setTimelineZoom(zoom - 4), icon: const Icon(Icons.remove, size: 17)),
               SizedBox(width: 48, child: Text('${zoom.toInt()} px/s', textAlign: TextAlign.center, style: const TextStyle(color: muted, fontSize: 10))),
-              IconButton(tooltip: 'Увеличить масштаб', visualDensity: VisualDensity.compact, onPressed: () => setState(() => zoom = math.min(80, zoom + 4).toDouble()), icon: const Icon(Icons.add, size: 17)),
+              IconButton(tooltip: 'Увеличить масштаб', visualDensity: VisualDensity.compact, onPressed: () => setTimelineZoom(zoom + 4), icon: const Icon(Icons.add, size: 17)),
             ]),
           ),
           Expanded(
@@ -1046,7 +1048,7 @@ class _EditorPageState extends State<EditorPage> {
               onPointerSignal: (event) {
                 if (event is PointerScrollEvent) {
                   final next = event.scrollDelta.dy < 0 ? zoom + 4 : zoom - 4;
-                  setState(() => zoom = next.clamp(8.0, 160.0).toDouble());
+                  setTimelineZoom(next);
                 }
               },
               child: SingleChildScrollView(
