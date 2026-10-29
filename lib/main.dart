@@ -82,25 +82,56 @@ class _EditorPageState extends State<EditorPage> {
     }
   }
 
+  /// Fetches release metadata with retries for slow, unstable or VPN-routed connections.
+  Future<String> _fetchLatestRelease(HttpClient client) async {
+    Object? lastError;
+    for (var attempt = 0; attempt < 4; attempt++) {
+      try {
+        final request = await client
+            .getUrl(Uri.parse(releaseApi))
+            .timeout(const Duration(seconds: 45));
+        request.headers
+          ..set(HttpHeaders.acceptHeader, 'application/vnd.github+json')
+          ..set(HttpHeaders.cacheControlHeader, 'no-cache');
+        final response = await request.close().timeout(const Duration(seconds: 60));
+        if (response.statusCode == HttpStatus.notFound) {
+          throw StateError('GitHub Releases пока недоступны. Проверьте, что репозиторий публичный и релиз опубликован.');
+        }
+        if (response.statusCode == HttpStatus.tooManyRequests ||
+            response.statusCode >= 500) {
+          throw HttpException('GitHub временно недоступен (HTTP ${response.statusCode}).');
+        }
+        if (response.statusCode != HttpStatus.ok) {
+          throw HttpException('GitHub вернул HTTP ${response.statusCode}.');
+        }
+        return await response
+            .transform(utf8.decoder)
+            .join()
+            .timeout(const Duration(seconds: 60));
+      } catch (e) {
+        lastError = e;
+        if (e is StateError) rethrow;
+        if (attempt < 3) {
+          // Exponential backoff: 2, 4 and 8 seconds.
+          await Future.delayed(Duration(seconds: 2 << attempt));
+        }
+      }
+    }
+    throw HttpException(
+      'Не удалось подключиться к GitHub после 4 попыток. Проверьте VPN и интернет. Последняя ошибка: $lastError',
+    );
+  }
+
   Future<void> checkForUpdates({bool showNoUpdateMessage = false}) async {
     if (checkingForUpdates) return;
     setState(() => checkingForUpdates = true);
 
     final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 12)
+      ..connectionTimeout = const Duration(seconds: 30)
+      ..idleTimeout = const Duration(seconds: 30)
       ..userAgent = 'G3fiCut/$appVersion';
     try {
-      final request = await client.getUrl(Uri.parse(releaseApi)).timeout(const Duration(seconds: 15));
-      request.headers.set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
-      final response = await request.close().timeout(const Duration(seconds: 20));
-      if (response.statusCode == HttpStatus.notFound) {
-        throw StateError('GitHub Releases пока недоступны. Репозиторий должен быть публичным и содержать опубликованный релиз.');
-      }
-      if (response.statusCode != HttpStatus.ok) {
-        throw HttpException('GitHub вернул HTTP ${response.statusCode}.');
-      }
-
-      final responseBody = await response.transform(utf8.decoder).join().timeout(const Duration(seconds: 20));
+      final responseBody = await _fetchLatestRelease(client);
       final decoded = jsonDecode(responseBody);
       if (decoded is! Map<String, dynamic>) throw const FormatException('Некорректный ответ GitHub Releases.');
 
