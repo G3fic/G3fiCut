@@ -1052,7 +1052,7 @@ class _EditorPageState extends State<EditorPage> {
       );
 
   Widget timelinePanel() => Container(
-        height: 276,
+        height: (MediaQuery.sizeOf(context).height * 0.38).clamp(210.0, 276.0).toDouble(),
         color: const Color(0xFF14151B),
         child: Column(children: [
           Container(

@@ -63,10 +63,10 @@ void main() {
     });
 
     test('rejects an unknown format and an unsupported schema version', () {
-      final wrongFormat = makeProject(format: 'other-editor').toJson();
+      final wrongFormat = makeProject().toJson()..['format'] = 'other-editor';
       expect(() => ProjectDocument.fromJson(wrongFormat), throwsFormatException);
 
-      final wrongVersion = makeProject(schemaVersion: 999).toJson();
+      final wrongVersion = makeProject().toJson()..['schemaVersion'] = 999;
       expect(() => ProjectDocument.fromJson(wrongVersion), throwsFormatException);
     });
 
