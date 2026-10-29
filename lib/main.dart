@@ -1315,7 +1315,7 @@ class _EditorPageState extends State<EditorPage> {
               const Text('ЭФФЕКТ ВИДЕО', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
-                value: videoEffect,
+                initialValue: videoEffect,
                 decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9)),
                 items: const ['Оригинал', 'Чёрно-белый', 'Сепия', 'Холодный', 'Тёплый', 'Негатив', 'Мягкое размытие'].map((v) => DropdownMenuItem(value: v, child: Text(v, style: TextStyle(fontSize: 11)))).toList(),
                 onChanged: (value) => setState(() { videoEffect = value ?? 'Оригинал'; projectDirty = true; }),
@@ -1329,7 +1329,7 @@ class _EditorPageState extends State<EditorPage> {
               const Text('СООТНОШЕНИЕ СТОРОН', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
-                value: aspectRatioPreset,
+                initialValue: aspectRatioPreset,
                 decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9)),
                 items: const ['16:9', '9:16', '1:1', '4:3', '4:5', '3:2'].map((v) => DropdownMenuItem(value: v, child: Text(v, style: TextStyle(fontSize: 11)))).toList(),
                 onChanged: (value) => setState(() { aspectRatioPreset = value ?? '16:9'; projectDirty = true; }),
@@ -1338,7 +1338,7 @@ class _EditorPageState extends State<EditorPage> {
               const Text('ПЕРЕХОД МЕЖДУ КЛИПАМИ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
-                value: transitionEffect,
+                initialValue: transitionEffect,
                 decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9)),
                 items: const ['Нет', 'Затемнение', 'Белая вспышка'].map((v) => DropdownMenuItem(value: v, child: Text(v, style: TextStyle(fontSize: 11)))).toList(),
                 onChanged: (value) => setState(() { transitionEffect = value ?? 'Нет'; projectDirty = true; }),
