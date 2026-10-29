@@ -32,7 +32,7 @@ class G3fiCutApp extends StatelessWidget {
         theme: ThemeData(
           useMaterial3: true,
           brightness: Brightness.dark,
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF8B75FF), brightness: Brightness.dark),
+          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF168CFF), brightness: Brightness.dark),
           scaffoldBackgroundColor: const Color(0xFF101116),
           dividerColor: const Color(0xFF292B36),
         ),
@@ -54,14 +54,14 @@ class TimelineClip {
 }
 
 class _EditorPageState extends State<EditorPage> {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.0');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.1');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
-  static const panel = Color(0xFF171820);
-  static const muted = Color(0xFF9295A7);
-  static const accent = Color(0xFF8B75FF);
-  static const videoBlue = Color(0xFF65AFFF);
-  static const audioGreen = Color(0xFF36C6A3);
+  static const panel = Color(0xFF17191F);
+  static const muted = Color(0xFF969EAE);
+  static const accent = Color(0xFF168CFF);
+  static const videoBlue = Color(0xFF168CFF);
+  static const audioGreen = Color(0xFF35C99A);
 
   Player? player;
   VideoController? videoController;
@@ -77,6 +77,7 @@ class _EditorPageState extends State<EditorPage> {
   Duration audioDuration = Duration.zero;
   Duration position = Duration.zero;
   bool playing = false;
+  double playbackRate = 1.0;
   bool busy = false;
   bool _switchingMedia = false;
   bool _seekingAcrossCut = false;
@@ -662,6 +663,19 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   void setStatus(String text) { if (mounted) setState(() => status = text); }
+  Future<void> cyclePlaybackRate() async {
+    const rates = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+    final current = rates.indexOf(playbackRate);
+    final next = rates[(current + 1) % rates.length];
+    try {
+      await player?.setRate(next);
+      if (mounted) setState(() => playbackRate = next);
+      setStatus('Скорость предпросмотра: ${next}×. На экспорт это не влияет.');
+    } catch (e) {
+      setStatus('Не удалось изменить скорость предпросмотра: $e');
+    }
+  }
+
   Future<void> togglePlayback() async {
     final activePlayer = player;
     if (videoPath == null || activePlayer == null) return;
@@ -898,13 +912,13 @@ class _EditorPageState extends State<EditorPage> {
       ));
 
   Widget topBar() => Container(
-        height: 52,
-        color: panel,
+        height: 56,
+        color: const Color(0xFF191B21),
         padding: const EdgeInsets.symmetric(horizontal: 18),
         child: Row(children: [
-          Container(width: 32, height: 32, decoration: BoxDecoration(color: accent.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(9)), child: const Icon(Icons.movie_creation_outlined, color: accent, size: 20)),
+          Container(width: 34, height: 34, decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF168CFF), Color(0xFF625BFF)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(10), boxShadow: [BoxShadow(color: accent.withValues(alpha: .18), blurRadius: 12, offset: const Offset(0, 3))]), child: const Icon(Icons.movie_creation_outlined, color: Colors.white, size: 20)),
           const SizedBox(width: 10),
-          const Text('GifCut', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          const Text('gifcut', style: TextStyle(fontSize: 18, letterSpacing: -.5, fontWeight: FontWeight.w900)),
           const SizedBox(width: 22),
           Text((projectFilePath == null ? 'Новый проект' : p.basenameWithoutExtension(projectFilePath!)) + (projectDirty ? ' •' : ''), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Color(0xFFD3D3DF))),
           const Spacer(),
@@ -923,9 +937,9 @@ class _EditorPageState extends State<EditorPage> {
       );
 
   Widget toolbar() => Container(
-        constraints: const BoxConstraints(minHeight: 58),
-        color: const Color(0xFF14151C),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        constraints: const BoxConstraints(minHeight: 62),
+        color: const Color(0xFF1B1D24),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         child: Wrap(
           spacing: 10,
           runSpacing: 8,
@@ -985,7 +999,7 @@ class _EditorPageState extends State<EditorPage> {
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10),
-                decoration: BoxDecoration(color: const Color(0xFF20212B), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFF333542))),
+                decoration: BoxDecoration(color: const Color(0xFF202630), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFF333542))),
                 child: const Column(children: [
                   Icon(Icons.video_call_outlined, color: accent, size: 30),
                   SizedBox(height: 8),
@@ -1017,7 +1031,7 @@ class _EditorPageState extends State<EditorPage> {
 
   Widget mediaItem(IconData icon, String name, String kind, Color color) => Container(
         padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(color: const Color(0xFF22242F), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF343644))),
+        decoration: BoxDecoration(color: const Color(0xFF202630), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF343644))),
         child: Row(children: [
           Icon(icon, color: color, size: 20),
           const SizedBox(width: 8),
@@ -1030,7 +1044,7 @@ class _EditorPageState extends State<EditorPage> {
       );
 
   Widget previewPanel() => Container(
-        color: const Color(0xFF111218),
+        color: const Color(0xFF101217),
         child: Column(children: [
           Container(
             height: 39,
@@ -1045,7 +1059,7 @@ class _EditorPageState extends State<EditorPage> {
           Expanded(
             child: Container(
               width: double.infinity,
-              color: const Color(0xFF0B0C10),
+              color: const Color(0xFF080A0E),
               alignment: Alignment.center,
               padding: const EdgeInsets.all(18),
               child: videoPath == null
@@ -1093,7 +1107,14 @@ class _EditorPageState extends State<EditorPage> {
               ),
               const SizedBox(width: 8),
               Text(time(duration), style: const TextStyle(fontSize: 11, color: muted)),
-              const SizedBox(width: 8),
+              const SizedBox(width: 4),
+              IconButton(
+                tooltip: 'Скорость предпросмотра',
+                visualDensity: VisualDensity.compact,
+                onPressed: videoPath == null ? null : cyclePlaybackRate,
+                icon: Text('${playbackRate}×', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: accent)),
+              ),
+              const SizedBox(width: 4),
               IconButton.filledTonal(
                 tooltip: playing ? 'Пауза' : 'Воспроизвести',
                 onPressed: videoPath == null ? null : togglePlayback,
@@ -1184,8 +1205,8 @@ class _EditorPageState extends State<EditorPage> {
       );
 
   Widget timelinePanel() => Container(
-        height: (MediaQuery.sizeOf(context).height * 0.38).clamp(210.0, 276.0).toDouble(),
-        color: const Color(0xFF14151B),
+        height: (MediaQuery.sizeOf(context).height * 0.36).clamp(220.0, 300.0).toDouble(),
+        color: const Color(0xFF12151B),
         child: Column(children: [
           Container(
             height: 43,
