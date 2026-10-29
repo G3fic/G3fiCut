@@ -1638,7 +1638,7 @@ class _EditorPageState extends State<EditorPage> {
               for (var i = 0; i < photoOverlays.length; i++)
                 Positioned(
                   left: 4, top: 5 + i * 2.0, bottom: 5,
-                  width: math.max(20, timelineWidth - 8),
+                  width: math.max(20.0, timelineWidth - 8).toDouble(),
                   child: GestureDetector(
                     onTap: () => setState(() => selectedPhotoOverlay = i),
                     child: Container(
