@@ -1087,11 +1087,27 @@ class _EditorPageState extends State<EditorPage> {
         lines.add("file '${segmentPath.replaceAll('\\', '/')}'");
       }
       await listFile.writeAsString(lines.join('\n'));
+      final joinedVideo = audioPath == null ? savePath : p.join(temp.path, 'joined_video.mp4');
       final concatResult = await Process.run(await findFfmpeg(), [
         '-hide_banner', '-y', '-f', 'concat', '-safe', '0', '-i', listFile.path,
-        '-c', 'copy', '-movflags', '+faststart', savePath,
+        '-c', 'copy', '-movflags', '+faststart', joinedVideo,
       ]);
       if (concatResult.exitCode != 0) throw Exception(concatResult.stderr.toString().split('\n').last);
+
+      // When a detached audio clip exists, apply its own trim range during export.
+      // It replaces the source audio without changing the video edit decisions.
+      final detachedAudio = audioPath;
+      if (detachedAudio != null && audioClipEnd > audioClipStart) {
+        final audioResult = await Process.run(await findFfmpeg(), [
+          '-hide_banner', '-y',
+          '-i', joinedVideo,
+          '-ss', audioClipStart.toStringAsFixed(3), '-t', (audioClipEnd - audioClipStart).toStringAsFixed(3), '-i', detachedAudio,
+          '-map', '0:v:0', '-map', '1:a:0',
+          '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart',
+          savePath,
+        ]);
+        if (audioResult.exitCode != 0) throw Exception(audioResult.stderr.toString().split('\n').last);
+      }
       if (mounted) setState(() => status = 'Экспорт завершён: $savePath');
     } catch (e) {
       if (mounted) setState(() => status = 'Ошибка экспорта: $e');
