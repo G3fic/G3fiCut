@@ -54,7 +54,7 @@ class TimelineClip {
 }
 
 class _EditorPageState extends State<EditorPage> {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.2.7');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.0');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF171820);
@@ -79,6 +79,7 @@ class _EditorPageState extends State<EditorPage> {
   bool playing = false;
   bool busy = false;
   bool _switchingMedia = false;
+  Duration? _switchingMediaDuration;
   bool checkingForUpdates = false;
   double zoom = 32;
   final List<TimelineClip> videoClips = [];
@@ -284,7 +285,11 @@ class _EditorPageState extends State<EditorPage> {
       player = created;
       videoController = controller;
       durationSub = created.stream.duration.listen((v) {
-        if (!mounted || _switchingMedia) return;
+        if (!mounted) return;
+        if (_switchingMedia) {
+          if (v > Duration.zero) _switchingMediaDuration = v;
+          return;
+        }
         setState(() {
           duration = v;
           // Some containers report duration only after the first stream event.
@@ -346,6 +351,7 @@ class _EditorPageState extends State<EditorPage> {
     setState(() {
       busy = true;
       _switchingMedia = true;
+      _switchingMediaDuration = null;
       status = 'Загрузка видео…';
     });
 
@@ -353,11 +359,20 @@ class _EditorPageState extends State<EditorPage> {
       final activePlayer = ensurePlayer();
       await activePlayer.stop();
       await activePlayer.open(Media(path), play: false);
-      final openedDuration = activePlayer.state.duration;
       await activePlayer.seek(Duration.zero);
+      var openedDuration = activePlayer.state.duration;
+      if (openedDuration <= Duration.zero) {
+        openedDuration = _switchingMediaDuration ?? Duration.zero;
+      }
+      if (openedDuration <= Duration.zero) {
+        openedDuration = await activePlayer.stream.duration
+            .firstWhere((value) => value > Duration.zero)
+            .timeout(const Duration(seconds: 10));
+      }
 
       _timelineHistory.clear();
       _switchingMedia = false;
+      _switchingMediaDuration = null;
       if (!mounted) return;
       setState(() {
         videoPath = path;
@@ -387,6 +402,7 @@ class _EditorPageState extends State<EditorPage> {
         }
       }
       _switchingMedia = false;
+      _switchingMediaDuration = null;
       if (mounted) {
         setState(() {
           position = previousPosition;
@@ -395,6 +411,7 @@ class _EditorPageState extends State<EditorPage> {
       }
     } finally {
       _switchingMedia = false;
+      _switchingMediaDuration = null;
       if (mounted) setState(() => busy = false);
     }
   }
@@ -517,6 +534,7 @@ class _EditorPageState extends State<EditorPage> {
     setState(() {
       busy = true;
       _switchingMedia = true;
+      _switchingMediaDuration = null;
       status = 'Открываю проект…';
     });
     try {
@@ -537,14 +555,18 @@ class _EditorPageState extends State<EditorPage> {
       }
 
       final reportedDuration = activePlayer.state.duration;
+      final pendingDuration = _switchingMediaDuration;
       final restoredDuration = reportedDuration > Duration.zero
           ? reportedDuration
-          : Duration(milliseconds: document.videoDurationMs);
+          : (pendingDuration != null && pendingDuration > Duration.zero
+              ? pendingDuration
+              : Duration(milliseconds: document.videoDurationMs));
       final restoredPosition = Duration(
         milliseconds: document.playheadMs.clamp(0, restoredDuration.inMilliseconds).toInt(),
       );
       _timelineHistory.clear();
       _switchingMedia = false;
+      _switchingMediaDuration = null;
       if (!mounted) return;
       setState(() {
         videoPath = document.videoPath;
@@ -571,9 +593,11 @@ class _EditorPageState extends State<EditorPage> {
       }
     } catch (e) {
       _switchingMedia = false;
+      _switchingMediaDuration = null;
       if (mounted) setState(() => status = 'Не удалось открыть проект: $e');
     } finally {
       _switchingMedia = false;
+      _switchingMediaDuration = null;
       if (mounted) setState(() => busy = false);
     }
   }

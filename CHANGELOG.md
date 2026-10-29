@@ -1,5 +1,13 @@
 # Changelog
 
+## G3fiCut v0.3.0 — planned
+
+- Added versioned `.g3ficut` project files with open, save, and save-as controls.
+- Restored video clip ranges, selected clip, detached audio range, zoom, and playhead from saved projects.
+- Validated project schema and media files before replacing the active edit.
+- Added protection against overwriting the active timeline with a failed media open.
+- Made the timeline layout responsive to shorter windows.
+
 ## G3fiCut v0.2.7 — 2026-10-29
 
 - Added undo and redo for video clip split, trim, duplicate, and delete operations.
