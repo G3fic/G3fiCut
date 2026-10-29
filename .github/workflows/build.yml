@@ -2,7 +2,7 @@ name: Build ClipForge for Windows
 
 on:
   push:
-    branches: [main, master, desktop-video-editor]
+    branches: [main, master]
   pull_request:
   workflow_dispatch:
 
