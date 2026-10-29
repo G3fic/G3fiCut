@@ -417,13 +417,12 @@ class _EditorPageState extends State<EditorPage> {
       }
       if (target == null) return false;
       if (p.extension(target).toLowerCase() != '.g3ficut') {
-        target = p.withoutExtension(target) + '.g3ficut';
+        target = '${p.withoutExtension(target)}.g3ficut';
       }
     }
 
     try {
       final targetPath = target;
-      if (targetPath == null) return false;
       final document = ProjectDocument(
         appVersion: appVersion,
         videoPath: source,
@@ -442,7 +441,7 @@ class _EditorPageState extends State<EditorPage> {
       setState(() {
         projectFilePath = targetPath;
         projectDirty = false;
-        status = 'Проект сохранён: ' + p.basename(targetPath);
+        status = 'Проект сохранён: ${p.basename(targetPath)}';
       });
       return true;
     } catch (e) {
@@ -536,7 +535,7 @@ class _EditorPageState extends State<EditorPage> {
         projectFilePath = selectedPath;
         projectDirty = false;
         playing = false;
-        status = 'Проект открыт: ' + p.basename(selectedPath);
+        status = 'Проект открыт: ${p.basename(selectedPath)}';
       });
       try {
         await activePlayer.seek(restoredPosition);
