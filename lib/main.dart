@@ -1195,6 +1195,31 @@ class _EditorPageState extends State<EditorPage> {
               const Text('ТАЙМЛАЙН', style: TextStyle(fontSize: 11, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
               const SizedBox(width: 12),
               Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4), decoration: BoxDecoration(color: const Color(0xFF292A36), borderRadius: BorderRadius.circular(5)), child: const Text('V1', style: TextStyle(fontSize: 9, color: Color(0xFFB8B6D4), fontWeight: FontWeight.w800))),
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: 'Отменить (Ctrl+Z)',
+                visualDensity: VisualDensity.compact,
+                onPressed: undoTimelineEdit,
+                icon: const Icon(Icons.undo_rounded, size: 17),
+              ),
+              IconButton(
+                tooltip: 'Повторить (Ctrl+Y)',
+                visualDensity: VisualDensity.compact,
+                onPressed: redoTimelineEdit,
+                icon: const Icon(Icons.redo_rounded, size: 17),
+              ),
+              IconButton(
+                tooltip: 'Разделить клип (Ctrl+B)',
+                visualDensity: VisualDensity.compact,
+                onPressed: videoClips.isEmpty ? null : splitSelectedClip,
+                icon: const Icon(Icons.content_cut_rounded, size: 17),
+              ),
+              IconButton(
+                tooltip: 'Удалить выбранный клип',
+                visualDensity: VisualDensity.compact,
+                onPressed: videoClips.isEmpty ? null : deleteSelectedClip,
+                icon: const Icon(Icons.delete_outline_rounded, size: 17),
+              ),
               const Spacer(),
               IconButton(tooltip: 'Уменьшить масштаб', visualDensity: VisualDensity.compact, onPressed: () => setTimelineZoom(zoom - 4), icon: const Icon(Icons.remove, size: 17)),
               SizedBox(width: 48, child: Text('${zoom.toInt()} px/s', textAlign: TextAlign.center, style: const TextStyle(color: muted, fontSize: 10))),
@@ -1291,6 +1316,7 @@ class _EditorPageState extends State<EditorPage> {
                       onTap: () => setState(() { selectedClipIndex = i; projectDirty = true; }),
                       onSecondaryTapDown: (details) => showClipMenu(details.globalPosition, i),
                       child: Stack(
+                        fit: StackFit.expand,
                         clipBehavior: Clip.hardEdge,
                         children: [
                           DecoratedBox(
