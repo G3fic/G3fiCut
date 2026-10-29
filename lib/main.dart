@@ -129,10 +129,10 @@ class _EditorPageState extends State<EditorPage> {
     for (var i = 0; i < videoClips.length; i++) {
       final clip = videoClips[i];
       if (i > 0 && seconds >= clip.start && seconds < clip.start + transitionDuration) {
-        opacity = math.max(opacity, 1 - (seconds - clip.start) / transitionDuration);
+        opacity = math.max(opacity, 1 - (seconds - clip.start) / transitionDuration).toDouble();
       }
       if (i < videoClips.length - 1 && seconds > clip.end - transitionDuration && seconds <= clip.end) {
-        opacity = math.max(opacity, (seconds - (clip.end - transitionDuration)) / transitionDuration);
+        opacity = math.max(opacity, (seconds - (clip.end - transitionDuration)) / transitionDuration).toDouble();
       }
     }
     return (color: transitionEffect == 'Белая вспышка' ? Colors.white : Colors.black, opacity: opacity.clamp(0.0, 1.0).toDouble());
