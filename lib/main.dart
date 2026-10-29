@@ -42,6 +42,13 @@ class EditorPage extends StatefulWidget {
   State<EditorPage> createState() => _EditorPageState();
 }
 
+class TimelineClip {
+  TimelineClip({required this.start, required this.end});
+  double start;
+  double end;
+  double get length => end - start;
+}
+
 class _EditorPageState extends State<EditorPage> {
   static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.2.4');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
@@ -67,6 +74,8 @@ class _EditorPageState extends State<EditorPage> {
   bool busy = false;
   bool checkingForUpdates = false;
   double zoom = 32;
+  final List<TimelineClip> videoClips = [];
+  int selectedClipIndex = 0;
   String status = 'Импортируйте видео, чтобы начать монтаж.';
 
   double get timelineSeconds => duration.inMilliseconds > 0 ? math.max(1, duration.inMilliseconds / 1000).toDouble() : 30;
@@ -330,7 +339,9 @@ class _EditorPageState extends State<EditorPage> {
       if (!mounted) return;
       setState(() {
         duration = activePlayer.state.duration;
-        status = 'Видео загружено. Нажмите «Извлечь звук», чтобы создать дорожку ниже видео.';
+        videoClips..clear()..add(TimelineClip(start: 0, end: duration.inMilliseconds / 1000));
+        selectedClipIndex = 0;
+        status = 'Видео загружено. Правый клик по клипу открывает монтажные инструменты.';
       });
     } catch (e) {
       if (mounted) setState(() => status = 'Не удалось открыть видео: $e');
@@ -440,6 +451,14 @@ class _EditorPageState extends State<EditorPage> {
       setState(() => zoom = math.max(12, zoom - 4).toDouble());
       return KeyEventResult.handled;
     }
+    if (control && key == LogicalKeyboardKey.keyB) {
+      splitSelectedClip();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.delete || key == LogicalKeyboardKey.backspace) {
+      deleteSelectedClip();
+      return KeyEventResult.handled;
+    }
     if (key == LogicalKeyboardKey.space) {
       unawaited(togglePlayback());
       return KeyEventResult.handled;
@@ -525,7 +544,7 @@ class _EditorPageState extends State<EditorPage> {
               icon: busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.graphic_eq, size: 18),
               label: Text(busy ? 'Обработка…' : 'Извлечь звук на таймлайн'),
             ),
-            OutlinedButton.icon(onPressed: null, icon: const Icon(Icons.ios_share, size: 18), label: const Text('Экспорт')),
+            OutlinedButton.icon(onPressed: videoClips.isEmpty || busy ? null : exportEditedVideo, icon: const Icon(Icons.ios_share, size: 18), label: const Text('Экспорт')),
             if (audioPath != null)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
@@ -718,6 +737,8 @@ class _EditorPageState extends State<EditorPage> {
             shortcutRow('Home / End', 'Начало / конец видео'),
             shortcutRow('Ctrl + O', 'Импортировать видео'),
             shortcutRow('Ctrl + E', 'Извлечь аудио'),
+            shortcutRow('Ctrl + B', 'Разделить клип'),
+            shortcutRow('Delete', 'Удалить выбранный клип'),
             shortcutRow('Ctrl + + / −', 'Масштаб таймлайна'),
             const SizedBox(height: 12),
             Container(
@@ -726,7 +747,7 @@ class _EditorPageState extends State<EditorPage> {
               child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Icon(Icons.construction_outlined, size: 17, color: accent),
                 SizedBox(width: 8),
-                Expanded(child: Text('MVP: импорт, просмотр, воспроизведение и извлечение звука. Остальные инструменты добавим позже.', style: TextStyle(color: Color(0xFFB6B7C5), fontSize: 10, height: 1.45))),
+                Expanded(child: Text('Монтаж: разделение, обрезка краёв, удаление фрагментов и экспорт через FFmpeg.', style: TextStyle(color: Color(0xFFB6B7C5), fontSize: 10, height: 1.45))),
               ]),
             ),
           ]),
@@ -830,8 +851,44 @@ class _EditorPageState extends State<EditorPage> {
             onHorizontalDragUpdate: duration.inMilliseconds > 0 ? (d) => seekTimeline(d.localPosition.dx) : null,
             child: Stack(clipBehavior: Clip.hardEdge, children: [
               Positioned.fill(child: CustomPaint(painter: TimelineGridPainter(seconds: timelineSeconds, pixelsPerSecond: zoom))),
-              if (path != null)
-                Positioned(left: 4, top: 7, bottom: 7, width: clipWidth, child: audio ? audioClip(path) : videoClip(path)),
+              if (path != null && audio)
+                Positioned(left: 4, top: 7, bottom: 7, width: clipWidth, child: audioClip(path)),
+              if (path != null && !audio)
+                for (var i = 0; i < videoClips.length; i++)
+                  Positioned(
+                    left: videoClips[i].start * zoom + 4,
+                    top: 7,
+                    bottom: 7,
+                    width: math.max(12.0, videoClips[i].length * zoom - 2),
+                    child: GestureDetector(
+                      onTap: () => setState(() => selectedClipIndex = i),
+                      onSecondaryTapDown: (details) => showClipMenu(details.globalPosition, i),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: selectedClipIndex == i ? const Color(0xFFFFFFFF) : videoBlue, width: selectedClipIndex == i ? 2 : 1),
+                          boxShadow: selectedClipIndex == i ? [BoxShadow(color: videoBlue.withValues(alpha: .2), blurRadius: 8)] : null,
+                        ),
+                        child: ClipRRect(borderRadius: BorderRadius.circular(5), child: CustomPaint(
+                          painter: const VideoStripPainter(),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            color: const Color(0x442D76B8),
+                            alignment: Alignment.centerLeft,
+                            child: Row(children: [
+                              const Icon(Icons.movie_outlined, size: 14, color: Colors.white),
+                              const SizedBox(width: 6),
+                              Flexible(child: Text(p.basename(path), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.w700))),
+                              if (videoClips[i].length * zoom > 110) ...[
+                                const Spacer(),
+                                Text('${videoClips[i].length.toStringAsFixed(1)}с', style: const TextStyle(fontSize: 9, color: Colors.white70)),
+                              ],
+                            ]),
+                          ),
+                        )),
+                      ),
+                    ),
+                  ),
               Positioned(left: playhead, top: 0, bottom: 0, width: 2, child: Container(color: const Color(0xFFFF5E7D))),
               Positioned(left: (playhead - 4).clamp(0.0, timelineWidth - 10).toDouble(), top: 0, width: 10, height: 8, child: const DecoratedBox(decoration: BoxDecoration(color: Color(0xFFFF5E7D), borderRadius: BorderRadius.only(bottomLeft: Radius.circular(3), bottomRight: Radius.circular(3))))),
             ]),
@@ -839,6 +896,136 @@ class _EditorPageState extends State<EditorPage> {
         ),
       ]),
     );
+  }
+
+  Future<void> showClipMenu(Offset position, int index) async {
+    if (index < 0 || index >= videoClips.length) return;
+    setState(() => selectedClipIndex = index);
+    final action = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx + 1, position.dy + 1),
+      items: const [
+        PopupMenuItem(value: 'split', child: ListTile(dense: true, leading: Icon(Icons.content_cut), title: Text('Разделить по курсору'), subtitle: Text('Ctrl+B'))),
+        PopupMenuItem(value: 'trimStart', child: ListTile(dense: true, leading: Icon(Icons.first_page), title: Text('Обрезать начало до курсора'))),
+        PopupMenuItem(value: 'trimEnd', child: ListTile(dense: true, leading: Icon(Icons.last_page), title: Text('Обрезать конец по курсору'))),
+        PopupMenuDivider(),
+        PopupMenuItem(value: 'duplicate', child: ListTile(dense: true, leading: Icon(Icons.copy_outlined), title: Text('Дублировать клип'))),
+        PopupMenuItem(value: 'delete', child: ListTile(dense: true, leading: Icon(Icons.delete_outline, color: Colors.redAccent), title: Text('Удалить клип'))),
+      ],
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'split': splitSelectedClip(); break;
+      case 'trimStart': trimSelectedStart(); break;
+      case 'trimEnd': trimSelectedEnd(); break;
+      case 'duplicate': duplicateSelectedClip(); break;
+      case 'delete': deleteSelectedClip(); break;
+    }
+  }
+
+  double get playheadSeconds => (position.inMilliseconds / 1000).clamp(0.0, timelineSeconds).toDouble();
+
+  void splitSelectedClip() {
+    if (selectedClipIndex < 0 || selectedClipIndex >= videoClips.length) return;
+    final clip = videoClips[selectedClipIndex];
+    final cut = playheadSeconds;
+    if (cut <= clip.start + .08 || cut >= clip.end - .08) {
+      setStatus('Поставьте курсор внутрь выбранного клипа, минимум за 0,08 с от края.');
+      return;
+    }
+    setState(() {
+      final right = TimelineClip(start: cut, end: clip.end);
+      clip.end = cut;
+      videoClips.insert(selectedClipIndex + 1, right);
+      selectedClipIndex++;
+      status = 'Клип разделён в ${time(position)}.';
+    });
+  }
+
+  void trimSelectedStart() {
+    if (selectedClipIndex < 0 || selectedClipIndex >= videoClips.length) return;
+    final clip = videoClips[selectedClipIndex];
+    final cut = playheadSeconds;
+    if (cut <= clip.start || cut >= clip.end - .08) {
+      setStatus('Курсор должен находиться внутри выбранного клипа.');
+      return;
+    }
+    setState(() { clip.start = cut; status = 'Начало клипа обрезано до ${time(position)}.'; });
+  }
+
+  void trimSelectedEnd() {
+    if (selectedClipIndex < 0 || selectedClipIndex >= videoClips.length) return;
+    final clip = videoClips[selectedClipIndex];
+    final cut = playheadSeconds;
+    if (cut <= clip.start + .08 || cut >= clip.end) {
+      setStatus('Курсор должен находиться внутри выбранного клипа.');
+      return;
+    }
+    setState(() { clip.end = cut; status = 'Конец клипа обрезан по ${time(position)}.'; });
+  }
+
+  void duplicateSelectedClip() {
+    if (selectedClipIndex < 0 || selectedClipIndex >= videoClips.length) return;
+    final clip = videoClips[selectedClipIndex];
+    setState(() {
+      videoClips.insert(selectedClipIndex + 1, TimelineClip(start: clip.start, end: clip.end));
+      selectedClipIndex++;
+      status = 'Клип продублирован на таймлайне.';
+    });
+  }
+
+  void deleteSelectedClip() {
+    if (videoClips.isEmpty || selectedClipIndex < 0 || selectedClipIndex >= videoClips.length) return;
+    setState(() {
+      videoClips.removeAt(selectedClipIndex);
+      selectedClipIndex = videoClips.isEmpty ? 0 : selectedClipIndex.clamp(0, videoClips.length - 1);
+      status = videoClips.isEmpty ? 'На таймлайне нет видеоклипов.' : 'Клип удалён с таймлайна.';
+    });
+  }
+
+  Future<void> exportEditedVideo() async {
+    final source = videoPath;
+    if (source == null || videoClips.isEmpty || busy) return;
+    final savePath = await FilePicker.platform.saveFile(
+      dialogTitle: 'Экспортировать смонтированное видео',
+      fileName: 'GifCut-export.mp4',
+      type: FileType.video,
+      allowedExtensions: ['mp4'],
+    );
+    if (savePath == null) return;
+    setState(() { busy = true; status = 'Экспортирую ${videoClips.length} фрагмент(ов)…'; });
+    Directory? temp;
+    try {
+      temp = await Directory.systemTemp.createTemp('gifcut-export-');
+      final listFile = File(p.join(temp.path, 'concat.txt'));
+      final lines = <String>[];
+      for (var i = 0; i < videoClips.length; i++) {
+        final clip = videoClips[i];
+        final segmentPath = p.join(temp.path, 'segment_${i.toString().padLeft(3, '0')}.mp4');
+        final args = [
+          '-hide_banner', '-y', '-ss', clip.start.toStringAsFixed(3), '-i', source,
+          '-t', clip.length.toStringAsFixed(3), '-c:v', 'libx264', '-preset', 'veryfast',
+          '-crf', '18', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', segmentPath,
+        ];
+        final result = await Process.run(await findFfmpeg(), args);
+        if (result.exitCode != 0 || !await File(segmentPath).exists()) {
+          throw Exception('Не удалось обработать фрагмент ${i + 1}: ${result.stderr.toString().split('\n').last}');
+        }
+        lines.add("file '${segmentPath.replaceAll('\\', '/')}'");
+      }
+      await listFile.writeAsString(lines.join('\n'));
+      final concatResult = await Process.run(await findFfmpeg(), [
+        '-hide_banner', '-y', '-f', 'concat', '-safe', '0', '-i', listFile.path,
+        '-c', 'copy', '-movflags', '+faststart', savePath,
+      ]);
+      if (concatResult.exitCode != 0) throw Exception(concatResult.stderr.toString().split('\n').last);
+      if (mounted) setState(() => status = 'Экспорт завершён: $savePath');
+    } catch (e) {
+      if (mounted) setState(() => status = 'Ошибка экспорта: $e');
+    } finally {
+      if (temp != null && await temp.exists()) await temp.delete(recursive: true);
+      if (mounted) setState(() => busy = false);
+    }
   }
 
   Widget videoClip(String path) => ClipRRect(
