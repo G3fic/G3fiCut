@@ -1,5 +1,13 @@
 # Changelog
 
+## G3fiCut v0.2.7 — planned
+
+- Added undo and redo for video clip split, trim, duplicate, and delete operations.
+- Added undo and redo for detached-audio extraction, trim, reset, and delete operations.
+- Added Ctrl+Z, Ctrl+Y, and Ctrl+Shift+Z shortcuts and toolbar controls.
+- Capped edit history at 100 states and clear it when a new source video is imported.
+- Fixed the version fallback for local runs and standard CI builds so it follows pubspec.yaml.
+
 ## G3fiCut v0.2.2 — 2026-10-29
 
 - Renamed the desktop application from ClipForge to G3fiCut.
