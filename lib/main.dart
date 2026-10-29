@@ -15,6 +15,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'timeline_history.dart';
+import 'project_document.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -70,6 +71,8 @@ class _EditorPageState extends State<EditorPage> {
 
   String? videoPath;
   String? audioPath;
+  String? projectFilePath;
+  bool projectDirty = false;
   Duration duration = Duration.zero;
   Duration audioDuration = Duration.zero;
   Duration position = Duration.zero;
@@ -335,10 +338,14 @@ class _EditorPageState extends State<EditorPage> {
       return;
     }
 
+    if (!await _confirmReplaceIfDirty()) return;
+
     _timelineHistory.clear();
     setState(() {
       busy = true;
       videoPath = path;
+      projectFilePath = null;
+      projectDirty = true;
       audioPath = null;
       audioDuration = Duration.zero;
       audioClipStart = 0;
@@ -362,6 +369,180 @@ class _EditorPageState extends State<EditorPage> {
       });
     } catch (e) {
       if (mounted) setState(() => status = 'Не удалось открыть видео: $e');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<bool> _confirmReplaceIfDirty() async {
+    if (!projectDirty || videoPath == null) return true;
+    final decision = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Есть несохранённые изменения'),
+        content: const Text('Сохранить текущий проект перед заменой?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop('cancel'), child: const Text('Отмена')),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop('discard'), child: const Text('Не сохранять')),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop('save'), child: const Text('Сохранить')),
+        ],
+      ),
+    );
+    if (decision == 'discard') return true;
+    if (decision == 'save') return saveProject();
+    return false;
+  }
+
+  Future<bool> saveProject({bool saveAs = false}) async {
+    if (busy) return false;
+    final source = videoPath;
+    if (source == null) {
+      setStatus('Сначала импортируйте видео, чтобы сохранить проект.');
+      return false;
+    }
+
+    var target = projectFilePath;
+    if (saveAs || target == null) {
+      try {
+        target = await FilePicker.platform.saveFile(
+          dialogTitle: 'Сохранить проект GifCut',
+          fileName: 'GifCut-Project.g3ficut',
+          type: FileType.custom,
+          allowedExtensions: ['g3ficut'],
+        );
+      } catch (e) {
+        setStatus('Не удалось открыть диалог сохранения проекта: $e');
+        return false;
+      }
+      if (target == null) return false;
+      if (p.extension(target).toLowerCase() != '.g3ficut') {
+        target = p.withoutExtension(target) + '.g3ficut';
+      }
+    }
+
+    try {
+      final document = ProjectDocument(
+        appVersion: appVersion,
+        videoPath: source,
+        videoDurationMs: duration.inMilliseconds,
+        videoClips: videoClips.map((clip) => ProjectClipRange(clip.start, clip.end)).toList(),
+        selectedClipIndex: videoClips.isEmpty ? 0 : selectedClipIndex.clamp(0, videoClips.length - 1).toInt(),
+        audioPath: audioPath,
+        audioDurationMs: audioDuration.inMilliseconds,
+        audioClipStart: audioClipStart,
+        audioClipEnd: audioClipEnd,
+        timelineZoom: zoom,
+        playheadMs: position.inMilliseconds.clamp(0, duration.inMilliseconds).toInt(),
+      );
+      await File(target).writeAsString(document.encode(), flush: true);
+      if (!mounted) return true;
+      setState(() {
+        projectFilePath = target;
+        projectDirty = false;
+        status = 'Проект сохранён: ' + p.basename(target!);
+      });
+      return true;
+    } catch (e) {
+      setStatus('Не удалось сохранить проект: $e');
+      return false;
+    }
+  }
+
+  Future<void> openProject() async {
+    if (busy) return;
+    FilePickerResult? result;
+    try {
+      result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['g3ficut'],
+        allowMultiple: false,
+        dialogTitle: 'Открыть проект GifCut',
+      );
+    } catch (e) {
+      setStatus('Не удалось открыть диалог выбора проекта: $e');
+      return;
+    }
+    if (result == null || result.files.isEmpty) return;
+    final selectedPath = result.files.single.path;
+    if (selectedPath == null) {
+      setStatus('Не удалось получить путь к файлу проекта.');
+      return;
+    }
+
+    ProjectDocument document;
+    try {
+      document = ProjectDocument.decode(await File(selectedPath).readAsString());
+      if (!await File(document.videoPath).exists()) {
+        throw FileSystemException('Исходное видео проекта не найдено.', document.videoPath);
+      }
+      final audio = document.audioPath;
+      if (audio != null && !await File(audio).exists()) {
+        throw FileSystemException('Файл аудио проекта не найден.', audio);
+      }
+    } catch (e) {
+      setStatus('Не удалось прочитать проект: $e');
+      return;
+    }
+
+    if (!await _confirmReplaceIfDirty()) return;
+    final previousVideoPath = videoPath;
+    final previousPosition = position;
+    setState(() {
+      busy = true;
+      status = 'Открываю проект…';
+    });
+    try {
+      final activePlayer = ensurePlayer();
+      await activePlayer.stop();
+      try {
+        await activePlayer.open(Media(document.videoPath), play: false);
+      } catch (error) {
+        if (previousVideoPath != null) {
+          try {
+            await activePlayer.open(Media(previousVideoPath), play: false);
+            await activePlayer.seek(previousPosition);
+          } catch (_) {
+            // Keep the previous project data if playback restoration fails.
+          }
+        }
+        rethrow;
+      }
+
+      final reportedDuration = activePlayer.state.duration;
+      final restoredDuration = reportedDuration > Duration.zero
+          ? reportedDuration
+          : Duration(milliseconds: document.videoDurationMs);
+      final restoredPosition = Duration(
+        milliseconds: document.playheadMs.clamp(0, restoredDuration.inMilliseconds).toInt(),
+      );
+      _timelineHistory.clear();
+      if (!mounted) return;
+      setState(() {
+        videoPath = document.videoPath;
+        duration = restoredDuration;
+        videoClips
+          ..clear()
+          ..addAll(document.videoClips.map((clip) => TimelineClip(start: clip.start, end: clip.end)));
+        selectedClipIndex = document.selectedClipIndex;
+        audioPath = document.audioPath;
+        audioDuration = Duration(milliseconds: document.audioDurationMs);
+        audioClipStart = document.audioClipStart;
+        audioClipEnd = document.audioClipEnd;
+        zoom = document.timelineZoom;
+        position = restoredPosition;
+        projectFilePath = selectedPath;
+        projectDirty = false;
+        playing = false;
+        status = 'Проект открыт: ' + p.basename(selectedPath);
+      });
+      try {
+        await activePlayer.seek(restoredPosition);
+      } catch (e) {
+        setStatus('Проект открыт, но не удалось восстановить позицию курсора: $e');
+      }
+    } catch (e) {
+      if (mounted) setState(() => status = 'Не удалось открыть проект: $e');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -434,6 +615,13 @@ class _EditorPageState extends State<EditorPage> {
     final ms = target.inMilliseconds.clamp(0, duration.inMilliseconds).toInt();
     await activePlayer.seek(Duration(milliseconds: ms));
   }
+  void setTimelineZoom(double next) {
+    setState(() {
+      zoom = next.clamp(8.0, 160.0).toDouble();
+      projectDirty = true;
+    });
+  }
+
   void seekTimeline(double x) {
     if (duration.inMilliseconds <= 0) return;
     final seconds = (x / zoom).clamp(0.0, timelineSeconds);
@@ -467,7 +655,19 @@ class _EditorPageState extends State<EditorPage> {
       return KeyEventResult.handled;
     }
     if (control && key == LogicalKeyboardKey.keyO) {
-      unawaited(pickVideo());
+      if (keyboard.isShiftPressed) {
+        unawaited(pickVideo());
+      } else {
+        unawaited(openProject());
+      }
+      return KeyEventResult.handled;
+    }
+    if (control && key == LogicalKeyboardKey.keyS) {
+      if (keyboard.isShiftPressed) {
+        saveProject(saveAs: true);
+      } else {
+        saveProject();
+      }
       return KeyEventResult.handled;
     }
     if (control && key == LogicalKeyboardKey.keyE) {
@@ -544,7 +744,7 @@ class _EditorPageState extends State<EditorPage> {
           const SizedBox(width: 10),
           const Text('GifCut', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
           const SizedBox(width: 22),
-          const Text('Новый проект', style: TextStyle(fontSize: 12, color: Color(0xFFD3D3DF))),
+          Text((projectFilePath == null ? 'Новый проект' : p.basenameWithoutExtension(projectFilePath!)) + (projectDirty ? ' •' : ''), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Color(0xFFD3D3DF))),
           const Spacer(),
           IconButton(
             tooltip: checkingForUpdates ? 'Проверка обновлений…' : 'Проверить обновления',
@@ -569,6 +769,9 @@ class _EditorPageState extends State<EditorPage> {
           runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
+            OutlinedButton.icon(onPressed: busy ? null : openProject, icon: const Icon(Icons.folder_open_outlined, size: 18), label: const Text('Открыть проект')),
+            OutlinedButton.icon(onPressed: videoPath == null || busy ? null : () async { await saveProject(); }, icon: const Icon(Icons.save_outlined, size: 18), label: const Text('Сохранить')),
+            OutlinedButton.icon(onPressed: videoPath == null || busy ? null : () async { await saveProject(saveAs: true); }, icon: const Icon(Icons.drive_file_rename_outline, size: 18), label: const Text('Сохранить как…')),
             OutlinedButton.icon(onPressed: busy ? null : pickVideo, icon: const Icon(Icons.add_to_photos_outlined, size: 18), label: const Text('Импорт видео')),
             FilledButton.icon(
               onPressed: videoPath == null || busy ? null : extractAudio,
@@ -984,7 +1187,10 @@ class _EditorPageState extends State<EditorPage> {
 
   void _performTimelineEdit(VoidCallback update) {
     final before = _captureTimelineSnapshot();
-    setState(update);
+    setState(() {
+      update();
+      projectDirty = true;
+    });
     _timelineHistory.record(before: before, after: _captureTimelineSnapshot());
   }
 
@@ -993,6 +1199,7 @@ class _EditorPageState extends State<EditorPage> {
     if (previous == null) return;
     setState(() {
       _restoreTimelineSnapshot(previous);
+      projectDirty = true;
       status = 'Действие отменено.';
     });
   }
@@ -1002,6 +1209,7 @@ class _EditorPageState extends State<EditorPage> {
     if (next == null) return;
     setState(() {
       _restoreTimelineSnapshot(next);
+      projectDirty = true;
       status = 'Действие повторено.';
     });
   }
