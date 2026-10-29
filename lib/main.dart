@@ -132,7 +132,7 @@ class _EditorPageState extends State<EditorPage> {
       await outDir.create(recursive: true);
       final safeName = p.basenameWithoutExtension(video).replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
       final stamp = DateTime.now().millisecondsSinceEpoch.toString();
-      final output = p.join(outDir.path, '$safeName' + '_audio_' + stamp + '.wav');
+      final output = p.join(outDir.path, '${safeName}_audio_$stamp.wav');
       final result = await Process.run(await findFfmpeg(), [
         '-hide_banner', '-y', '-i', video, '-map', '0:a:0', '-vn',
         '-c:a', 'pcm_s16le', '-ar', '44100', '-ac', '2', output,
@@ -181,8 +181,8 @@ class _EditorPageState extends State<EditorPage> {
     final h = total ~/ 3600;
     final m = ((total % 3600) ~/ 60).toString().padLeft(2, '0');
     final s = (total % 60).toString().padLeft(2, '0');
-    if (h > 0) return h.toString().padLeft(2, '0') + ':' + m + ':' + s;
-    return m + ':' + s;
+    if (h > 0) return '${h.toString().padLeft(2, '0')}:$m:$s';
+    return '$m:$s';
   }
 
   @override
@@ -390,7 +390,7 @@ class _EditorPageState extends State<EditorPage> {
                 const SizedBox(height: 7),
                 Text(p.basename(audioPath!), maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 6),
-                Text('WAV · ' + time(audioDuration), style: const TextStyle(color: audioGreen, fontSize: 10)),
+                Text('WAV · ${time(audioDuration)}', style: const TextStyle(color: audioGreen, fontSize: 10)),
               ]),
             ),
             const SizedBox(height: 8),
@@ -434,7 +434,7 @@ class _EditorPageState extends State<EditorPage> {
               Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4), decoration: BoxDecoration(color: const Color(0xFF292A36), borderRadius: BorderRadius.circular(5)), child: const Text('V1', style: TextStyle(fontSize: 9, color: Color(0xFFB8B6D4), fontWeight: FontWeight.w800))),
               const Spacer(),
               IconButton(tooltip: 'Уменьшить масштаб', visualDensity: VisualDensity.compact, onPressed: () => setState(() => zoom = math.max(12, zoom - 4).toDouble()), icon: const Icon(Icons.remove, size: 17)),
-              SizedBox(width: 48, child: Text(zoom.toInt().toString() + ' px/s', textAlign: TextAlign.center, style: const TextStyle(color: muted, fontSize: 10))),
+              SizedBox(width: 48, child: Text('${zoom.toInt()} px/s', textAlign: TextAlign.center, style: const TextStyle(color: muted, fontSize: 10))),
               IconButton(tooltip: 'Увеличить масштаб', visualDensity: VisualDensity.compact, onPressed: () => setState(() => zoom = math.min(80, zoom + 4).toDouble()), icon: const Icon(Icons.add, size: 17)),
             ]),
           ),
@@ -571,7 +571,7 @@ class RulerPainter extends CustomPainter {
       if (major) {
         final minuteText = (s ~/ 60).toString().padLeft(2, '0');
         final secondText = (s % 60).toString().padLeft(2, '0');
-        final label = minuteText + ':' + secondText;
+        final label = '$minuteText:$secondText';
         final tp = TextPainter(text: TextSpan(text: label, style: const TextStyle(color: Color(0xFFAAAABD), fontSize: 9)), textDirection: TextDirection.ltr)..layout();
         tp.paint(canvas, Offset(x + 4, 3));
       }
