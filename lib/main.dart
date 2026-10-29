@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -852,7 +853,7 @@ class _EditorPageState extends State<EditorPage> {
           const SizedBox(width: 8),
           Expanded(child: Text(status, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFFB9BAC8), fontSize: 10))),
           const SizedBox(width: 10),
-          Text('ClipForge $appVersion · Windows', style: const TextStyle(color: Color(0xFF676A7A), fontSize: 9)),
+          const Text('ClipForge $appVersion · Windows', style: TextStyle(color: Color(0xFF676A7A), fontSize: 9)),
         ]),
       );
 }
