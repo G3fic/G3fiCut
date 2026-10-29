@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:file_picker/file_picker.dart';
@@ -54,7 +55,7 @@ class TimelineClip {
 }
 
 class _EditorPageState extends State<EditorPage> {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.3');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.4');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -85,6 +86,57 @@ class _EditorPageState extends State<EditorPage> {
   bool filtersEnabled = true;
   bool motionBlurEnabled = false;
   double previewZoom = 1.0;
+  String aspectRatioPreset = '16:9';
+  String videoEffect = 'Оригинал';
+  String transitionEffect = 'Нет';
+  double transitionDuration = 0.4;
+
+  double get previewAspectRatio => const {
+    '16:9': 16 / 9,
+    '9:16': 9 / 16,
+    '1:1': 1.0,
+    '4:3': 4 / 3,
+    '4:5': 4 / 5,
+    '3:2': 3 / 2,
+  }[aspectRatioPreset] ?? 16 / 9;
+
+  String get _exportEffectFilter => const {
+    'Оригинал': 'null',
+    'Чёрно-белый': 'hue=s=0',
+    'Сепия': 'colorchannelmixer=.393:.769:.189:0:0:.349:.686:.168:0:0:.272:.534:.131:0:0',
+    'Холодный': 'colorbalance=rs=-0.04:bs=0.12',
+    'Тёплый': 'colorbalance=rs=0.12:bs=-0.06',
+    'Негатив': 'negate',
+    'Мягкое размытие': 'gblur=sigma=2',
+  }[videoEffect] ?? 'null';
+
+  List<double> get effectColorMatrix => const {
+    'Оригинал': <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0],
+    'Чёрно-белый': <double>[0.213,0.715,0.072,0,0, 0.213,0.715,0.072,0,0, 0.213,0.715,0.072,0,0, 0,0,0,1,0],
+    'Сепия': <double>[0.393,0.769,0.189,0,0, 0.349,0.686,0.168,0,0, 0.272,0.534,0.131,0,0, 0,0,0,1,0],
+    'Холодный': <double>[0.96,0,0,0,0, 0,1,0,0,0, 0,0,1.12,0,0, 0,0,0,1,0],
+    'Тёплый': <double>[1.12,0,0,0,0, 0,1,0,0,0, 0,0,0.94,0,0, 0,0,0,1,0],
+    'Негатив': <double>[-1,0,0,0,255, 0,-1,0,0,255, 0,0,-1,0,255, 0,0,0,1,0],
+    'Мягкое размытие': <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0],
+  }[videoEffect] ?? const <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0];
+
+  ({Color color, double opacity}) get previewTransitionOverlay {
+    if (transitionEffect == 'Нет' || videoClips.length < 2) {
+      return (color: Colors.black, opacity: 0);
+    }
+    final seconds = position.inMilliseconds / 1000;
+    var opacity = 0.0;
+    for (var i = 0; i < videoClips.length; i++) {
+      final clip = videoClips[i];
+      if (i > 0 && seconds >= clip.start && seconds < clip.start + transitionDuration) {
+        opacity = math.max(opacity, 1 - (seconds - clip.start) / transitionDuration);
+      }
+      if (i < videoClips.length - 1 && seconds > clip.end - transitionDuration && seconds <= clip.end) {
+        opacity = math.max(opacity, (seconds - (clip.end - transitionDuration)) / transitionDuration);
+      }
+    }
+    return (color: transitionEffect == 'Белая вспышка' ? Colors.white : Colors.black, opacity: opacity.clamp(0.0, 1.0).toDouble());
+  }
   String inspectorTab = 'video';
   List<String> videoThumbnails = [];
   String? thumbnailDirectory;
@@ -1151,14 +1203,25 @@ class _EditorPageState extends State<EditorPage> {
                           SizedBox(height: 5),
                           Text('Можно продолжить извлечение аудио.', style: TextStyle(color: Color(0xFF8A8D9D), fontSize: 11)),
                         ])
-                      : ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: ClipRect(
-                            child: Transform.scale(
-                              scale: previewZoom,
-                              child: ColorFiltered(
-                                colorFilter: ColorFilter.matrix(filtersEnabled ? previewColorMatrix : const <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0]),
-                                child: Video(controller: videoController!, controls: NoVideoControls),
+                      : Center(
+                          child: AspectRatio(
+                            aspectRatio: previewAspectRatio,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: ClipRect(
+                                child: Stack(fit: StackFit.expand, children: [
+                                  ColorFiltered(
+                                    colorFilter: ColorFilter.matrix(filtersEnabled ? previewColorMatrix : const <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0]),
+                                    child: ColorFiltered(
+                                      colorFilter: ColorFilter.matrix(effectColorMatrix),
+                                      child: videoEffect == 'Мягкое размытие'
+                                          ? ImageFiltered(imageFilter: ui.ImageFilter.blur(sigmaX: 2, sigmaY: 2), child: Video(controller: videoController!, controls: NoVideoControls, fit: BoxFit.cover))
+                                          : Video(controller: videoController!, controls: NoVideoControls, fit: BoxFit.cover),
+                                    ),
+                                  ),
+                                  if (previewTransitionOverlay.opacity > 0)
+                                    Positioned.fill(child: ColoredBox(color: previewTransitionOverlay.color.withValues(alpha: previewTransitionOverlay.opacity))),
+                                ]),
                               ),
                             ),
                           ),
@@ -1245,11 +1308,39 @@ class _EditorPageState extends State<EditorPage> {
                 child: SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, title: const Text('Цветокоррекция', style: TextStyle(fontSize: 12)), value: filtersEnabled, onChanged: (value) => setState(() => filtersEnabled = value)),
               ),
               const SizedBox(height: 6),
-              const Text('ЭФФЕКТЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
+              const Text('ЭФФЕКТ ВИДЕО', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<String>(
+                value: videoEffect,
+                decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9)),
+                items: const ['Оригинал', 'Чёрно-белый', 'Сепия', 'Холодный', 'Тёплый', 'Негатив', 'Мягкое размытие'].map((v) => DropdownMenuItem(value: v, child: Text(v, style: TextStyle(fontSize: 11)))).toList(),
+                onChanged: (value) => setState(() { videoEffect = value ?? 'Оригинал'; projectDirty = true; }),
+              ),
+              const SizedBox(height: 8),
               Material(
                 color: panel,
-                child: SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, title: const Text('Размытие движения', style: TextStyle(fontSize: 12)), subtitle: const Text('Применяется при экспорте', style: TextStyle(fontSize: 9, color: muted)), value: motionBlurEnabled, onChanged: (value) => setState(() => motionBlurEnabled = value)),
+                child: SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, title: const Text('Размытие движения', style: TextStyle(fontSize: 12)), subtitle: const Text('Предпросмотр и экспорт', style: TextStyle(fontSize: 9, color: muted)), value: motionBlurEnabled, onChanged: (value) => setState(() { motionBlurEnabled = value; projectDirty = true; })),
               ),
+              const Divider(),
+              const Text('СООТНОШЕНИЕ СТОРОН', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<String>(
+                value: aspectRatioPreset,
+                decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9)),
+                items: const ['16:9', '9:16', '1:1', '4:3', '4:5', '3:2'].map((v) => DropdownMenuItem(value: v, child: Text(v, style: TextStyle(fontSize: 11)))).toList(),
+                onChanged: (value) => setState(() { aspectRatioPreset = value ?? '16:9'; projectDirty = true; }),
+              ),
+              const SizedBox(height: 10),
+              const Text('ПЕРЕХОД МЕЖДУ КЛИПАМИ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<String>(
+                value: transitionEffect,
+                decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9)),
+                items: const ['Нет', 'Затемнение', 'Белая вспышка'].map((v) => DropdownMenuItem(value: v, child: Text(v, style: TextStyle(fontSize: 11)))).toList(),
+                onChanged: (value) => setState(() { transitionEffect = value ?? 'Нет'; projectDirty = true; }),
+              ),
+              if (transitionEffect != 'Нет')
+                _adjustmentSlider('Длительность перехода', transitionDuration, 0.2, 1.0, (value) => setState(() { transitionDuration = value; projectDirty = true; })),
               const Divider(),
               const Text('ПОЛОЖЕНИЕ И РАЗМЕР', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
               _adjustmentSlider('Масштаб предпросмотра', previewZoom, 0.5, 2.0, (value) => setState(() => previewZoom = value)),
@@ -1281,7 +1372,7 @@ class _EditorPageState extends State<EditorPage> {
               _adjustmentSlider('Контраст', contrast, 0.5, 2.0, (v) => setState(() { contrast = v; projectDirty = true; })),
               _adjustmentSlider('Насыщенность', saturation, 0.0, 2.0, (v) => setState(() { saturation = v; projectDirty = true; })),
               Align(alignment: Alignment.centerRight, child: TextButton.icon(onPressed: () => setState(() { brightness = 0; contrast = 1; saturation = 1; filtersEnabled = true; projectDirty = true; }), icon: const Icon(Icons.restart_alt, size: 16), label: const Text('Сбросить'))),
-              const Text('Изменения видны сразу в предпросмотре и применяются при экспорте.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
+              const Text('Изменения сразу видны в предпросмотре и применяются при экспорте.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
             ],
 
           ]),
@@ -1718,6 +1809,39 @@ class _EditorPageState extends State<EditorPage> {
     ]),
   );
 
+  String _buildExportVideoFilter(int index, TimelineClip clip) {
+    final filters = <String>[];
+    if (aspectRatioPreset != '16:9') {
+      final dimensions = const {
+        '9:16': '1080:1920',
+        '1:1': '1080:1080',
+        '4:3': '1440:1080',
+        '4:5': '864:1080',
+        '3:2': '1620:1080',
+      }[aspectRatioPreset];
+      if (dimensions != null) {
+        final parts = dimensions.split(':');
+        filters.add('scale=${parts[0]}:${parts[1]}:force_original_aspect_ratio=increase');
+        filters.add('crop=${parts[0]}:${parts[1]}');
+      }
+    }
+    if (filtersEnabled) {
+      filters.add('eq=brightness=${brightness.toStringAsFixed(3)}:contrast=${contrast.toStringAsFixed(3)}:saturation=${saturation.toStringAsFixed(3)}');
+    }
+    if (videoEffect != 'Оригинал' && _exportEffectFilter != 'null') filters.add(_exportEffectFilter);
+    if (motionBlurEnabled) filters.add('tmix=frames=3:weights=1 1 1');
+    if (transitionEffect != 'Нет' && videoClips.length > 1) {
+      final durationForClip = math.min(transitionDuration, math.max(0.1, clip.length / 2)).toDouble();
+      final color = transitionEffect == 'Белая вспышка' ? 'white' : 'black';
+      if (index > 0) filters.add('fade=t=in:st=0:d=${durationForClip.toStringAsFixed(2)}:color=$color');
+      if (index < videoClips.length - 1) {
+        final start = math.max(0, clip.length - durationForClip).toDouble();
+        filters.add('fade=t=out:st=${start.toStringAsFixed(2)}:d=${durationForClip.toStringAsFixed(2)}:color=$color');
+      }
+    }
+    return filters.isEmpty ? 'null' : filters.join(',');
+  }
+
   Future<void> exportEditedVideo() async {
     final source = videoPath;
     if (source == null || videoClips.isEmpty || busy) return;
@@ -1740,7 +1864,7 @@ class _EditorPageState extends State<EditorPage> {
         final args = [
           '-hide_banner', '-y', '-ss', clip.start.toStringAsFixed(3), '-i', source,
           '-t', clip.length.toStringAsFixed(3), '-c:v', 'libx264', '-preset', 'veryfast',
-          '-crf', '18', '-vf', '${filtersEnabled ? 'eq=brightness=${brightness.toStringAsFixed(3)}:contrast=${contrast.toStringAsFixed(3)}:saturation=${saturation.toStringAsFixed(3)}' : 'null'}${motionBlurEnabled ? ',tmix=frames=3:weights=1 1 1' : ''}',
+          '-crf', '18', '-vf', _buildExportVideoFilter(i, clip),
           '-af', 'volume=${exportVolume.toStringAsFixed(2)}', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', segmentPath,
         ];
         final result = await Process.run(await findFfmpeg(), args);
