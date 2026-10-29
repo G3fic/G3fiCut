@@ -1277,66 +1277,9 @@ class _EditorPageState extends State<EditorPage> {
               Align(alignment: Alignment.centerRight, child: TextButton.icon(onPressed: () => setState(() { brightness = 0; contrast = 1; saturation = 1; filtersEnabled = true; projectDirty = true; }), icon: const Icon(Icons.restart_alt, size: 16), label: const Text('Сбросить'))),
               const Text('Изменения видны сразу в предпросмотре и применяются при экспорте.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
             ],
-            const SizedBox(height: 12),
-            const Text('Текущий проект', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 12),
-            property('Видео', videoPath == null ? 'Не выбрано' : 'Загружено'),
-            property('Длительность', time(duration)),
-            property('Аудиодорожка', audioPath == null ? 'Не создана' : 'Добавлена'),
-            const SizedBox(height: 18),
-            const Divider(),
-            const SizedBox(height: 12),
-            const Text('АУДИО', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 9),
-            if (audioPath == null)
-              const Text('После извлечения звук появится здесь и на отдельной дорожке таймлайна.', style: TextStyle(color: muted, fontSize: 11, height: 1.5))
-            else ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: audioGreen.withValues(alpha: 0.09), border: Border.all(color: audioGreen.withValues(alpha: 0.3)), borderRadius: BorderRadius.circular(8)),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Icon(Icons.graphic_eq, color: audioGreen, size: 20),
-                  const SizedBox(height: 7),
-                  Text(p.basename(audioPath!), maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 6),
-                  Text('WAV · ${time(audioDuration)}', style: const TextStyle(color: audioGreen, fontSize: 10)),
-                ]),
-              ),
-              const SizedBox(height: 8),
-              const Text('Файл сохранён в Documents/GifCut/Media.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
-            ],
-            const SizedBox(height: 14),
-            const Text('ГОРЯЧИЕ КЛАВИШИ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 8),
-            shortcutRow('Пробел', 'Воспроизведение / пауза'),
-            shortcutRow('← / →', 'Назад / вперёд на 5 секунд'),
-            shortcutRow('Home / End', 'Начало / конец видео'),
-            shortcutRow('Ctrl + O', 'Импортировать видео'),
-            shortcutRow('Ctrl + E', 'Извлечь аудио'),
-            shortcutRow('Ctrl + B', 'Разделить клип'),
-            shortcutRow('Delete', 'Удалить выбранный клип'),
-            shortcutRow('Ctrl + + / −', 'Масштаб таймлайна'),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: const Color(0xFF22232D), borderRadius: BorderRadius.circular(8)),
-              child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Icon(Icons.construction_outlined, size: 17, color: accent),
-                SizedBox(width: 8),
-                Expanded(child: Text('Монтаж: разделение, обрезка краёв, удаление фрагментов и экспорт через FFmpeg.', style: TextStyle(color: Color(0xFFB6B7C5), fontSize: 10, height: 1.45))),
-              ]),
-            ),
+
           ]),
         ),
-      );
-
-  Widget shortcutRow(String keys, String description) => Padding(
-        padding: const EdgeInsets.only(bottom: 7),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SizedBox(width: 82, child: Text(keys, style: const TextStyle(color: Color(0xFFD5D1FF), fontSize: 10, fontWeight: FontWeight.w700))),
-          Expanded(child: Text(description, style: const TextStyle(color: muted, fontSize: 10, height: 1.35))),
-        ]),
       );
 
   Widget property(String label, String value) => Padding(
