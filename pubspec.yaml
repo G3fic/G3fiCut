@@ -1,7 +1,7 @@
-name: audio_cutter
-description: Extract audio from video and trim the resulting audio clip.
+name: clipforge
+description: A desktop-first video editor MVP with timeline-based audio extraction.
 publish_to: "none"
-version: 0.1.0+1
+version: 0.2.0+1
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -12,7 +12,9 @@ dependencies:
   file_picker: ^8.1.7
   path: ^1.9.0
   path_provider: ^2.1.5
-  ffmpeg_kit_flutter_new: 4.6.7
+  media_kit: ^1.2.6
+  media_kit_video: ^2.0.1
+  media_kit_libs_video: ^1.0.7
 
 dev_dependencies:
   flutter_test:
