@@ -14,6 +14,8 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'timeline_history.dart';
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
@@ -76,6 +78,7 @@ class _EditorPageState extends State<EditorPage> {
   bool checkingForUpdates = false;
   double zoom = 32;
   final List<TimelineClip> videoClips = [];
+  final TimelineHistory _timelineHistory = TimelineHistory();
   int selectedClipIndex = 0;
   double audioClipStart = 0;
   double audioClipEnd = 0;
@@ -332,6 +335,7 @@ class _EditorPageState extends State<EditorPage> {
       return;
     }
 
+    _timelineHistory.clear();
     setState(() {
       busy = true;
       videoPath = path;
@@ -397,7 +401,7 @@ class _EditorPageState extends State<EditorPage> {
         throw Exception('FFmpeg не смог обработать видео.');
       }
       if (!mounted) return;
-      setState(() {
+      _performTimelineEdit(() {
         audioPath = output;
         audioDuration = duration;
         audioClipStart = 0;
@@ -450,6 +454,18 @@ class _EditorPageState extends State<EditorPage> {
     final keyboard = HardwareKeyboard.instance;
     final control = keyboard.isControlPressed;
     final key = event.logicalKey;
+    if (control && key == LogicalKeyboardKey.keyZ) {
+      if (keyboard.isShiftPressed) {
+        redoTimelineEdit();
+      } else {
+        undoTimelineEdit();
+      }
+      return KeyEventResult.handled;
+    }
+    if (control && key == LogicalKeyboardKey.keyY) {
+      redoTimelineEdit();
+      return KeyEventResult.handled;
+    }
     if (control && key == LogicalKeyboardKey.keyO) {
       unawaited(pickVideo());
       return KeyEventResult.handled;
@@ -560,6 +576,18 @@ class _EditorPageState extends State<EditorPage> {
               label: Text(busy ? 'Обработка…' : 'Извлечь звук на таймлайн'),
             ),
             OutlinedButton.icon(onPressed: videoClips.isEmpty || busy ? null : exportEditedVideo, icon: const Icon(Icons.ios_share, size: 18), label: const Text('Экспорт')),
+            OutlinedButton.icon(
+              onPressed: _timelineHistory.canUndo ? undoTimelineEdit : null,
+              icon: const Icon(Icons.undo, size: 18),
+              label: const Text('Отменить'),
+              tooltip: 'Отменить (Ctrl+Z)',
+            ),
+            OutlinedButton.icon(
+              onPressed: _timelineHistory.canRedo ? redoTimelineEdit : null,
+              icon: const Icon(Icons.redo, size: 18),
+              label: const Text('Повторить'),
+              tooltip: 'Повторить (Ctrl+Y)',
+            ),
             if (audioPath != null)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
@@ -930,6 +958,50 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
+  TimelineSnapshot _captureTimelineSnapshot() => TimelineSnapshot(
+        videoClips: videoClips.map((clip) => TimelineClipRange(clip.start, clip.end)).toList(),
+        selectedClipIndex: selectedClipIndex,
+        audioPath: audioPath,
+        audioClipStart: audioClipStart,
+        audioClipEnd: audioClipEnd,
+      );
+
+  void _restoreTimelineSnapshot(TimelineSnapshot snapshot) {
+    videoClips
+      ..clear()
+      ..addAll(snapshot.videoClips.map((clip) => TimelineClip(start: clip.start, end: clip.end)));
+    selectedClipIndex = videoClips.isEmpty
+        ? 0
+        : snapshot.selectedClipIndex.clamp(0, videoClips.length - 1).toInt();
+    audioPath = snapshot.audioPath;
+    audioClipStart = snapshot.audioClipStart;
+    audioClipEnd = snapshot.audioClipEnd;
+  }
+
+  void _performTimelineEdit(VoidCallback update) {
+    final before = _captureTimelineSnapshot();
+    setState(update);
+    _timelineHistory.record(before: before, after: _captureTimelineSnapshot());
+  }
+
+  void undoTimelineEdit() {
+    final previous = _timelineHistory.undo(_captureTimelineSnapshot());
+    if (previous == null) return;
+    setState(() {
+      _restoreTimelineSnapshot(previous);
+      status = 'Действие отменено.';
+    });
+  }
+
+  void redoTimelineEdit() {
+    final next = _timelineHistory.redo(_captureTimelineSnapshot());
+    if (next == null) return;
+    setState(() {
+      _restoreTimelineSnapshot(next);
+      status = 'Действие повторено.';
+    });
+  }
+
   Future<void> showAudioClipMenu(Offset position) async {
     if (audioPath == null || audioClipEnd <= audioClipStart) return;
     final action = await showMenu<String>(
@@ -944,7 +1016,7 @@ class _EditorPageState extends State<EditorPage> {
     );
     if (!mounted || action == null) return;
     final cut = playheadSeconds;
-    setState(() {
+    _performTimelineEdit(() {
       switch (action) {
         case 'audioTrimStart':
           if (cut > audioClipStart && cut < audioClipEnd - .08) { audioClipStart = cut; status = 'Начало звука обрезано независимо от видео.'; }
@@ -1004,7 +1076,7 @@ class _EditorPageState extends State<EditorPage> {
       setStatus('Поставьте курсор внутрь выбранного клипа, минимум за 0,08 с от края.');
       return;
     }
-    setState(() {
+    _performTimelineEdit(() {
       final right = TimelineClip(start: cut, end: clip.end);
       clip.end = cut;
       videoClips.insert(selectedClipIndex + 1, right);
@@ -1021,7 +1093,7 @@ class _EditorPageState extends State<EditorPage> {
       setStatus('Курсор должен находиться внутри выбранного клипа.');
       return;
     }
-    setState(() { clip.start = cut; status = 'Начало клипа обрезано до ${time(position)}.'; });
+    _performTimelineEdit(() { clip.start = cut; status = 'Начало клипа обрезано до ${time(position)}.'; });
   }
 
   void trimSelectedEnd() {
@@ -1032,13 +1104,13 @@ class _EditorPageState extends State<EditorPage> {
       setStatus('Курсор должен находиться внутри выбранного клипа.');
       return;
     }
-    setState(() { clip.end = cut; status = 'Конец клипа обрезан по ${time(position)}.'; });
+    _performTimelineEdit(() { clip.end = cut; status = 'Конец клипа обрезан по ${time(position)}.'; });
   }
 
   void duplicateSelectedClip() {
     if (selectedClipIndex < 0 || selectedClipIndex >= videoClips.length) return;
     final clip = videoClips[selectedClipIndex];
-    setState(() {
+    _performTimelineEdit(() {
       videoClips.insert(selectedClipIndex + 1, TimelineClip(start: clip.start, end: clip.end));
       selectedClipIndex++;
       status = 'Клип продублирован на таймлайне.';
@@ -1047,7 +1119,7 @@ class _EditorPageState extends State<EditorPage> {
 
   void deleteSelectedClip() {
     if (videoClips.isEmpty || selectedClipIndex < 0 || selectedClipIndex >= videoClips.length) return;
-    setState(() {
+    _performTimelineEdit(() {
       videoClips.removeAt(selectedClipIndex);
       selectedClipIndex = videoClips.isEmpty ? 0 : selectedClipIndex.clamp(0, videoClips.length - 1).toInt();
       status = videoClips.isEmpty ? 'На таймлайне нет видеоклипов.' : 'Клип удалён с таймлайна.';
