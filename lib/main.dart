@@ -1317,7 +1317,7 @@ class _EditorPageState extends State<EditorPage> {
               DropdownButtonFormField<String>(
                 initialValue: videoEffect,
                 decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9)),
-                items: const ['Оригинал', 'Чёрно-белый', 'Сепия', 'Холодный', 'Тёплый', 'Негатив', 'Мягкое размытие'].map((v) => DropdownMenuItem(value: v, child: Text(v, style: TextStyle(fontSize: 11)))).toList(),
+                items: const ['Оригинал', 'Чёрно-белый', 'Сепия', 'Холодный', 'Тёплый', 'Негатив', 'Мягкое размытие'].map((v) => DropdownMenuItem(value: v, child: Text(v, style: const TextStyle(fontSize: 11)))).toList(),
                 onChanged: (value) => setState(() { videoEffect = value ?? 'Оригинал'; projectDirty = true; }),
               ),
               const SizedBox(height: 8),
@@ -1331,7 +1331,7 @@ class _EditorPageState extends State<EditorPage> {
               DropdownButtonFormField<String>(
                 initialValue: aspectRatioPreset,
                 decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9)),
-                items: const ['16:9', '9:16', '1:1', '4:3', '4:5', '3:2'].map((v) => DropdownMenuItem(value: v, child: Text(v, style: TextStyle(fontSize: 11)))).toList(),
+                items: const ['16:9', '9:16', '1:1', '4:3', '4:5', '3:2'].map((v) => DropdownMenuItem(value: v, child: Text(v, style: const TextStyle(fontSize: 11)))).toList(),
                 onChanged: (value) => setState(() { aspectRatioPreset = value ?? '16:9'; projectDirty = true; }),
               ),
               const SizedBox(height: 10),
@@ -1340,7 +1340,7 @@ class _EditorPageState extends State<EditorPage> {
               DropdownButtonFormField<String>(
                 initialValue: transitionEffect,
                 decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9)),
-                items: const ['Нет', 'Затемнение', 'Белая вспышка'].map((v) => DropdownMenuItem(value: v, child: Text(v, style: TextStyle(fontSize: 11)))).toList(),
+                items: const ['Нет', 'Затемнение', 'Белая вспышка'].map((v) => DropdownMenuItem(value: v, child: Text(v, style: const TextStyle(fontSize: 11)))).toList(),
                 onChanged: (value) => setState(() { transitionEffect = value ?? 'Нет'; projectDirty = true; }),
               ),
               if (transitionEffect != 'Нет')
