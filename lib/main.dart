@@ -1248,28 +1248,78 @@ class _EditorPageState extends State<EditorPage> {
                       : Center(
                           child: AspectRatio(
                             aspectRatio: previewAspectRatio,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: ClipRect(
-                                child: Stack(fit: StackFit.expand, children: [
-                                  ColorFiltered(
-                                    colorFilter: ColorFilter.matrix(filtersEnabled ? previewColorMatrix : const <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0]),
-                                    child: ColorFiltered(
-                                      colorFilter: ColorFilter.matrix(effectColorMatrix),
-                                      child: ImageFiltered(
-                                        imageFilter: ui.ImageFilter.blur(
-                                          sigmaX: (videoEffect == 'Мягкое размытие' ? 2.0 : 0.0) + (motionBlurEnabled ? 1.2 : 0.0),
-                                          sigmaY: (videoEffect == 'Мягкое размытие' ? 2.0 : 0.0) + (motionBlurEnabled ? 1.2 : 0.0),
+                            child: LayoutBuilder(builder: (context, bounds) {
+                              final shortSide = math.min(bounds.maxWidth, bounds.maxHeight);
+                              return ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: ClipRect(
+                                  child: Stack(fit: StackFit.expand, children: [
+                                    const ColoredBox(color: Colors.black),
+                                    Positioned.fill(
+                                      child: GestureDetector(
+                                        behavior: HitTestBehavior.translucent,
+                                        onPanUpdate: (d) => setState(() {
+                                          videoOffsetX += d.delta.dx / math.max(1, bounds.maxWidth);
+                                          videoOffsetY += d.delta.dy / math.max(1, bounds.maxHeight);
+                                          projectDirty = true;
+                                        }),
+                                        child: Transform.translate(
+                                          offset: Offset(videoOffsetX * bounds.maxWidth, videoOffsetY * bounds.maxHeight),
+                                          child: Transform.rotate(
+                                            angle: videoRotation * math.pi / 180,
+                                            child: Transform.scale(
+                                              scaleX: videoScaleX * previewZoom,
+                                              scaleY: videoScaleY * previewZoom,
+                                              child: ColorFiltered(
+                                                colorFilter: ColorFilter.matrix(filtersEnabled ? previewColorMatrix : const <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0]),
+                                                child: ColorFiltered(
+                                                  colorFilter: ColorFilter.matrix(effectColorMatrix),
+                                                  child: ImageFiltered(
+                                                    imageFilter: ui.ImageFilter.blur(
+                                                      sigmaX: (videoEffect == 'Мягкое размытие' ? 2.0 : 0.0) + (motionBlurEnabled ? 1.2 : 0.0),
+                                                      sigmaY: (videoEffect == 'Мягкое размытие' ? 2.0 : 0.0) + (motionBlurEnabled ? 1.2 : 0.0),
+                                                    ),
+                                                    child: Video(controller: videoController!, controls: NoVideoControls, fit: BoxFit.cover),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
                                         ),
-                                        child: Video(controller: videoController!, controls: NoVideoControls, fit: BoxFit.cover),
                                       ),
                                     ),
-                                  ),
-                                  if (previewTransitionOverlay.opacity > 0)
-                                    Positioned.fill(child: ColoredBox(color: previewTransitionOverlay.color.withValues(alpha: previewTransitionOverlay.opacity))),
-                                ]),
-                              ),
-                            ),
+                                    for (var i = 0; i < photoOverlays.length; i++)
+                                      Positioned(
+                                        left: bounds.maxWidth / 2 + photoOverlays[i].x * bounds.maxWidth - shortSide * .18 * photoOverlays[i].scale,
+                                        top: bounds.maxHeight / 2 + photoOverlays[i].y * bounds.maxHeight - shortSide * .18 * photoOverlays[i].scale,
+                                        width: shortSide * .36 * photoOverlays[i].scale,
+                                        height: shortSide * .36 * photoOverlays[i].scale,
+                                        child: GestureDetector(
+                                          onTap: () => setState(() => selectedPhotoOverlay = i),
+                                          onPanStart: (_) => setState(() => selectedPhotoOverlay = i),
+                                          onPanUpdate: (d) => setState(() {
+                                            photoOverlays[i].x = (photoOverlays[i].x + d.delta.dx / bounds.maxWidth).clamp(-1.5, 1.5).toDouble();
+                                            photoOverlays[i].y = (photoOverlays[i].y + d.delta.dy / bounds.maxHeight).clamp(-1.5, 1.5).toDouble();
+                                            projectDirty = true;
+                                          }),
+                                          child: Transform.rotate(
+                                            angle: photoOverlays[i].rotation * math.pi / 180,
+                                            child: Opacity(
+                                              opacity: photoOverlays[i].opacity,
+                                              child: DecoratedBox(
+                                                decoration: BoxDecoration(border: selectedPhotoOverlay == i ? Border.all(color: accent, width: 2) : null),
+                                                child: Image.file(File(photoOverlays[i].path), fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined)),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    if (previewTransitionOverlay.opacity > 0)
+                                      Positioned.fill(child: IgnorePointer(child: ColoredBox(color: previewTransitionOverlay.color.withValues(alpha: previewTransitionOverlay.opacity)))),
+                                  ]),
+                                ),
+                              );
+                            }),
                           ),
                         ),
             ),
