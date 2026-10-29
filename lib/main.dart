@@ -698,17 +698,20 @@ class _EditorPageState extends State<EditorPage> {
     try {
       final directory = await _mediaCacheDirectory(source, 'audio-waveforms');
       final waveform = File(p.join(directory.path, 'waveform.png'));
-      if (!await waveform.exists() || await waveform.length() < 256) {
+      final marker = File(p.join(directory.path, '.complete'));
+      if (!await marker.exists() || !await waveform.exists() || await waveform.length() < 256) {
         if (await waveform.exists()) await waveform.delete();
+        if (await marker.exists()) await marker.delete();
         final result = await Process.run(await findFfmpeg(), [
           '-hide_banner', '-loglevel', 'error', '-y', '-i', source,
           '-filter_complex',
-          '[0:a:0]aformat=channel_layouts=mono,showwavespic=s=2400x60:colors=36C6A3[v]',
+          '[0:a:0]aformat=channel_layouts=mono,showwavespic=s=2400x60:colors=0x36C6A3[v]',
           '-map', '[v]', '-frames:v', '1', waveform.path,
         ], runInShell: false);
         if (result.exitCode != 0 || !await waveform.exists() || await waveform.length() < 256) {
           throw StateError('FFmpeg не смог построить форму аудиосигнала.');
         }
+        await marker.writeAsString('complete', flush: true);
       }
       if (!mounted || request != _audioWaveformRequest || audioPath != source) return;
       setState(() {
