@@ -33,7 +33,7 @@ class G3fiCutApp extends StatelessWidget {
         theme: ThemeData(
           useMaterial3: true,
           brightness: Brightness.dark,
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF168CFF), brightness: Brightness.dark),
+          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF9B6DFF), brightness: Brightness.dark),
           scaffoldBackgroundColor: const Color(0xFF101116),
           dividerColor: const Color(0xFF292B36),
         ),
@@ -61,13 +61,13 @@ class PhotoOverlay {
 }
 
 class _EditorPageState extends State<EditorPage> {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.7');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.20');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
   static const muted = Color(0xFF969EAE);
-  static const accent = Color(0xFF168CFF);
-  static const videoBlue = Color(0xFF168CFF);
+  static const accent = Color(0xFF9B6DFF);
+  static const videoBlue = Color(0xFF9B6DFF);
   static const audioGreen = Color(0xFF35C99A);
 
   Player? player;
@@ -1025,13 +1025,19 @@ class _EditorPageState extends State<EditorPage> {
         body: SafeArea(
           child: Column(
             children: [
-              Container(
-                height: 42,
-                alignment: Alignment.centerLeft,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                child: const Text('gifcut', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: .4)),
+              topBar(),
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(width: 270, child: mediaPanel()),
+                    const VerticalDivider(width: 1),
+                    Expanded(child: previewPanel()),
+                    const VerticalDivider(width: 1),
+                    SizedBox(width: 270, child: inspectorPanel()),
+                  ],
+                ),
               ),
-              Expanded(child: Row(children: [mediaPanel(), const VerticalDivider(width: 1), SizedBox(width: 258, child: inspectorPanel()), const VerticalDivider(width: 1), Expanded(child: previewPanel())])),
               const Divider(height: 1),
               timelinePanel(),
               const Divider(height: 1),
@@ -1046,7 +1052,7 @@ class _EditorPageState extends State<EditorPage> {
         color: const Color(0xFF191B21),
         padding: const EdgeInsets.symmetric(horizontal: 18),
         child: Row(children: [
-          Container(width: 34, height: 34, decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF168CFF), Color(0xFF625BFF)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(10), boxShadow: [BoxShadow(color: accent.withValues(alpha: .18), blurRadius: 12, offset: const Offset(0, 3))]), child: const Icon(Icons.movie_creation_outlined, color: Colors.white, size: 20)),
+          Container(width: 34, height: 34, decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF9B6DFF), Color(0xFF7046C8)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(10), boxShadow: [BoxShadow(color: accent.withValues(alpha: .18), blurRadius: 12, offset: const Offset(0, 3))]), child: const Icon(Icons.movie_creation_outlined, color: Colors.white, size: 20)),
           const SizedBox(width: 10),
           const Text('gifcut', style: TextStyle(fontSize: 18, letterSpacing: -.5, fontWeight: FontWeight.w900)),
           const SizedBox(width: 10),
@@ -1289,7 +1295,7 @@ class _EditorPageState extends State<EditorPage> {
                                   child: Stack(fit: StackFit.expand, children: [
                                     const ColoredBox(color: Colors.black),
                                     if (_showVerticalSnapGuide)
-                                      Positioned(left: bounds.maxWidth / 2 - .5, top: 0, bottom: 0, child: IgnorePointer(child: Container(width: 1, color: const Color(0xFF35D7FF)))),
+                                      Positioned(left: bounds.maxWidth / 2 - .5, top: 0, bottom: 0, child: IgnorePointer(child: Container(width: 1, color: const Color(0xFFB18CFF)))),
                                     if (_showHorizontalSnapGuide)
                                       Positioned(top: bounds.maxHeight / 2 - .5, left: 0, right: 0, child: IgnorePointer(child: Container(height: 1, color: const Color(0xFF35D7FF)))),
                                     Positioned.fill(
@@ -1297,10 +1303,10 @@ class _EditorPageState extends State<EditorPage> {
                                         onPanUpdate: (d) => setState(() {
                                           var nextX = videoOffsetX + d.delta.dx / math.max(1, bounds.maxWidth);
                                           var nextY = videoOffsetY + d.delta.dy / math.max(1, bounds.maxHeight);
-                                          _showVerticalSnapGuide = nextX.abs() < 0.022;
-                                          _showHorizontalSnapGuide = nextY.abs() < 0.022;
-                                          if (nextX.abs() < 0.022) nextX *= 0.42;
-                                          if (nextY.abs() < 0.022) nextY *= 0.42;
+                                          _showVerticalSnapGuide = nextX.abs() < 0.014;
+                                          _showHorizontalSnapGuide = nextY.abs() < 0.014;
+                                          if (nextX.abs() < 0.014) nextX *= 0.68;
+                                          if (nextY.abs() < 0.014) nextY *= 0.68;
                                           if (nextX.abs() < 0.0025) nextX = 0;
                                           if (nextY.abs() < 0.0025) nextY = 0;
                                           videoOffsetX = nextX;
