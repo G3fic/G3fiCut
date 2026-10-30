@@ -1307,6 +1307,7 @@ class _EditorPageState extends State<EditorPage> {
                                           videoOffsetY = nextY;
                                           projectDirty = true;
                                         }),
+                                        onPanEnd: (_) => setState(() { _showVerticalSnapGuide = false; _showHorizontalSnapGuide = false; }),
                                         child: Transform.translate(
                                           offset: Offset(videoOffsetX * bounds.maxWidth, videoOffsetY * bounds.maxHeight),
                                           child: Transform.rotate(
@@ -1383,6 +1384,7 @@ class _EditorPageState extends State<EditorPage> {
                                             photoOverlays[i].y = nextY;
                                             projectDirty = true;
                                           }),
+                                          onPanEnd: (_) => setState(() { _showVerticalSnapGuide = false; _showHorizontalSnapGuide = false; }),
                                           child: Transform.rotate(
                                             angle: photoOverlays[i].rotation * math.pi / 180,
                                             child: Opacity(
