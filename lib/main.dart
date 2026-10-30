@@ -1663,12 +1663,14 @@ class _EditorPageState extends State<EditorPage> {
               Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4), decoration: BoxDecoration(color: const Color(0xFF292A36), borderRadius: BorderRadius.circular(5)), child: const Text('V1', style: TextStyle(fontSize: 9, color: Color(0xFFB8B6D4), fontWeight: FontWeight.w800))),
               const SizedBox(width: 8),
               IconButton(
+                key: const ValueKey('timeline-undo'),
                 tooltip: 'Отменить (Ctrl+Z)',
                 visualDensity: VisualDensity.compact,
                 onPressed: _timelineHistory.canUndo ? undoTimelineEdit : null,
                 icon: const Icon(Icons.undo_rounded, size: 17),
               ),
               IconButton(
+                key: const ValueKey('timeline-redo'),
                 tooltip: 'Повторить (Ctrl+Y)',
                 visualDensity: VisualDensity.compact,
                 onPressed: _timelineHistory.canRedo ? redoTimelineEdit : null,
