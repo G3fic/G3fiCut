@@ -16,12 +16,28 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'timeline_history.dart';
+import 'timeline_editing.dart';
 import 'project_document.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
   runApp(const G3fiCutApp());
+}
+
+class _ShortcutRow extends StatelessWidget {
+  const _ShortcutRow(this.shortcut, this.description);
+  final String shortcut;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 5),
+    child: Row(children: [
+      SizedBox(width: 156, child: Text(shortcut, style: const TextStyle(fontWeight: FontWeight.w700))),
+      Expanded(child: Text(description)),
+    ]),
+  );
 }
 
 class G3fiCutApp extends StatelessWidget {
@@ -48,10 +64,18 @@ class EditorPage extends StatefulWidget {
 }
 
 class TimelineClip {
-  TimelineClip({required this.start, required this.end});
+  TimelineClip({required this.start, required this.end, double? timelineStart})
+      : timelineStart = timelineStart ?? start;
+
+  /// Source-media in/out points in seconds.
   double start;
   double end;
+
+  /// Position of this clip in the edited sequence.
+  double timelineStart;
+
   double get length => end - start;
+  double get timelineEnd => timelineStart + length;
 }
 
 class PhotoOverlay {
@@ -61,7 +85,7 @@ class PhotoOverlay {
 }
 
 class _EditorPageState extends State<EditorPage> {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.43');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.63');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -95,10 +119,18 @@ class _EditorPageState extends State<EditorPage> {
   double videoScaleX = 1.0, videoScaleY = 1.0, videoRotation = 0, videoOffsetX = 0, videoOffsetY = 0;
   final List<PhotoOverlay> photoOverlays = [];
   int selectedPhotoOverlay = -1;
-  bool _timelineSeekInFlight = false;
+  bool _playheadInGap = false;
+  int _activePlaybackClipIndex = -1;
+  double frameRate = 30.0;
+  bool snappingEnabled = true;
+  double? _timelineSnapAt;
+  final ScrollController timelineScrollController = ScrollController();
+  int _clipMoveIndex = -1;
+  double _clipMoveOriginalStart = 0;
+  double _clipMovePointerX = 0;
+  TimelineSnapshot? _clipMoveBefore;
   bool _showVerticalSnapGuide = false;
   bool _showHorizontalSnapGuide = false;
-  Duration? _queuedTimelineSeek;
   String aspectRatioPreset = '16:9';
   String videoEffect = 'Оригинал';
   String transitionEffect = 'Нет';
@@ -141,11 +173,11 @@ class _EditorPageState extends State<EditorPage> {
     var opacity = 0.0;
     for (var i = 0; i < videoClips.length; i++) {
       final clip = videoClips[i];
-      if (i > 0 && seconds >= clip.start && seconds < clip.start + transitionDuration) {
-        opacity = math.max(opacity, 1 - (seconds - clip.start) / transitionDuration).toDouble();
+      if (i > 0 && seconds >= clip.timelineStart && seconds < clip.timelineStart + transitionDuration) {
+        opacity = math.max(opacity, 1 - (seconds - clip.timelineStart) / transitionDuration).toDouble();
       }
-      if (i < videoClips.length - 1 && seconds > clip.end - transitionDuration && seconds <= clip.end) {
-        opacity = math.max(opacity, (seconds - (clip.end - transitionDuration)) / transitionDuration).toDouble();
+      if (i < videoClips.length - 1 && seconds > clip.timelineEnd - transitionDuration && seconds <= clip.timelineEnd) {
+        opacity = math.max(opacity, (seconds - (clip.timelineEnd - transitionDuration)) / transitionDuration).toDouble();
       }
     }
     return (color: transitionEffect == 'Белая вспышка' ? Colors.white : Colors.black, opacity: opacity.clamp(0.0, 1.0).toDouble());
@@ -171,8 +203,47 @@ class _EditorPageState extends State<EditorPage> {
   double audioClipEnd = 0;
   String status = 'Импортируйте видео, чтобы начать монтаж.';
 
-  double get timelineSeconds => duration.inMilliseconds > 0 ? math.max(1, duration.inMilliseconds / 1000).toDouble() : 30;
+  double get _timelineEndSeconds => videoClips.isEmpty
+      ? 0
+      : videoClips.map((clip) => clip.timelineEnd).reduce((a, b) => a > b ? a : b);
+  Duration get timelineDuration =>
+      Duration(milliseconds: (_timelineEndSeconds * 1000).round());
+  double get timelineSeconds => videoClips.isNotEmpty
+      ? math.max(1, _timelineEndSeconds).toDouble()
+      : (duration.inMilliseconds > 0
+          ? math.max(1, duration.inMilliseconds / 1000).toDouble()
+          : 30);
   double get timelineWidth => math.max(720, timelineSeconds * zoom).toDouble();
+
+  List<TimelineClipRange> _clipRanges() => videoClips
+      .map((clip) => TimelineClipRange(
+            clip.start,
+            clip.end,
+            timelineStart: clip.timelineStart,
+          ))
+      .toList();
+
+  void _replaceClipRanges(List<TimelineClipRange> ranges) {
+    videoClips
+      ..clear()
+      ..addAll(ranges.map((clip) => TimelineClip(
+            start: clip.start,
+            end: clip.end,
+            timelineStart: clip.timelineStart,
+          )))
+      ..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
+  }
+
+  int _clipIndexAtTimelineTime(double seconds) {
+    for (var i = 0; i < videoClips.length; i++) {
+      final clip = videoClips[i];
+      if (seconds >= clip.timelineStart - 0.001 &&
+          seconds < clip.timelineEnd - 0.0001) {
+        return i;
+      }
+    }
+    return -1;
+  }
 
   @override
   void initState() {
@@ -390,8 +461,7 @@ class _EditorPageState extends State<EditorPage> {
       });
       positionSub = created.stream.position.listen((v) {
         if (mounted && !_switchingMedia) {
-          setState(() => position = v);
-          unawaited(_enforceEditedPlayback(v));
+          unawaited(_handlePlayerPosition(v));
         }
       });
       playingSub = created.stream.playing.listen((v) {
@@ -409,6 +479,7 @@ class _EditorPageState extends State<EditorPage> {
     durationSub?.cancel();
     positionSub?.cancel();
     playingSub?.cancel();
+    timelineScrollController.dispose();
     final activePlayer = player;
     if (activePlayer != null) unawaited(activePlayer.dispose());
     super.dispose();
@@ -487,8 +558,12 @@ class _EditorPageState extends State<EditorPage> {
       _timelineHistory.clear();
       _switchingMedia = false;
       _switchingMediaDuration = null;
+      final detectedFps = activePlayer.state.track.video.fps;
       if (!mounted) return;
       setState(() {
+        if (detectedFps != null && detectedFps.isFinite && detectedFps > 0) {
+          frameRate = detectedFps.clamp(1.0, 240.0).toDouble();
+        }
         videoPath = path;
         projectFilePath = null;
         projectDirty = true;
@@ -501,7 +576,13 @@ class _EditorPageState extends State<EditorPage> {
         playing = false;
         videoClips
           ..clear()
-          ..add(TimelineClip(start: 0, end: openedDuration.inMilliseconds / 1000));
+          ..add(TimelineClip(
+            start: 0,
+            end: openedDuration.inMilliseconds / 1000,
+            timelineStart: 0,
+          ));
+        _activePlaybackClipIndex = 0;
+        _playheadInGap = false;
         selectedClipIndex = 0;
         videoThumbnails = [];
         status = 'Видео загружено. Создаю миниатюры для таймлайна…';
@@ -584,14 +665,20 @@ class _EditorPageState extends State<EditorPage> {
         appVersion: appVersion,
         videoPath: source,
         videoDurationMs: duration.inMilliseconds,
-        videoClips: videoClips.map((clip) => ProjectClipRange(clip.start, clip.end)).toList(),
+        videoClips: videoClips
+            .map((clip) => ProjectClipRange(
+                  clip.start,
+                  clip.end,
+                  timelineStart: clip.timelineStart,
+                ))
+            .toList(),
         selectedClipIndex: videoClips.isEmpty ? 0 : selectedClipIndex.clamp(0, videoClips.length - 1).toInt(),
         audioPath: audioPath,
         audioDurationMs: audioPath == null ? 0 : audioDuration.inMilliseconds,
         audioClipStart: audioClipStart,
         audioClipEnd: audioClipEnd,
         timelineZoom: zoom,
-        playheadMs: position.inMilliseconds.clamp(0, duration.inMilliseconds).toInt(),
+        playheadMs: position.inMilliseconds.clamp(0, timelineDuration.inMilliseconds).toInt(),
       );
       await File(targetPath).writeAsString(document.encode(), flush: true);
       if (!mounted) return true;
@@ -676,19 +763,37 @@ class _EditorPageState extends State<EditorPage> {
           : (pendingDuration != null && pendingDuration > Duration.zero
               ? pendingDuration
               : Duration(milliseconds: document.videoDurationMs));
+      final sequenceEndMs = document.videoClips.isEmpty
+          ? 0
+          : (document.videoClips
+                      .map((clip) => clip.timelineEnd)
+                      .reduce((a, b) => a > b ? a : b) *
+                  1000)
+              .round();
       final restoredPosition = Duration(
-        milliseconds: document.playheadMs.clamp(0, restoredDuration.inMilliseconds).toInt(),
+        milliseconds: document.playheadMs.clamp(0, sequenceEndMs).toInt(),
       );
       _timelineHistory.clear();
       _switchingMedia = false;
       _switchingMediaDuration = null;
+      final detectedFps = activePlayer.state.track.video.fps;
       if (!mounted) return;
       setState(() {
+        if (detectedFps != null && detectedFps.isFinite && detectedFps > 0) {
+          frameRate = detectedFps.clamp(1.0, 240.0).toDouble();
+        }
         videoPath = document.videoPath;
         duration = restoredDuration;
         videoClips
           ..clear()
-          ..addAll(document.videoClips.map((clip) => TimelineClip(start: clip.start, end: clip.end)));
+          ..addAll(document.videoClips.map((clip) => TimelineClip(
+                start: clip.start,
+                end: clip.end,
+                timelineStart: clip.timelineStart,
+              )));
+        videoClips.sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
+        _activePlaybackClipIndex = -1;
+        _playheadInGap = false;
         selectedClipIndex = document.selectedClipIndex;
         audioPath = document.audioPath;
         audioDuration = Duration(milliseconds: document.audioDurationMs);
@@ -702,7 +807,7 @@ class _EditorPageState extends State<EditorPage> {
         status = 'Проект открыт: ${p.basename(selectedPath)}';
       });
       try {
-        await activePlayer.seek(restoredPosition);
+        await seek(restoredPosition);
       } catch (e) {
         setStatus('Проект открыт, но не удалось восстановить позицию курсора: $e');
       }
@@ -801,69 +906,157 @@ class _EditorPageState extends State<EditorPage> {
     if (videoPath == null || activePlayer == null) return;
     if (playing) {
       await activePlayer.pause();
-    } else {
-      await activePlayer.play();
+      return;
+    }
+    if (videoClips.isEmpty) return;
+    if (_playheadInGap || _clipIndexAtTimelineTime(playheadSeconds) < 0) {
+      final nextIndex = videoClips.indexWhere((clip) =>
+          clip.timelineStart >= playheadSeconds - 0.001);
+      if (nextIndex < 0) {
+        await seek(Duration.zero);
+      } else {
+        await seek(Duration(milliseconds: (videoClips[nextIndex].timelineStart * 1000).round()));
+      }
+    }
+    await activePlayer.play();
+  }
+
+  Future<void> _handlePlayerPosition(Duration sourcePosition) async {
+    final activePlayer = player;
+    if (!mounted || _switchingMedia || _seekingAcrossCut || _playheadInGap ||
+        activePlayer == null || videoPath == null || videoClips.isEmpty) {
+      return;
+    }
+    final sourceSeconds = sourcePosition.inMilliseconds / 1000;
+    var index = _activePlaybackClipIndex;
+    if (index < 0 || index >= videoClips.length) {
+      index = videoClips.indexWhere((clip) =>
+          sourceSeconds >= clip.start - 0.03 && sourceSeconds < clip.end - 0.03);
+      if (index < 0) return;
+      _activePlaybackClipIndex = index;
+    }
+    final clip = videoClips[index];
+    if (sourceSeconds >= clip.end - 0.045) {
+      if (playing && index + 1 < videoClips.length) {
+        final next = videoClips[index + 1];
+        _activePlaybackClipIndex = index + 1;
+        _seekingAcrossCut = true;
+        setState(() => position = Duration(milliseconds: (next.timelineStart * 1000).round()));
+        try {
+          await activePlayer.seek(Duration(milliseconds: (next.start * 1000).round()));
+        } finally {
+          _seekingAcrossCut = false;
+        }
+      } else if (playing) {
+        setState(() => position = Duration(milliseconds: (clip.timelineEnd * 1000).round()));
+        await activePlayer.pause();
+      }
+      return;
+    }
+    if (sourceSeconds >= clip.start - 0.025) {
+      final sequenceSeconds = clip.timelineStart + math.max(0, sourceSeconds - clip.start);
+      setState(() => position = Duration(milliseconds: (sequenceSeconds * 1000).round()));
     }
   }
 
-  Future<void> _enforceEditedPlayback(Duration value) async {
+  Future<void> seek(Duration target) async {
     final activePlayer = player;
-    if (!mounted || _switchingMedia || _seekingAcrossCut || !playing ||
-        activePlayer == null || videoPath == null) {
+    if (activePlayer == null || videoPath == null) return;
+    final maxMs = timelineDuration.inMilliseconds;
+    final ms = target.inMilliseconds.clamp(0, maxMs > 0 ? maxMs : duration.inMilliseconds).toInt();
+    final sequenceSeconds = ms / 1000;
+    final index = _clipIndexAtTimelineTime(sequenceSeconds);
+    if (index < 0) {
+      _activePlaybackClipIndex = -1;
+      setState(() {
+        position = Duration(milliseconds: ms);
+        _playheadInGap = true;
+      });
+      await activePlayer.pause();
       return;
     }
-
-    if (videoClips.isEmpty) {
-      _seekingAcrossCut = true;
-      try { await activePlayer.pause(); } finally { _seekingAcrossCut = false; }
-      return;
-    }
-
-    final seconds = value.inMilliseconds / 1000;
-    var currentIndex = -1;
-    for (var i = 0; i < videoClips.length; i++) {
-      final clip = videoClips[i];
-      if (seconds >= clip.start - .02 && seconds < clip.end - .04) {
-        currentIndex = i;
-        break;
-      }
-    }
-
-    double? jumpTo;
-    if (currentIndex >= 0) {
-      final clip = videoClips[currentIndex];
-      if (seconds < clip.end - .07) return;
-      if (currentIndex + 1 < videoClips.length) {
-        jumpTo = videoClips[currentIndex + 1].start;
-      } else {
-        _seekingAcrossCut = true;
-        try { await activePlayer.pause(); } finally { _seekingAcrossCut = false; }
-        return;
-      }
-    } else {
-      // If playback enters a removed section, jump to the next remaining clip.
-      for (final clip in videoClips) {
-        if (clip.start > seconds + .025) {
-          jumpTo = clip.start;
-          break;
-        }
-      }
-      if (jumpTo == null) {
-        final allPassed = videoClips.every((clip) => seconds >= clip.end - .04);
-        if (allPassed) {
-          _seekingAcrossCut = true;
-          try { await activePlayer.pause(); } finally { _seekingAcrossCut = false; }
-        }
-        return;
-      }
-    }
-
+    final clip = videoClips[index];
+    final sourceSeconds = clip.start + sequenceSeconds - clip.timelineStart;
+    _activePlaybackClipIndex = index;
+    setState(() {
+      position = Duration(milliseconds: ms);
+      _playheadInGap = false;
+    });
     _seekingAcrossCut = true;
     try {
-      await activePlayer.seek(Duration(milliseconds: (jumpTo * 1000).round()));
+      await activePlayer.seek(Duration(milliseconds: (sourceSeconds * 1000).round()));
     } finally {
       _seekingAcrossCut = false;
     }
+  }
+
+  void _startEdgeDrag(int index, bool left) {
+    if (index < 0 || index >= videoClips.length) return;
+    _edgeDragBefore = _captureTimelineSnapshot();
+    _edgeDragIndex = index;
+    _edgeDragLeft = left;
+    final clip = videoClips[index];
+    _edgeDragOriginalEdge = left ? clip.timelineStart : clip.timelineEnd;
+    _edgeDragPointerX = 0;
+    setState(() {
+      selectedClipIndex = index;
+      _timelineSnapAt = null;
+    });
+  }
+
+  void _updateEdgeDrag(DragUpdateDetails details) {
+    if (_edgeDragIndex < 0 || _edgeDragIndex >= videoClips.length) return;
+    _edgeDragPointerX += details.delta.dx;
+    final clip = videoClips[_edgeDragIndex];
+    var nextEdge = _edgeDragOriginalEdge + _edgeDragPointerX / zoom;
+    double? snapTo;
+    if (snappingEnabled) {
+      final points = <double>[playheadSeconds];
+      for (var i = 0; i < videoClips.length; i++) {
+        if (i == _edgeDragIndex) continue;
+        points
+          ..add(videoClips[i].timelineStart)
+          ..add(videoClips[i].timelineEnd);
+      }
+      final threshold = 7 / zoom;
+      for (final point in points) {
+        if ((point - nextEdge).abs() <= threshold &&
+            (snapTo == null || (point - nextEdge).abs() < (snapTo - nextEdge).abs())) {
+          snapTo = point;
+        }
+      }
+      if (snapTo != null) nextEdge = snapTo;
+    }
+    setState(() {
+      if (_edgeDragLeft) {
+        final delta = nextEdge - clip.timelineStart;
+        if (clip.length - delta >= TimelineEditing.minimumClipLength && clip.start + delta >= 0) {
+          clip.start += delta;
+          clip.timelineStart = nextEdge;
+        }
+      } else {
+        final newLength = nextEdge - clip.timelineStart;
+        final sourceDuration = duration.inMilliseconds / 1000;
+        if (newLength >= TimelineEditing.minimumClipLength &&
+            (sourceDuration <= 0 || clip.start + newLength <= sourceDuration)) {
+          clip.end = clip.start + newLength;
+        }
+      }
+      _timelineSnapAt = snapTo;
+      projectDirty = true;
+    });
+  }
+
+  void _finishEdgeDrag() {
+    if (_edgeDragIndex < 0) return;
+    final before = _edgeDragBefore;
+    if (before != null) _timelineHistory.record(before: before, after: _captureTimelineSnapshot());
+    _edgeDragBefore = null;
+    _edgeDragIndex = -1;
+    if (mounted) setState(() {
+      _timelineSnapAt = null;
+      status = 'Длина клипа изменена. Ctrl+Z — отменить.';
+    });
   }
 
   void _startEdgeDrag(int index, bool left) {
@@ -919,27 +1112,13 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   void seekTimeline(double x) {
-    if (duration.inMilliseconds <= 0) return;
-    final target = Duration(milliseconds: ((x / zoom).clamp(0.0, timelineSeconds) * 1000).round());
-    setState(() => position = target);
-    _queuedTimelineSeek = target;
-    if (!_timelineSeekInFlight) unawaited(_flushTimelineSeek());
+    if (timelineDuration.inMilliseconds <= 0) return;
+    final target = Duration(
+      milliseconds: ((x / zoom).clamp(0.0, timelineSeconds) * 1000).round(),
+    );
+    unawaited(seek(target));
   }
 
-  Future<void> _flushTimelineSeek() async {
-    _timelineSeekInFlight = true;
-    try {
-      while (_queuedTimelineSeek != null && mounted) {
-        final target = _queuedTimelineSeek!;
-        _queuedTimelineSeek = null;
-        final activePlayer = player;
-        if (activePlayer != null) { try { await activePlayer.seek(target); } catch (_) {} }
-      }
-    } finally {
-      _timelineSeekInFlight = false;
-      if (_queuedTimelineSeek != null && mounted) unawaited(_flushTimelineSeek());
-    }
-  }
   String time(Duration value) {
     final total = math.max(0, value.inSeconds);
     final h = total ~/ 3600;
@@ -949,80 +1128,164 @@ class _EditorPageState extends State<EditorPage> {
     return '$m:$s';
   }
 
-  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+  Future<void> showKeyboardShortcuts() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Горячие клавиши'),
+        content: SizedBox(
+          width: 420,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: const [
+              _ShortcutRow('Пробел', 'Воспроизведение / пауза'),
+              _ShortcutRow('← / →', 'На один кадр назад / вперёд'),
+              _ShortcutRow('Shift + ← / →', 'На одну секунду назад / вперёд'),
+              _ShortcutRow('Ctrl + ← / →', 'Предыдущая / следующая точка монтажа'),
+              _ShortcutRow('J / K / L', 'Кадр назад / пауза / ускоренное воспроизведение'),
+              _ShortcutRow('I / O', 'Обрезать начало / конец по курсору'),
+              _ShortcutRow('Ctrl + B / Ctrl + K', 'Разделить клип'),
+              _ShortcutRow('Ctrl + D', 'Дублировать клип после исходного'),
+              _ShortcutRow('Delete', 'Удалить, оставить разрыв'),
+              _ShortcutRow('Shift + Delete', 'Удалить со сдвигом'),
+              _ShortcutRow('Ctrl + Z / Ctrl + Y', 'Отменить / повторить'),
+              _ShortcutRow('Ctrl + S / Ctrl + Shift + S', 'Сохранить / сохранить как'),
+              _ShortcutRow('Ctrl + O / Ctrl + Shift + O', 'Открыть проект / импортировать видео'),
+              _ShortcutRow('Ctrl + M', 'Экспортировать видео'),
+              _ShortcutRow('Ctrl + колесо мыши', 'Масштаб таймлайна под указателем'),
+              _ShortcutRow('Колесо мыши', 'Горизонтальная прокрутка таймлайна'),
+              _ShortcutRow('F1', 'Показать эту справку'),
+            ]),
+          ),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Закрыть'))],
+      ),
+    );
+  }
 
+  Future<void> _stepFrame(int direction) async {
+    if (videoPath == null) return;
+    if (playing) await player?.pause();
+    final frameMs = (1000 / frameRate).round().clamp(1, 1000);
+    await seek(position + Duration(milliseconds: frameMs * direction));
+  }
+
+  Future<void> _seekToEditPoint(int direction) async {
+    final points = <double>[];
+    for (final clip in videoClips) {
+      points..add(clip.timelineStart)..add(clip.timelineEnd);
+    }
+    points.sort();
+    if (direction < 0) {
+      for (final point in points.reversed) {
+        if (point < playheadSeconds - 0.02) {
+          await seek(Duration(milliseconds: (point * 1000).round()));
+          return;
+        }
+      }
+      await seek(Duration.zero);
+    } else {
+      for (final point in points) {
+        if (point > playheadSeconds + 0.02) {
+          await seek(Duration(milliseconds: (point * 1000).round()));
+          return;
+        }
+      }
+      await seek(timelineDuration);
+    }
+  }
+
+  Future<void> _shuttleForward() async {
+    if (player == null || videoPath == null) return;
+    const rates = [1.0, 2.0, 4.0, 8.0];
+    final index = rates.indexOf(playbackRate);
+    final next = !playing ? 1.0 : rates[(index < 0 ? 0 : (index + 1) % rates.length)];
+    await player!.setRate(next);
+    await player!.play();
+    if (mounted) setState(() => playbackRate = next);
+  }
+
+  Future<void> _pauseAndResetShuttle() async {
+    if (player == null) return;
+    await player!.pause();
+    await player!.setRate(1.0);
+    if (mounted) setState(() => playbackRate = 1.0);
+  }
+
+  bool _isTextInputFocused() {
+    final context = FocusManager.instance.primaryFocus?.context;
+    if (context == null) return false;
+    if (context.widget is EditableText) return true;
+    var editing = false;
+    context.visitAncestorElements((element) {
+      if (element.widget is EditableText) {
+        editing = true;
+        return false;
+      }
+      return true;
+    });
+    return editing;
+  }
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
+    if (_isTextInputFocused()) return KeyEventResult.ignored;
     final keyboard = HardwareKeyboard.instance;
-    final control = keyboard.isControlPressed;
+    final ctrl = keyboard.isControlPressed;
+    final shift = keyboard.isShiftPressed;
     final key = event.logicalKey;
-    if (control && key == LogicalKeyboardKey.keyZ) {
-      if (keyboard.isShiftPressed) {
-        redoTimelineEdit();
-      } else {
-        undoTimelineEdit();
-      }
+    if (event is KeyRepeatEvent &&
+        (ctrl || (key != LogicalKeyboardKey.arrowLeft && key != LogicalKeyboardKey.arrowRight))) {
       return KeyEventResult.handled;
     }
-    if (control && key == LogicalKeyboardKey.keyY) {
-      redoTimelineEdit();
+    if (ctrl && key == LogicalKeyboardKey.keyZ) {
+      if (shift) { redoTimelineEdit(); } else { undoTimelineEdit(); }
       return KeyEventResult.handled;
     }
-    if (control && key == LogicalKeyboardKey.keyO) {
-      if (keyboard.isShiftPressed) {
-        unawaited(pickVideo());
-      } else {
-        unawaited(openProject());
-      }
+    if (ctrl && key == LogicalKeyboardKey.keyY) { redoTimelineEdit(); return KeyEventResult.handled; }
+    if (ctrl && key == LogicalKeyboardKey.keyO) {
+      unawaited(shift ? pickVideo() : openProject());
       return KeyEventResult.handled;
     }
-    if (control && key == LogicalKeyboardKey.keyS) {
-      if (keyboard.isShiftPressed) {
-        saveProject(saveAs: true);
-      } else {
-        saveProject();
-      }
+    if (ctrl && key == LogicalKeyboardKey.keyS) {
+      unawaited(saveProject(saveAs: shift));
       return KeyEventResult.handled;
     }
-    if (control && key == LogicalKeyboardKey.keyE) {
-      unawaited(extractAudio());
-      return KeyEventResult.handled;
-    }
-    if (control && (key == LogicalKeyboardKey.equal || key == LogicalKeyboardKey.add || key == LogicalKeyboardKey.numpadAdd)) {
-      setTimelineZoom(zoom + 4);
-      return KeyEventResult.handled;
-    }
-    if (control && (key == LogicalKeyboardKey.minus || key == LogicalKeyboardKey.numpadSubtract)) {
-      setTimelineZoom(zoom - 4);
-      return KeyEventResult.handled;
-    }
-    if (control && key == LogicalKeyboardKey.keyB) {
+    if (ctrl && key == LogicalKeyboardKey.keyE) { unawaited(extractAudio()); return KeyEventResult.handled; }
+    if (ctrl && key == LogicalKeyboardKey.keyM) { unawaited(exportEditedVideo()); return KeyEventResult.handled; }
+    if (ctrl && key == LogicalKeyboardKey.keyD) { duplicateSelectedClip(); return KeyEventResult.handled; }
+    if (ctrl && (key == LogicalKeyboardKey.keyB || key == LogicalKeyboardKey.keyK)) {
       splitSelectedClip();
       return KeyEventResult.handled;
     }
-    if (key == LogicalKeyboardKey.delete || key == LogicalKeyboardKey.backspace) {
-      deleteSelectedClip();
+    if (ctrl && (key == LogicalKeyboardKey.equal || key == LogicalKeyboardKey.add || key == LogicalKeyboardKey.numpadAdd)) {
+      setTimelineZoom(zoom + 4);
       return KeyEventResult.handled;
     }
-    if (key == LogicalKeyboardKey.space) {
-      unawaited(togglePlayback());
+    if (ctrl && (key == LogicalKeyboardKey.minus || key == LogicalKeyboardKey.numpadSubtract)) {
+      setTimelineZoom(zoom - 4);
       return KeyEventResult.handled;
     }
+    if (ctrl && key == LogicalKeyboardKey.arrowLeft) { unawaited(_seekToEditPoint(-1)); return KeyEventResult.handled; }
+    if (ctrl && key == LogicalKeyboardKey.arrowRight) { unawaited(_seekToEditPoint(1)); return KeyEventResult.handled; }
+    if (key == LogicalKeyboardKey.f1) { unawaited(showKeyboardShortcuts()); return KeyEventResult.handled; }
+    if (key == LogicalKeyboardKey.delete && shift) { deleteSelectedClip(ripple: true); return KeyEventResult.handled; }
+    if (key == LogicalKeyboardKey.delete || key == LogicalKeyboardKey.backspace) { deleteSelectedClip(); return KeyEventResult.handled; }
+    if (key == LogicalKeyboardKey.space) { unawaited(togglePlayback()); return KeyEventResult.handled; }
+    if (key == LogicalKeyboardKey.keyJ) { unawaited(_stepFrame(-1)); return KeyEventResult.handled; }
+    if (key == LogicalKeyboardKey.keyK) { unawaited(_pauseAndResetShuttle()); return KeyEventResult.handled; }
+    if (key == LogicalKeyboardKey.keyL) { unawaited(_shuttleForward()); return KeyEventResult.handled; }
+    if (key == LogicalKeyboardKey.keyI) { trimSelectedStart(); return KeyEventResult.handled; }
+    if (key == LogicalKeyboardKey.keyO) { trimSelectedEnd(); return KeyEventResult.handled; }
     if (key == LogicalKeyboardKey.arrowLeft) {
-      unawaited(seek(position - const Duration(seconds: 5)));
+      unawaited(shift ? seek(position - const Duration(seconds: 1)) : _stepFrame(-1));
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowRight) {
-      unawaited(seek(position + const Duration(seconds: 5)));
+      unawaited(shift ? seek(position + const Duration(seconds: 1)) : _stepFrame(1));
       return KeyEventResult.handled;
     }
-    if (key == LogicalKeyboardKey.home) {
-      unawaited(seek(Duration.zero));
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.end) {
-      unawaited(seek(duration));
-      return KeyEventResult.handled;
-    }
+    if (key == LogicalKeyboardKey.home) { unawaited(seek(Duration.zero)); return KeyEventResult.handled; }
+    if (key == LogicalKeyboardKey.end) { unawaited(seek(timelineDuration)); return KeyEventResult.handled; }
     return KeyEventResult.ignored;
   }
 
@@ -1081,6 +1344,13 @@ class _EditorPageState extends State<EditorPage> {
             icon: checkingForUpdates
                 ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.system_update_alt, size: 18, color: muted),
+          ),
+          IconButton(
+            key: const ValueKey('keyboard-shortcuts'),
+            tooltip: 'Горячие клавиши',
+            visualDensity: VisualDensity.compact,
+            onPressed: showKeyboardShortcuts,
+            icon: const Icon(Icons.keyboard_outlined, size: 18),
           ),
           const Icon(Icons.desktop_windows_outlined, size: 16, color: muted),
           const SizedBox(width: 8),
@@ -1428,6 +1698,8 @@ class _EditorPageState extends State<EditorPage> {
                                       ),
                                     if (previewTransitionOverlay.opacity > 0)
                                       Positioned.fill(child: IgnorePointer(child: ColoredBox(color: previewTransitionOverlay.color.withValues(alpha: previewTransitionOverlay.opacity)))),
+                                    if (_playheadInGap)
+                                      const Positioned.fill(child: IgnorePointer(child: ColoredBox(color: Colors.black))),
                                   ]),
                                 ),
                               );
@@ -1447,13 +1719,13 @@ class _EditorPageState extends State<EditorPage> {
                 child: SliderTheme(
                   data: SliderTheme.of(context).copyWith(trackHeight: 3, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5), overlayShape: const RoundSliderOverlayShape(overlayRadius: 11)),
                   child: Slider(
-                    value: duration.inMilliseconds > 0 ? (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0).toDouble() : 0,
-                    onChanged: duration.inMilliseconds > 0 ? (v) => seek(Duration(milliseconds: (duration.inMilliseconds * v).round())) : null,
+                    value: timelineDuration.inMilliseconds > 0 ? (position.inMilliseconds / timelineDuration.inMilliseconds).clamp(0.0, 1.0).toDouble() : 0,
+                    onChanged: timelineDuration.inMilliseconds > 0 ? (v) => seek(Duration(milliseconds: (timelineDuration.inMilliseconds * v).round())) : null,
                   ),
                 ),
               ),
               const SizedBox(width: 8),
-              Text(time(duration), style: const TextStyle(fontSize: 11, color: muted)),
+              Text(time(timelineDuration), style: const TextStyle(fontSize: 11, color: muted)),
               const SizedBox(width: 4),
               IconButton(
                 tooltip: 'Скорость предпросмотра',
@@ -1666,6 +1938,17 @@ class _EditorPageState extends State<EditorPage> {
               Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4), decoration: BoxDecoration(color: const Color(0xFF292A36), borderRadius: BorderRadius.circular(5)), child: const Text('V1', style: TextStyle(fontSize: 9, color: Color(0xFFB8B6D4), fontWeight: FontWeight.w800))),
               const SizedBox(width: 8),
               IconButton(
+                key: const ValueKey('timeline-snap'),
+                tooltip: snappingEnabled ? 'Привязка включена' : 'Привязка выключена',
+                visualDensity: VisualDensity.compact,
+                onPressed: () => setState(() {
+                  snappingEnabled = !snappingEnabled;
+                  _timelineSnapAt = null;
+                }),
+                icon: Icon(snappingEnabled ? Icons.push_pin : Icons.push_pin_outlined,
+                  size: 17, color: snappingEnabled ? accent : muted),
+              ),
+              IconButton(
                 key: const ValueKey('timeline-undo'),
                 tooltip: 'Отменить (Ctrl+Z)',
                 visualDensity: VisualDensity.compact,
@@ -1700,12 +1983,26 @@ class _EditorPageState extends State<EditorPage> {
           Expanded(
             child: Listener(
               onPointerSignal: (event) {
-                if (event is PointerScrollEvent) {
-                  final next = event.scrollDelta.dy < 0 ? zoom + 4 : zoom - 4;
-                  setTimelineZoom(next);
+                if (event is! PointerScrollEvent || !timelineScrollController.hasClients) return;
+                final controller = timelineScrollController;
+                if (HardwareKeyboard.instance.isControlPressed) {
+                  final pointerX = event.localPosition.dx;
+                  final anchorSeconds = ((controller.offset + pointerX - 140) / zoom)
+                      .clamp(0.0, timelineSeconds).toDouble();
+                  setTimelineZoom(event.scrollDelta.dy < 0 ? zoom + 4 : zoom - 4);
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!controller.hasClients) return;
+                    final nextOffset = anchorSeconds * zoom + 140 - pointerX;
+                    controller.jumpTo(nextOffset.clamp(0.0, controller.position.maxScrollExtent).toDouble());
+                  });
+                } else {
+                  final delta = event.scrollDelta.dx != 0 ? event.scrollDelta.dx : event.scrollDelta.dy;
+                  controller.jumpTo((controller.offset + delta)
+                      .clamp(0.0, controller.position.maxScrollExtent).toDouble());
                 }
               },
               child: SingleChildScrollView(
+              controller: timelineScrollController,
               scrollDirection: Axis.horizontal,
               child: SizedBox(
                 width: 140 + timelineWidth,
@@ -1823,14 +2120,17 @@ class _EditorPageState extends State<EditorPage> {
               if (path != null && !audio)
                 for (var i = 0; i < videoClips.length; i++)
                   Positioned(
-                    left: videoClips[i].start * zoom + 4,
+                    left: videoClips[i].timelineStart * zoom + 4,
                     top: 7,
                     bottom: 7,
                     width: math.max(12.0, videoClips[i].length * zoom - 2).toDouble(),
                     child: GestureDetector(
-                      onTapDown: (d) => seekTimeline(videoClips[i].start * zoom + d.localPosition.dx),
+                      onTapDown: (d) => seekTimeline(videoClips[i].timelineStart * zoom + d.localPosition.dx),
                       onTap: () => setState(() { selectedClipIndex = i; projectDirty = true; }),
                       onSecondaryTapDown: (details) => showClipMenu(details.globalPosition, i),
+                      onHorizontalDragStart: (_) => _startClipMove(i),
+                      onHorizontalDragUpdate: _updateClipMove,
+                      onHorizontalDragEnd: (_) => _finishClipMove(),
                       child: Stack(
                         fit: StackFit.expand,
                         clipBehavior: Clip.hardEdge,
@@ -1902,6 +2202,9 @@ class _EditorPageState extends State<EditorPage> {
                       ),
                     ),
                   ),
+              if (_timelineSnapAt != null)
+                Positioned(left: _timelineSnapAt! * zoom, top: 0, bottom: 0, width: 1,
+                  child: const ColoredBox(color: Color(0xFFB18CFF))),
               Positioned(left: playhead, top: 0, bottom: 0, width: 2, child: Container(color: Colors.white)),
               Positioned(left: (playhead - 4).clamp(0.0, timelineWidth - 10).toDouble(), top: 0, width: 10, height: 8, child: const DecoratedBox(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.only(bottomLeft: Radius.circular(3), bottomRight: Radius.circular(3))))),
             ]),
@@ -1912,7 +2215,13 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   TimelineSnapshot _captureTimelineSnapshot() => TimelineSnapshot(
-        videoClips: videoClips.map((clip) => TimelineClipRange(clip.start, clip.end)).toList(),
+        videoClips: videoClips
+            .map((clip) => TimelineClipRange(
+                  clip.start,
+                  clip.end,
+                  timelineStart: clip.timelineStart,
+                ))
+            .toList(),
         selectedClipIndex: selectedClipIndex,
         audioPath: audioPath,
         audioClipStart: audioClipStart,
@@ -1922,7 +2231,13 @@ class _EditorPageState extends State<EditorPage> {
   void _restoreTimelineSnapshot(TimelineSnapshot snapshot) {
     videoClips
       ..clear()
-      ..addAll(snapshot.videoClips.map((clip) => TimelineClip(start: clip.start, end: clip.end)));
+      ..addAll(snapshot.videoClips.map((clip) => TimelineClip(
+            start: clip.start,
+            end: clip.end,
+            timelineStart: clip.timelineStart,
+          )));
+    videoClips.sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
+    _activePlaybackClipIndex = snapshot.selectedClipIndex;
     selectedClipIndex = videoClips.isEmpty
         ? 0
         : snapshot.selectedClipIndex.clamp(0, videoClips.length - 1).toInt();
@@ -2010,8 +2325,9 @@ class _EditorPageState extends State<EditorPage> {
         PopupMenuItem(value: 'trimStart', child: ListTile(dense: true, leading: Icon(Icons.first_page), title: Text('Обрезать начало до курсора'))),
         PopupMenuItem(value: 'trimEnd', child: ListTile(dense: true, leading: Icon(Icons.last_page), title: Text('Обрезать конец по курсору'))),
         PopupMenuDivider(),
-        PopupMenuItem(value: 'duplicate', child: ListTile(dense: true, leading: Icon(Icons.copy_outlined), title: Text('Дублировать клип'))),
-        PopupMenuItem(value: 'delete', child: ListTile(dense: true, leading: Icon(Icons.delete_outline, color: Colors.redAccent), title: Text('Удалить клип'))),
+        PopupMenuItem(value: 'duplicate', child: ListTile(dense: true, leading: Icon(Icons.copy_outlined), title: Text('Дублировать клип'), subtitle: Text('Ctrl+D'))),
+        PopupMenuItem(value: 'delete', child: ListTile(dense: true, leading: Icon(Icons.delete_outline), title: Text('Удалить, оставить разрыв'), subtitle: Text('Delete'))),
+        PopupMenuItem(value: 'rippleDelete', child: ListTile(dense: true, leading: Icon(Icons.auto_delete_outlined, color: Colors.redAccent), title: Text('Удалить со сдвигом'), subtitle: Text('Shift+Delete'))),
       ],
     );
     if (!mounted || action == null) return;
@@ -2021,67 +2337,156 @@ class _EditorPageState extends State<EditorPage> {
       case 'trimEnd': trimSelectedEnd(); break;
       case 'duplicate': duplicateSelectedClip(); break;
       case 'delete': deleteSelectedClip(); break;
+      case 'rippleDelete': deleteSelectedClip(ripple: true); break;
     }
   }
 
-  double get playheadSeconds => (position.inMilliseconds / 1000).clamp(0.0, timelineSeconds).toDouble();
+  double get playheadSeconds =>
+      (position.inMilliseconds / 1000).clamp(0.0, timelineSeconds).toDouble();
 
   void splitSelectedClip() {
-    if (selectedClipIndex < 0 || selectedClipIndex >= videoClips.length) return;
-    final clip = videoClips[selectedClipIndex];
-    final cut = playheadSeconds;
-    if (cut <= clip.start + .08 || cut >= clip.end - .08) {
-      setStatus('Поставьте курсор внутрь выбранного клипа, минимум за 0,08 с от края.');
-      return;
+    try {
+      final next = TimelineEditing.splitAt(_clipRanges(), selectedClipIndex, playheadSeconds);
+      _performTimelineEdit(() {
+        _replaceClipRanges(next);
+        selectedClipIndex++;
+        _activePlaybackClipIndex = selectedClipIndex;
+        status = 'Клип разделён в ${time(position)}.';
+      });
+    } on ArgumentError catch (error) {
+      setStatus(error.message?.toString() ?? 'Невозможно разделить клип в этой позиции.');
     }
-    _performTimelineEdit(() {
-      final right = TimelineClip(start: cut, end: clip.end);
-      clip.end = cut;
-      videoClips.insert(selectedClipIndex + 1, right);
-      selectedClipIndex++;
-      status = 'Клип разделён в ${time(position)}.';
-    });
   }
 
   void trimSelectedStart() {
-    if (selectedClipIndex < 0 || selectedClipIndex >= videoClips.length) return;
-    final clip = videoClips[selectedClipIndex];
-    final cut = playheadSeconds;
-    if (cut <= clip.start || cut >= clip.end - .08) {
-      setStatus('Курсор должен находиться внутри выбранного клипа.');
-      return;
+    try {
+      final next = TimelineEditing.trimStartRipple(_clipRanges(), selectedClipIndex, playheadSeconds);
+      _performTimelineEdit(() {
+        _replaceClipRanges(next);
+        status = 'Начало клипа обрезано с риппл-сдвигом.';
+      });
+    } on ArgumentError catch (error) {
+      setStatus(error.message?.toString() ?? 'Невозможно обрезать начало клипа.');
     }
-    _performTimelineEdit(() { clip.start = cut; status = 'Начало клипа обрезано до ${time(position)}.'; });
   }
 
   void trimSelectedEnd() {
-    if (selectedClipIndex < 0 || selectedClipIndex >= videoClips.length) return;
-    final clip = videoClips[selectedClipIndex];
-    final cut = playheadSeconds;
-    if (cut <= clip.start + .08 || cut >= clip.end) {
-      setStatus('Курсор должен находиться внутри выбранного клипа.');
-      return;
+    try {
+      final next = TimelineEditing.trimEndRipple(_clipRanges(), selectedClipIndex, playheadSeconds);
+      _performTimelineEdit(() {
+        _replaceClipRanges(next);
+        status = 'Конец клипа обрезан с риппл-сдвигом.';
+      });
+    } on ArgumentError catch (error) {
+      setStatus(error.message?.toString() ?? 'Невозможно обрезать конец клипа.');
     }
-    _performTimelineEdit(() { clip.end = cut; status = 'Конец клипа обрезан по ${time(position)}.'; });
   }
 
   void duplicateSelectedClip() {
     if (selectedClipIndex < 0 || selectedClipIndex >= videoClips.length) return;
-    final clip = videoClips[selectedClipIndex];
+    final selected = videoClips[selectedClipIndex];
+    final insertionTime = selected.timelineEnd;
+    final next = TimelineEditing.duplicateAfter(_clipRanges(), selectedClipIndex);
     _performTimelineEdit(() {
-      videoClips.insert(selectedClipIndex + 1, TimelineClip(start: clip.start, end: clip.end));
-      selectedClipIndex++;
-      status = 'Клип продублирован на таймлайне.';
+      _replaceClipRanges(next);
+      selectedClipIndex = videoClips.indexWhere((clip) =>
+          clip.start == selected.start &&
+          clip.end == selected.end &&
+          (clip.timelineStart - insertionTime).abs() < 0.001);
+      if (selectedClipIndex < 0) selectedClipIndex = 0;
+      _activePlaybackClipIndex = selectedClipIndex;
+      status = 'Копия вставлена после выбранного клипа.';
     });
   }
 
-  void deleteSelectedClip() {
+  void deleteSelectedClip({bool ripple = false}) {
     if (videoClips.isEmpty || selectedClipIndex < 0 || selectedClipIndex >= videoClips.length) return;
+    final next = ripple
+        ? TimelineEditing.rippleDelete(_clipRanges(), selectedClipIndex)
+        : TimelineEditing.deleteLeaveGap(_clipRanges(), selectedClipIndex);
     _performTimelineEdit(() {
-      videoClips.removeAt(selectedClipIndex);
-      selectedClipIndex = videoClips.isEmpty ? 0 : selectedClipIndex.clamp(0, videoClips.length - 1).toInt();
-      status = videoClips.isEmpty ? 'На таймлайне нет видеоклипов.' : 'Клип удалён с таймлайна.';
+      _replaceClipRanges(next);
+      selectedClipIndex = videoClips.isEmpty
+          ? 0
+          : selectedClipIndex.clamp(0, videoClips.length - 1).toInt();
+      _activePlaybackClipIndex = -1;
+      _playheadInGap = false;
+      status = ripple
+          ? 'Клип удалён, последующие клипы сдвинуты.'
+          : 'Клип удалён. На таймлайне оставлен разрыв.';
     });
+  }
+
+  void _startClipMove(int index) {
+    if (index < 0 || index >= videoClips.length) return;
+    _clipMoveBefore = _captureTimelineSnapshot();
+    _clipMoveIndex = index;
+    _clipMoveOriginalStart = videoClips[index].timelineStart;
+    _clipMovePointerX = 0;
+    setState(() {
+      selectedClipIndex = index;
+      _timelineSnapAt = null;
+    });
+  }
+
+  void _updateClipMove(DragUpdateDetails details) {
+    if (_clipMoveIndex < 0 || _clipMoveIndex >= videoClips.length) return;
+    _clipMovePointerX += details.delta.dx;
+    var candidate = math.max(0.0, _clipMoveOriginalStart + _clipMovePointerX / zoom).toDouble();
+    double? snapTo;
+    if (snappingEnabled) {
+      final threshold = 7 / zoom;
+      final points = <double>[0, playheadSeconds];
+      for (var i = 0; i < videoClips.length; i++) {
+        if (i == _clipMoveIndex) continue;
+        points
+          ..add(videoClips[i].timelineStart)
+          ..add(videoClips[i].timelineEnd);
+      }
+      for (final point in points) {
+        if ((point - candidate).abs() <= threshold &&
+            (snapTo == null || (point - candidate).abs() < (snapTo - candidate).abs())) {
+          snapTo = point;
+        }
+      }
+      if (snapTo != null) candidate = snapTo;
+    }
+    setState(() {
+      videoClips[_clipMoveIndex].timelineStart = candidate;
+      _timelineSnapAt = snapTo;
+    });
+  }
+
+  void _finishClipMove() {
+    final before = _clipMoveBefore;
+    final index = _clipMoveIndex;
+    if (before == null || index < 0 || index >= before.videoClips.length) return;
+    final requestedStart = videoClips[index].timelineStart;
+    final moving = before.videoClips[index];
+    final next = TimelineEditing.moveInsert(before.videoClips, index, requestedStart);
+    var selected = next.indexWhere((clip) =>
+        clip.start == moving.start &&
+        clip.end == moving.end &&
+        (clip.timelineStart - requestedStart).abs() < 0.001);
+    if (selected < 0) selected = 0;
+    final after = TimelineSnapshot(
+      videoClips: next,
+      selectedClipIndex: selected,
+      audioPath: before.audioPath,
+      audioClipStart: before.audioClipStart,
+      audioClipEnd: before.audioClipEnd,
+    );
+    setState(() {
+      _replaceClipRanges(next);
+      selectedClipIndex = selected;
+      _activePlaybackClipIndex = selected;
+      _timelineSnapAt = null;
+      projectDirty = true;
+      status = 'Клип перемещён. Ctrl+Z — отменить.';
+    });
+    _timelineHistory.record(before: before, after: after);
+    _clipMoveBefore = null;
+    _clipMoveIndex = -1;
   }
 
   Future<void> showColorAdjustments() async {
