@@ -7,6 +7,9 @@
 **Design:** docs/superpowers/specs/2026-10-30-editor-controls-and-timeline-design.md
 
 ## Phase 1 — Reliable desktop command handling
+- [x] Implemented in v0.3.63: focus-safe keyboard commands, frame stepping, edit-point navigation, split/duplicate/export shortcuts, I/O trims, and shortcut help.
+- [x] Implemented in v0.3.63: timeline snapping, drag-to-insert clip movement, pointer-anchored zoom, horizontal wheel scrolling, sequence/source time separation, and schema v1 migration.
+
 - [ ] Keep keyboard commands from intercepting text entry.
 - [ ] Add frame-accurate left/right stepping using the current video's FPS metadata.
 - [ ] Add Shift+Arrow one-second navigation and Ctrl+Arrow edit-point navigation.
@@ -16,7 +19,10 @@
 - [ ] Add a snapping toggle and apply snap thresholds to timeline edge trims.
 
 ## Phase 2 — Correct clip placement semantics
-- [ ] Add stable IDs and separate sourceIn/sourceOut from timelineStart.
+- [x] Implement a basic single-track sequence model with separate source in/out and timeline start.
+- [x] Implement split, insert duplicate, insert move, gap delete, ripple delete, and ripple trim operations.
+
+- [ ] Add stable clip IDs and asset IDs for persistent identity across edits.
 - [ ] Implement time mapping between sequence time and source time.
 - [ ] Fix split, trim, move, reorder, duplicate, insert, gap delete, and ripple delete.
 - [ ] Add clip drag/drop and edge snapping.
@@ -35,6 +41,9 @@
 - [ ] Ensure detached audio is audible in preview and correctly aligned in export.
 - [ ] Add cancellation, progress, export presets, and output validation.
 - [ ] Add regression fixtures for mixed frame rates, missing audio, rotations, and long timelines.
+
+## Notes
+The first pass is deliberately a one-source, one-video-track editor. It improves standard desktop commands and fixes sequence ordering, but does not claim full CapCut/Premiere feature parity. The next model increment must add stable media/clip IDs and multiple independent assets before multi-track editing.
 
 ## Release gate
 1. flutter analyze has no issues.

@@ -62,6 +62,32 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('desktop shortcut help is discoverable and opens', (tester) async {
+    await tester.pumpWidget(const G3fiCutApp());
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('keyboard-shortcuts')), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.f1);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Горячие клавиши'), findsOneWidget);
+    expect(find.text('На один кадр назад / вперёд'), findsOneWidget);
+    expect(find.text('Ctrl + M'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('timeline snapping toggle is visible and interactive', (tester) async {
+    await tester.pumpWidget(const G3fiCutApp());
+    await tester.pump();
+
+    final snapButton = find.byKey(const ValueKey('timeline-snap'));
+    expect(snapButton, findsOneWidget);
+    await tester.tap(snapButton);
+    await tester.pump();
+    expect(find.byTooltip('Привязка выключена'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('inspector switches render without Material or ink errors', (tester) async {
     await tester.pumpWidget(const G3fiCutApp());
     await tester.pump();

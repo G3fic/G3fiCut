@@ -12,7 +12,8 @@ GifCut is a Windows-first desktop video editor prototype built with Flutter.
 - Timeline with video and audio tracks, timeline zoom, and a draggable playhead.
 - Extract the video's audio to a WAV file.
 - Project open/save/save-as in the .g3ficut format (Ctrl+O, Ctrl+S, Ctrl+Shift+S); Ctrl+Shift+O imports video.
-- Hotkeys for playback, seeking, timeline zoom, split (Ctrl+B), undo (Ctrl+Z), and redo (Ctrl+Y or Ctrl+Shift+Z).
+- Desktop shortcuts for frame stepping, edit-point navigation, playback, split, ripple trim, duplicate, delete/ripple delete, export, project save/open, and undo/redo. Press F1 or use the keyboard icon to view the shortcut reference.
+- Timeline clip dragging/reordering on the single video track, source-time versus sequence-time mapping, snapping control, and pointer-anchored timeline zoom.
 - Windows installer with a Start menu entry and optional desktop shortcut.
 - In-app checks for new stable versions published in GitHub Releases.
 - Local processing; video is not uploaded to a server.
@@ -21,7 +22,7 @@ Project files store local media paths and edit state; the media itself stays on 
 
 ## Not included yet
 
-Multiple independent source files on separate video tracks, autosave/recovery, media relinking, text and titles, transitions, effects, and advanced export profiles are planned for later iterations.
+Multiple independent source assets and video/audio tracks, multi-select, autosave/recovery, media relinking, timed photo/title clips, keyframes, track mute/solo/lock, advanced effects, audio preview mixing, and advanced export profiles remain planned. G3fiCut is an early desktop editor and is not yet feature-equivalent to CapCut or Premiere Pro.
 
 ## Install and update
 

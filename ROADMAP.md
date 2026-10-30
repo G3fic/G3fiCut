@@ -10,6 +10,14 @@ This roadmap tracks real editing capabilities, not decorative controls. A featur
 - [x] Verify the v0.2.7 installer asset and successful release workflow.
 
 ## 0.3 — Project workflow and timeline manipulation
+- [x] Separate source-media in/out points from sequence placement.
+- [x] Duplicate clips as insert edits after the selected clip.
+- [x] Drag-reorder clips on the single video track with snapping.
+- [x] Frame stepping, edit-point navigation, focus-safe shortcuts, and shortcut help.
+- [x] Project schema v2 with v1 timing migration.
+- [x] Export clips in sequence order and preserve gaps with black segments.
+- [ ] Stable clip IDs, multi-select, multi-track media, and cross-track editing.
+- [ ] Complete audio preview mixing and timed photo/title clips.
 - [x] Implemented in feature branch: versioned .g3ficut project format, open/save/save-as, media existence checks, clip ranges, selected clip, audio trim, zoom and playhead (release validation still pending).
 - Autosave/recovery with clear handling of moved or missing media.
 - Media bin with multiple source video/audio/image files.
