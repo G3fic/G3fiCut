@@ -96,6 +96,8 @@ class _EditorPageState extends State<EditorPage> {
   final List<PhotoOverlay> photoOverlays = [];
   int selectedPhotoOverlay = -1;
   bool _timelineSeekInFlight = false;
+  bool _showVerticalSnapGuide = false;
+  bool _showHorizontalSnapGuide = false;
   Duration? _queuedTimelineSeek;
   String aspectRatioPreset = '16:9';
   String videoEffect = 'Оригинал';
@@ -1286,13 +1288,23 @@ class _EditorPageState extends State<EditorPage> {
                                 child: ClipRect(
                                   child: Stack(fit: StackFit.expand, children: [
                                     const ColoredBox(color: Colors.black),
+                                    if (_showVerticalSnapGuide)
+                                      Positioned(left: bounds.maxWidth / 2 - .5, top: 0, bottom: 0, child: IgnorePointer(child: Container(width: 1, color: const Color(0xFF35D7FF)))),
+                                    if (_showHorizontalSnapGuide)
+                                      Positioned(top: bounds.maxHeight / 2 - .5, left: 0, right: 0, child: IgnorePointer(child: Container(height: 1, color: const Color(0xFF35D7FF)))),
                                     Positioned.fill(
                                       child: GestureDetector(                                        behavior: HitTestBehavior.translucent,
                                         onPanUpdate: (d) => setState(() {
-                                          videoOffsetX = videoOffsetX + d.delta.dx / math.max(1, bounds.maxWidth);
-                                          videoOffsetY = videoOffsetY + d.delta.dy / math.max(1, bounds.maxHeight);
-                                          if (videoOffsetX.abs() < 0.012) videoOffsetX = 0;
-                                          if (videoOffsetY.abs() < 0.012) videoOffsetY = 0;
+                                          var nextX = videoOffsetX + d.delta.dx / math.max(1, bounds.maxWidth);
+                                          var nextY = videoOffsetY + d.delta.dy / math.max(1, bounds.maxHeight);
+                                          _showVerticalSnapGuide = nextX.abs() < 0.022;
+                                          _showHorizontalSnapGuide = nextY.abs() < 0.022;
+                                          if (nextX.abs() < 0.022) nextX *= 0.42;
+                                          if (nextY.abs() < 0.022) nextY *= 0.42;
+                                          if (nextX.abs() < 0.0025) nextX = 0;
+                                          if (nextY.abs() < 0.0025) nextY = 0;
+                                          videoOffsetX = nextX;
+                                          videoOffsetY = nextY;
                                           projectDirty = true;
                                         }),
                                         child: Transform.translate(
@@ -1359,10 +1371,16 @@ class _EditorPageState extends State<EditorPage> {
                                           onTap: () => setState(() => selectedPhotoOverlay = i),
                                           onPanStart: (_) => setState(() => selectedPhotoOverlay = i),
                                           onPanUpdate: (d) => setState(() {
-                                            photoOverlays[i].x = (photoOverlays[i].x + d.delta.dx / bounds.maxWidth).clamp(-1.5, 1.5).toDouble();
-                                            photoOverlays[i].y = (photoOverlays[i].y + d.delta.dy / bounds.maxHeight).clamp(-1.5, 1.5).toDouble();
-                                            if (photoOverlays[i].x.abs() < 0.012) photoOverlays[i].x = 0;
-                                            if (photoOverlays[i].y.abs() < 0.012) photoOverlays[i].y = 0;
+                                            var nextX = (photoOverlays[i].x + d.delta.dx / bounds.maxWidth).clamp(-1.5, 1.5).toDouble();
+                                            var nextY = (photoOverlays[i].y + d.delta.dy / bounds.maxHeight).clamp(-1.5, 1.5).toDouble();
+                                            _showVerticalSnapGuide = nextX.abs() < 0.022;
+                                            _showHorizontalSnapGuide = nextY.abs() < 0.022;
+                                            if (nextX.abs() < 0.022) nextX *= 0.42;
+                                            if (nextY.abs() < 0.022) nextY *= 0.42;
+                                            if (nextX.abs() < 0.0025) nextX = 0;
+                                            if (nextY.abs() < 0.0025) nextY = 0;
+                                            photoOverlays[i].x = nextX;
+                                            photoOverlays[i].y = nextY;
                                             projectDirty = true;
                                           }),
                                           child: Transform.rotate(
