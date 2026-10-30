@@ -253,8 +253,7 @@ class _EditorPageState extends State<EditorPage> {
         if (item is Map<String, dynamic> && item['name'] == expectedName) {
           installerAsset = item;
           break;
-        }
-      }
+        }      }
       if (installerAsset == null) {
         throw StateError('В релизе $latestTag нет установщика $expectedName.');
       }
@@ -509,8 +508,7 @@ class _EditorPageState extends State<EditorPage> {
         }
       }
       _switchingMedia = false;
-      _switchingMediaDuration = null;
-      if (mounted) {
+      _switchingMediaDuration = null;      if (mounted) {
         setState(() {
           position = previousPosition;
           status = 'Не удалось открыть видео: $e';
@@ -765,8 +763,7 @@ class _EditorPageState extends State<EditorPage> {
         audioClipStart = 0;
         audioClipEnd = duration.inMilliseconds / 1000;
         status = 'Готово: звук добавлен на отдельную дорожку. Его можно обрезать независимо от видео правым кликом.';
-      });
-    } on ProcessException {
+      });    } on ProcessException {
       if (mounted) setState(() => status = 'FFmpeg не найден. В архиве из GitHub Actions ffmpeg.exe лежит рядом с GifCut.exe. Для локального запуска добавьте FFmpeg в PATH.');
     } catch (e) {
       if (mounted) setState(() => status = 'Ошибка извлечения звука: $e');
@@ -1021,8 +1018,7 @@ class _EditorPageState extends State<EditorPage> {
 
   @override
   Widget build(BuildContext context) => Focus(
-        autofocus: true,
-        onKeyEvent: _handleKeyEvent,
+        autofocus: true,        onKeyEvent: _handleKeyEvent,
         child: Scaffold(
         body: SafeArea(
           child: Column(
@@ -1277,8 +1273,7 @@ class _EditorPageState extends State<EditorPage> {
                                   child: Stack(fit: StackFit.expand, children: [
                                     const ColoredBox(color: Colors.black),
                                     Positioned.fill(
-                                      child: GestureDetector(
-                                        behavior: HitTestBehavior.translucent,
+                                      child: GestureDetector(                                        behavior: HitTestBehavior.translucent,
                                         onPanUpdate: (d) => setState(() {
                                           videoOffsetX += d.delta.dx / math.max(1, bounds.maxWidth);
                                           videoOffsetY += d.delta.dy / math.max(1, bounds.maxHeight);
@@ -1309,6 +1304,34 @@ class _EditorPageState extends State<EditorPage> {
                                         ),
                                       ),
                                     ),
+                                    if (selectedPhotoOverlay < 0) ...[
+                                      for (final handle in const [
+                                        Alignment.topLeft, Alignment.topCenter, Alignment.topRight,
+                                        Alignment.centerLeft, Alignment.centerRight,
+                                        Alignment.bottomLeft, Alignment.bottomCenter, Alignment.bottomRight,
+                                      ])
+                                        Positioned(
+                                          left: (handle.x + 1) * bounds.maxWidth / 2 - 7,
+                                          top: (handle.y + 1) * bounds.maxHeight / 2 - 7,
+                                          child: GestureDetector(
+                                            key: ValueKey('video-resize-${handle.x}-${handle.y}'),
+                                            onPanUpdate: (d) => setState(() {
+                                              if (handle.x != 0) videoScaleX = (videoScaleX + d.delta.dx * handle.x * 2 / math.max(1, bounds.maxWidth)).clamp(0.1, 5.0).toDouble();
+                                              if (handle.y != 0) videoScaleY = (videoScaleY + d.delta.dy * handle.y * 2 / math.max(1, bounds.maxHeight)).clamp(0.1, 5.0).toDouble();
+                                              projectDirty = true;
+                                            }),
+                                            child: Container(width: 14, height: 14, decoration: BoxDecoration(color: Colors.white, border: Border.all(color: accent, width: 2), borderRadius: BorderRadius.circular(2), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 3)])),
+                                          ),
+                                        ),
+                                      Positioned(
+                                        left: bounds.maxWidth / 2 - 8, top: -25,
+                                        child: GestureDetector(
+                                          key: const ValueKey('video-rotate-handle'),
+                                          onPanUpdate: (d) => setState(() { videoRotation = (videoRotation + d.delta.dx * 0.7) % 360; projectDirty = true; }),
+                                          child: Container(width: 16, height: 16, decoration: BoxDecoration(color: accent, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), child: const Icon(Icons.rotate_right, size: 10, color: Colors.white)),
+                                        ),
+                                      ),
+                                    ],
                                     for (var i = 0; i < photoOverlays.length; i++)
                                       Positioned(
                                         left: bounds.maxWidth / 2 + photoOverlays[i].x * bounds.maxWidth - shortSide * .18 * photoOverlays[i].scale,
@@ -1533,8 +1556,7 @@ class _EditorPageState extends State<EditorPage> {
               FilledButton.icon(onPressed: videoPath == null || busy ? null : extractAudio, icon: const Icon(Icons.graphic_eq, size: 16), label: const Text('Извлечь звук')),
             ] else if (inspectorTab == 'speed') ...[
               const Text('СКОРОСТЬ ПРЕДПРОСМОТРА', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 8),
-              Center(child: Text('${playbackRate.toStringAsFixed(playbackRate == playbackRate.roundToDouble() ? 0 : 2)}×', style: const TextStyle(fontSize: 26, color: accent, fontWeight: FontWeight.w800))),
+              const SizedBox(height: 8),              Center(child: Text('${playbackRate.toStringAsFixed(playbackRate == playbackRate.roundToDouble() ? 0 : 2)}×', style: const TextStyle(fontSize: 26, color: accent, fontWeight: FontWeight.w800))),
               Slider(min: 0.5, max: 2, divisions: 6, value: playbackRate, onChanged: videoPath == null ? null : (value) async { setState(() => playbackRate = value); await player?.setRate(value); }),
               const Text('Изменяет скорость воспроизведения в окне просмотра.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
             ] else ...[
@@ -1789,8 +1811,7 @@ class _EditorPageState extends State<EditorPage> {
                               child: MouseRegion(
                                 cursor: SystemMouseCursors.resizeLeftRight,
                                 child: GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onHorizontalDragStart: (_) => _startEdgeDrag(i, false),
+                                  behavior: HitTestBehavior.opaque,                                  onHorizontalDragStart: (_) => _startEdgeDrag(i, false),
                                   onHorizontalDragUpdate: _updateEdgeDrag,
                                   onHorizontalDragEnd: (_) => _finishEdgeDrag(),
                                   child: Container(
@@ -2045,8 +2066,7 @@ class _EditorPageState extends State<EditorPage> {
     if (filtersEnabled) {
       filters.add('eq=brightness=${brightness.toStringAsFixed(3)}:contrast=${contrast.toStringAsFixed(3)}:saturation=${saturation.toStringAsFixed(3)}');
     }
-    if (videoEffect != 'Оригинал' && _exportEffectFilter != 'null') filters.add(_exportEffectFilter);
-    if (motionBlurEnabled) filters.add('tmix=frames=3:weights=1 1 1');
+    if (videoEffect != 'Оригинал' && _exportEffectFilter != 'null') filters.add(_exportEffectFilter);    if (motionBlurEnabled) filters.add('tmix=frames=3:weights=1 1 1');
     if (transitionEffect != 'Нет' && videoClips.length > 1) {
       final durationForClip = math.min(transitionDuration, math.max(0.1, clip.length / 2)).toDouble();
       final color = transitionEffect == 'Белая вспышка' ? 'white' : 'black';
