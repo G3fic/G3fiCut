@@ -27,7 +27,7 @@ void main() {
 
     // Undo is available in both the main toolbar and the timeline quick-actions.
     expect(find.byTooltip('Отменить (Ctrl+Z)'), findsNWidgets(2));
-    expect(find.byTooltip('Повторить (Ctrl+Y, Ctrl+Shift+Z)'), findsOneWidget);
+    expect(find.byTooltip('Повторить (Ctrl+Y)'), findsOneWidget);
     for (final button in tester.widgetList<OutlinedButton>(
       find.widgetWithText(OutlinedButton, 'Отменить'),
     )) {
