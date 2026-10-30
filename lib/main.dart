@@ -2696,7 +2696,7 @@ class _EditorPageState extends State<EditorPage> {
             'Не удалось создать пустой участок таймлайна: ${result.stderr}',
           );
         }
-        lines.add("file '${gapPath.replaceAll('\\\\', '/')}'");
+        lines.add("file '${gapPath.replaceAll('\\', '/')}'");
       }
 
       for (var i = 0; i < orderedClips.length; i++) {
@@ -2806,7 +2806,7 @@ class _EditorPageState extends State<EditorPage> {
           );
         }
 
-        lines.add("file '${segmentPath.replaceAll('\\\\', '/')}'");
+        lines.add("file '${segmentPath.replaceAll('\\', '/')}'");
         sequenceCursor = clip.timelineEnd;
         if (mounted) {
           setState(() {
