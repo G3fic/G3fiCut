@@ -1,5 +1,11 @@
 # Changelog
 
+## G3fiCut v0.3.64 — 2026-10-31
+
+- Fixed the widget-test analyzer failure by importing Flutter keyboard key definitions.
+- Removed duplicate legacy timeline handlers so sequence-time seeking and edge trimming use one implementation.
+- Kept the sequence-aware timeline editing, snapping, clip reordering, and gap-preserving export behavior.
+
 ## G3fiCut v0.3.63 — 2026-10-30
 
 - Added sequence-aware timeline editing with separate source and sequence time.
