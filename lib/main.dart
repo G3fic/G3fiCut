@@ -1455,12 +1455,15 @@ class _EditorPageState extends State<EditorPage> {
             ]),
             const SizedBox(height: 12),
             if (inspectorTab == 'video') ...[
-              Row(children: [
-                IconButton(tooltip: 'Открыть проект', onPressed: busy ? null : openProject, icon: const Icon(Icons.folder_open_outlined, size: 18)),
-                IconButton(tooltip: 'Сохранить', onPressed: videoPath == null || busy ? null : () => unawaited(saveProject()), icon: const Icon(Icons.save_outlined, size: 18)),
-                IconButton(tooltip: 'Добавить видео', onPressed: busy ? null : pickVideo, icon: const Icon(Icons.video_call_outlined, size: 18)),
-                IconButton(tooltip: 'Добавить фото', onPressed: busy || videoPath == null ? null : importPhotoOverlay, icon: const Icon(Icons.add_photo_alternate_outlined, size: 18)),
-                IconButton(tooltip: 'Экспорт', onPressed: videoClips.isEmpty || busy ? null : exportEditedVideo, icon: const Icon(Icons.ios_share, size: 18)),
+              Wrap(spacing: 0, runSpacing: 2, children: [
+                IconButton(tooltip: 'Открыть проект', visualDensity: VisualDensity.compact, onPressed: busy ? null : openProject, icon: const Icon(Icons.folder_open_outlined, size: 18)),
+                IconButton(tooltip: 'Сохранить проект', visualDensity: VisualDensity.compact, onPressed: videoPath == null || busy ? null : () => unawaited(saveProject()), icon: const Icon(Icons.save_outlined, size: 18)),
+                IconButton(tooltip: 'Сохранить как', visualDensity: VisualDensity.compact, onPressed: videoPath == null || busy ? null : () => unawaited(saveProject(saveAs: true)), icon: const Icon(Icons.save_as_outlined, size: 18)),
+                IconButton(tooltip: 'Добавить видео', visualDensity: VisualDensity.compact, onPressed: busy ? null : pickVideo, icon: const Icon(Icons.video_call_outlined, size: 18)),
+                IconButton(tooltip: 'Добавить фото', visualDensity: VisualDensity.compact, onPressed: busy || videoPath == null ? null : importPhotoOverlay, icon: const Icon(Icons.add_photo_alternate_outlined, size: 18)),
+                IconButton(tooltip: 'Экспорт', visualDensity: VisualDensity.compact, onPressed: videoClips.isEmpty || busy ? null : exportEditedVideo, icon: const Icon(Icons.ios_share, size: 18)),
+                Tooltip(message: 'Отменить (Ctrl+Z)', child: OutlinedButton.icon(onPressed: _timelineHistory.canUndo ? undoTimelineEdit : null, icon: const Icon(Icons.undo, size: 16), label: const Text('Отменить'))),
+                Tooltip(message: 'Повторить (Ctrl+Y, Ctrl+Shift+Z)', child: OutlinedButton.icon(onPressed: _timelineHistory.canRedo ? redoTimelineEdit : null, icon: const Icon(Icons.redo, size: 16), label: const Text('Повторить'))),
               ]),
               const Divider(),
               const Text('ФИЛЬТРЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
