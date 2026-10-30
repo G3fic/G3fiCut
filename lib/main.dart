@@ -1152,7 +1152,16 @@ class _EditorPageState extends State<EditorPage> {
         child: SingleChildScrollView(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('МЕДИА', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.4, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 14),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: busy ? null : pickVideo,
+                icon: const Icon(Icons.video_call_outlined, size: 17),
+                label: const Text('Импортировать видео'),
+              ),
+            ),
+            const SizedBox(height: 8),
             InkWell(
               onTap: busy ? null : pickVideo,
               borderRadius: BorderRadius.circular(10),
