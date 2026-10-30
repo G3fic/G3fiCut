@@ -1155,10 +1155,13 @@ class _EditorPageState extends State<EditorPage> {
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: busy ? null : pickVideo,
-                icon: const Icon(Icons.video_call_outlined, size: 17),
-                label: const Text('Импортировать видео'),
+              child: Tooltip(
+                message: 'Импортировать видео',
+                child: OutlinedButton.icon(
+                  onPressed: busy ? null : pickVideo,
+                  icon: const Icon(Icons.video_call_outlined, size: 17),
+                  label: const Text('Импортировать видео'),
+                ),
               ),
             ),
             const SizedBox(height: 8),
