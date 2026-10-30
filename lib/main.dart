@@ -1175,10 +1175,22 @@ class _EditorPageState extends State<EditorPage> {
               const SizedBox(height: 14),
               const Text('ФАЙЛЫ ПРОЕКТА', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.1, fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
-              mediaItem(Icons.movie_outlined, p.basename(videoPath!), 'Видео', videoBlue),
+              mediaItem(Icons.movie_outlined, p.basename(videoPath!), 'Видео · исходник', videoBlue, imagePath: videoThumbnails.isNotEmpty ? videoThumbnails.first : null),
               if (audioPath != null) ...[
                 const SizedBox(height: 7),
                 mediaItem(Icons.graphic_eq, p.basename(audioPath!), 'Извлечённое аудио', audioGreen),
+              ],
+              if (photoOverlays.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                const Text('ФОТО', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.1, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 7),
+                for (var i = 0; i < photoOverlays.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 6),
+                  mediaItem(Icons.image_outlined, p.basename(photoOverlays[i].path), 'Фото · слой ${i + 1}', accent,
+                    imagePath: photoOverlays[i].path,
+                    selected: selectedPhotoOverlay == i,
+                    onTap: () => setState(() => selectedPhotoOverlay = i)),
+                ],
               ],
             ],
             const SizedBox(height: 12),
@@ -1191,18 +1203,27 @@ class _EditorPageState extends State<EditorPage> {
         ),
       );
 
-  Widget mediaItem(IconData icon, String name, String kind, Color color) => Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(color: const Color(0xFF202630), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF343644))),
-        child: Row(children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(width: 8),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 3),
-            Text(kind, style: const TextStyle(color: muted, fontSize: 10)),
-          ])),
-        ]),
+  Widget mediaItem(IconData icon, String name, String kind, Color color, {String? imagePath, bool selected = false, VoidCallback? onTap}) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.all(7),
+          decoration: BoxDecoration(color: selected ? const Color(0xFF26364A) : const Color(0xFF202630), borderRadius: BorderRadius.circular(8), border: Border.all(color: selected ? accent : const Color(0xFF343644))),
+          child: Row(children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(5),
+              child: SizedBox(width: 54, height: 40, child: imagePath != null
+                ? Image.file(File(imagePath), fit: BoxFit.cover, errorBuilder: (_, __, ___) => ColoredBox(color: const Color(0xFF11151C), child: Icon(icon, color: color, size: 21)))
+                : ColoredBox(color: const Color(0xFF11151C), child: Icon(icon, color: color, size: 21))),
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 3),
+              Text(kind, style: const TextStyle(color: muted, fontSize: 9)),
+            ])),
+          ]),
+        ),
       );
 
   Widget previewPanel() => Container(
