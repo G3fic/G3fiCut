@@ -360,12 +360,17 @@ class _EditorPageState extends State<EditorPage> {
     final current = player;
     if (current != null) return current;
 
-    // mpv falls back to software decoding when safe hardware decoding is unavailable.
-    final created = Player(configuration: const PlayerConfiguration(
-      options: {'hwdec': 'auto-safe', 'vo': 'gpu'},
-    ));
+    // media_kit_video configures hardware decoding on the video controller.
+    // auto-safe allows mpv to fall back when a driver's hardware path is unavailable.
+    final created = Player();
     try {
-      final controller = VideoController(created);
+      final controller = VideoController(
+        created,
+        configuration: const VideoControllerConfiguration(
+          hwdec: 'auto-safe',
+          enableHardwareAcceleration: true,
+        ),
+      );
       player = created;
       videoController = controller;
       durationSub = created.stream.duration.listen((v) {
