@@ -1271,8 +1271,10 @@ class _EditorPageState extends State<EditorPage> {
                                     Positioned.fill(
                                       child: GestureDetector(                                        behavior: HitTestBehavior.translucent,
                                         onPanUpdate: (d) => setState(() {
-                                          videoOffsetX += d.delta.dx / math.max(1, bounds.maxWidth);
-                                          videoOffsetY += d.delta.dy / math.max(1, bounds.maxHeight);
+                                          videoOffsetX = videoOffsetX + d.delta.dx / math.max(1, bounds.maxWidth);
+                                          videoOffsetY = videoOffsetY + d.delta.dy / math.max(1, bounds.maxHeight);
+                                          if (videoOffsetX.abs() < 0.012) videoOffsetX = 0;
+                                          if (videoOffsetY.abs() < 0.012) videoOffsetY = 0;
                                           projectDirty = true;
                                         }),
                                         child: Transform.translate(
@@ -1307,8 +1309,8 @@ class _EditorPageState extends State<EditorPage> {
                                         Alignment.bottomLeft, Alignment.bottomCenter, Alignment.bottomRight,
                                       ])
                                         Positioned(
-                                          left: (handle.x + 1) * bounds.maxWidth / 2 - 7,
-                                          top: (handle.y + 1) * bounds.maxHeight / 2 - 7,
+                                          left: bounds.maxWidth / 2 + videoOffsetX * bounds.maxWidth + handle.x * videoScaleX * previewZoom * bounds.maxWidth / 2 - 7,
+                                          top: bounds.maxHeight / 2 + videoOffsetY * bounds.maxHeight + handle.y * videoScaleY * previewZoom * bounds.maxHeight / 2 - 7,
                                           child: GestureDetector(
                                             key: ValueKey('video-resize-${handle.x}-${handle.y}'),
                                             onPanUpdate: (d) => setState(() {
@@ -1320,7 +1322,8 @@ class _EditorPageState extends State<EditorPage> {
                                           ),
                                         ),
                                       Positioned(
-                                        left: bounds.maxWidth / 2 - 8, top: -25,
+                                        left: bounds.maxWidth / 2 + videoOffsetX * bounds.maxWidth - 8,
+                                        top: bounds.maxHeight / 2 + videoOffsetY * bounds.maxHeight - videoScaleY * previewZoom * bounds.maxHeight / 2 - 25,
                                         child: GestureDetector(
                                           key: const ValueKey('video-rotate-handle'),
                                           onPanUpdate: (d) => setState(() { videoRotation = (videoRotation + d.delta.dx * 0.7) % 360; projectDirty = true; }),
@@ -1340,6 +1343,8 @@ class _EditorPageState extends State<EditorPage> {
                                           onPanUpdate: (d) => setState(() {
                                             photoOverlays[i].x = (photoOverlays[i].x + d.delta.dx / bounds.maxWidth).clamp(-1.5, 1.5).toDouble();
                                             photoOverlays[i].y = (photoOverlays[i].y + d.delta.dy / bounds.maxHeight).clamp(-1.5, 1.5).toDouble();
+                                            if (photoOverlays[i].x.abs() < 0.012) photoOverlays[i].x = 0;
+                                            if (photoOverlays[i].y.abs() < 0.012) photoOverlays[i].y = 0;
                                             projectDirty = true;
                                           }),
                                           child: Transform.rotate(
@@ -1348,7 +1353,19 @@ class _EditorPageState extends State<EditorPage> {
                                               opacity: photoOverlays[i].opacity,
                                               child: DecoratedBox(
                                                 decoration: BoxDecoration(border: selectedPhotoOverlay == i ? Border.all(color: accent, width: 2) : null),
-                                                child: Image.file(File(photoOverlays[i].path), fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined)),
+                                                child: Stack(fit: StackFit.expand, children: [
+                                                  Image.file(File(photoOverlays[i].path), fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined)),
+                                                  if (selectedPhotoOverlay == i)
+                                                    for (final point in const [Alignment.topLeft, Alignment.topCenter, Alignment.topRight, Alignment.centerLeft, Alignment.centerRight, Alignment.bottomLeft, Alignment.bottomCenter, Alignment.bottomRight])
+                                                      Align(alignment: point, child: GestureDetector(
+                                                        onPanUpdate: (d) => setState(() {
+                                                          final delta = (d.delta.dx.abs() + d.delta.dy.abs()) / math.max(1, shortSide * .36);
+                                                          photoOverlays[i].scale = (photoOverlays[i].scale + delta * ((point.x != 0 && d.delta.dx * point.x > 0) || (point.y != 0 && d.delta.dy * point.y > 0) ? 1 : -1)).clamp(.1, 5.0).toDouble();
+                                                          projectDirty = true;
+                                                        }),
+                                                        child: Container(width: 12, height: 12, decoration: BoxDecoration(color: Colors.white, border: Border.all(color: accent, width: 2), borderRadius: BorderRadius.circular(2))),
+                                                      )),
+                                                ]),
                                               ),
                                             ),
                                           ),
