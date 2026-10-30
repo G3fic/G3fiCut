@@ -57,7 +57,7 @@ jobs:
               throw 'Release tags must use vMAJOR.MINOR.PATCH, for example v0.2.2.'
             }
           } elseif ($env:GITHUB_EVENT_NAME -eq 'push' -and $env:GITHUB_REF -eq 'refs/heads/main' -and $env:RELEASE_COMMIT_MESSAGE -like 'Release G3fiCut v*') {
-            if ($env:RELEASE_COMMIT_MESSAGE -match '^Release G3fiCut v(\d+\.\d+\.\d+)(:|$)') {
+            if ($env:RELEASE_COMMIT_MESSAGE -match '^Release G3fiCut v(\d+\.\d+\.\d+)(:|\r?\n|$)') {
               $version = $Matches[1]
             } else {
               throw 'Release commits must start with: Release G3fiCut vMAJOR.MINOR.PATCH:'
