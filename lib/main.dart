@@ -2588,6 +2588,7 @@ class _EditorPageState extends State<EditorPage> {
   Future<void> exportEditedVideo() async {
     final source = videoPath;
     if (source == null || videoClips.isEmpty || busy) return;
+
     final savePath = await FilePicker.platform.saveFile(
       dialogTitle: 'Экспортировать смонтированное видео',
       fileName: 'GifCut-export.mp4',
@@ -2595,7 +2596,12 @@ class _EditorPageState extends State<EditorPage> {
       allowedExtensions: ['mp4'],
     );
     if (savePath == null) return;
-    setState(() { busy = true; status = 'Экспортирую ${videoClips.length} фрагмент(ов)…'; });
+
+    setState(() {
+      busy = true;
+      status = 'Подготавливаю экспорт…';
+    });
+
     Directory? temp;
     try {
       temp = await Directory.systemTemp.createTemp('gifcut-export-');
@@ -2603,9 +2609,13 @@ class _EditorPageState extends State<EditorPage> {
       final lines = <String>[];
       final orderedClips = List<TimelineClip>.of(videoClips)
         ..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
+
       final ffmpeg = await findFfmpeg();
       final sourceProbe = await Process.run(ffmpeg, ['-hide_banner', '-i', source]);
-      final sourceHasAudio = '${sourceProbe.stdout}\\n${sourceProbe.stderr}'.contains('Audio:');
+      final sourceHasAudio =
+          '${sourceProbe.stdout}\\n${sourceProbe.stderr}'.contains('Audio:');
+      final encoder = await _detectH264Encoder(ffmpeg);
+
       final outputSize = const {
         '16:9': '1920:1080',
         '9:16': '1080:1920',
@@ -2614,7 +2624,7 @@ class _EditorPageState extends State<EditorPage> {
         '4:5': '864:1080',
         '3:2': '1620:1080',
       }[aspectRatioPreset] ?? '1920:1080';
-      final encoderForExport = await _detectH264Encoder(ffmpeg);
+
       var sequenceCursor = 0.0;
       var segmentNumber = 0;
 
@@ -2626,74 +2636,250 @@ class _EditorPageState extends State<EditorPage> {
           'segment_${segmentNumber.toString().padLeft(3, '0')}_gap.mp4',
         );
         segmentNumber++;
+
         final colorSource =
             'color=c=black:s=${dimensions[0]}x${dimensions[1]}:r=${frameRate.toStringAsFixed(3)}:d=${gapSeconds.toStringAsFixed(3)}';
-        final commonGapArgs = <String>[
-          '-hide_banner', '-y',
-          '-f', 'lavfi', '-i', colorSource,
+        final baseArgs = <String>[
+          '-hide_banner',
+          '-y',
+          '-f',
+          'lavfi',
+          '-i',
+          colorSource,
           if (sourceHasAudio) ...[
-            '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+            '-f',
+            'lavfi',
+            '-i',
+            'anullsrc=channel_layout=stereo:sample_rate=44100',
           ],
-          '-t', gapSeconds.toStringAsFixed(3),
-          '-r', frameRate.toStringAsFixed(3),
+          '-t',
+          gapSeconds.toStringAsFixed(3),
+          '-r',
+          frameRate.toStringAsFixed(3),
         ];
-        final gapTail = <String>[
+        final audioArgs = <String>[
           if (sourceHasAudio) ...[
-            '-c:a', 'aac', '-b:a', '192k', '-ac', '2', '-ar', '44100', '-shortest',
+            '-c:a',
+            'aac',
+            '-b:a',
+            '192k',
+            '-ac',
+            '2',
+            '-ar',
+            '44100',
+            '-shortest',
           ],
-          '-movflags', '+faststart',
+          '-movflags',
+          '+faststart',
           gapPath,
         ];
-        var gapResult = await Process.run(ffmpeg, [
-          ...commonGapArgs,
-          ..._videoEncoderArguments(encoderForExport),
-          ...gapTail,
+
+        var result = await Process.run(ffmpeg, [
+          ...baseArgs,
+          ..._videoEncoderArguments(encoder),
+          ...audioArgs,
         ]);
-        if (gapResult.exitCode != 0 && encoderForExport != 'libx264') {
-          gapResult = await Process.run(ffmpeg, [
-            ...commonGapArgs,
-            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18',
-            ...gapTail,
+        if (result.exitCode != 0 && encoder != 'libx264') {
+          result = await Process.run(ffmpeg, [
+            ...baseArgs,
+            '-c:v',
+            'libx264',
+            '-preset',
+            'veryfast',
+            '-crf',
+            '18',
+            ...audioArgs,
           ]);
         }
-        if (gapResult.exitCode != 0 || !await File(gapPath).exists()) {
-          throw Exception('Не удалось создать пустой участок таймлайна: ${gapResult.stderr}');
+        if (result.exitCode != 0 || !await File(gapPath).exists()) {
+          throw Exception(
+            'Не удалось создать пустой участок таймлайна: ${result.stderr}',
+          );
         }
+        lines.add("file '${gapPath.replaceAll('\\\\', '/')}'");
+      }
+
+      for (var i = 0; i < orderedClips.length; i++) {
+        final clip = orderedClips[i];
+        if (clip.timelineStart < sequenceCursor - 0.015) {
+          throw StateError(
+            'Клипы перекрываются на таймлайне. Разместите их последовательно перед экспортом.',
+          );
+        }
+        if (clip.timelineStart > sequenceCursor + 0.015) {
+          await appendGapSegment(clip.timelineStart - sequenceCursor);
+        }
+
+        final segmentPath = p.join(
+          temp.path,
+          'segment_${segmentNumber.toString().padLeft(3, '0')}.mp4',
+        );
+        segmentNumber++;
+
+        final args = <String>[
+          '-hide_banner',
+          '-y',
+          '-ss',
+          clip.start.toStringAsFixed(3),
+          '-i',
+          source,
+          '-t',
+          clip.length.toStringAsFixed(3),
+        ];
+        for (final overlay in photoOverlays) {
+          args.addAll(['-loop', '1', '-framerate', '30', '-i', overlay.path]);
+        }
+
+        if (photoOverlays.isEmpty) {
+          args.addAll(['-vf', _buildExportVideoFilter(i, clip)]);
+        } else {
+          final graph = <String>[
+            '[0:v]${_buildExportVideoFilter(i, clip)}[base0]',
+          ];
+          var previous = 'base0';
+          for (var overlayIndex = 0;
+              overlayIndex < photoOverlays.length;
+              overlayIndex++) {
+            final overlay = photoOverlays[overlayIndex];
+            final inputIndex = overlayIndex + 1;
+            final overlayLabel = 'ov$overlayIndex';
+            final outputLabel = overlayIndex == photoOverlays.length - 1
+                ? 'vout'
+                : 'base${overlayIndex + 1}';
+            final width = (360 * overlay.scale).round().clamp(24, 1800);
+            final angle =
+                (overlay.rotation * math.pi / 180).toStringAsFixed(5);
+            graph.add(
+              '[$inputIndex:v]scale=$width:-1,format=rgba,rotate=$angle:c=none,colorchannelmixer=aa=${overlay.opacity.toStringAsFixed(3)}[$overlayLabel]',
+            );
+            graph.add(
+              '[$previous][$overlayLabel]overlay=x=(W-w)/2+(${overlay.x.toStringAsFixed(4)})*W:y=(H-h)/2+(${overlay.y.toStringAsFixed(4)})*H:shortest=1[$outputLabel]',
+            );
+            previous = outputLabel;
+          }
+          args.addAll([
+            '-filter_complex',
+            graph.join(';'),
+            '-map',
+            '[vout]',
+            '-map',
+            '0:a?',
+          ]);
+        }
+
+        final commonOutputArgs = <String>[
+          '-r',
+          frameRate.toStringAsFixed(3),
+          if (sourceHasAudio) ...[
+            '-af',
+            'volume=${exportVolume.toStringAsFixed(2)}',
+            '-c:a',
+            'aac',
+            '-b:a',
+            '192k',
+            '-ac',
+            '2',
+            '-ar',
+            '44100',
+          ],
+          '-movflags',
+          '+faststart',
+          segmentPath,
+        ];
+
+        var result = await Process.run(ffmpeg, [
+          ...args,
+          ..._videoEncoderArguments(encoder),
+          ...commonOutputArgs,
+        ]);
+        if ((result.exitCode != 0 || !await File(segmentPath).exists()) &&
+            encoder != 'libx264') {
+          result = await Process.run(ffmpeg, [
+            ...args,
+            ..._videoEncoderArguments('libx264'),
+            ...commonOutputArgs,
+          ]);
+        }
+        if (result.exitCode != 0 || !await File(segmentPath).exists()) {
+          throw Exception(
+            'Не удалось обработать фрагмент ${i + 1}: ${result.stderr.toString().split('\\n').last}',
+          );
+        }
+
         lines.add("file '${segmentPath.replaceAll('\\\\', '/')}'");
-        sequenceCursor = math.max(sequenceCursor, clip.timelineEnd).toDouble();
+        sequenceCursor = clip.timelineEnd;
         if (mounted) {
           setState(() {
             status = 'Экспортирую фрагмент ${i + 1} из ${orderedClips.length}…';
           });
         }
       }
-      await listFile.writeAsString(lines.join('\n'));
-      final joinedVideo = audioPath == null ? savePath : p.join(temp.path, 'joined_video.mp4');
-      final concatResult = await Process.run(await findFfmpeg(), [
-        '-hide_banner', '-y', '-f', 'concat', '-safe', '0', '-i', listFile.path,
-        '-c', 'copy', '-movflags', '+faststart', joinedVideo,
-      ]);
-      if (concatResult.exitCode != 0) throw Exception(concatResult.stderr.toString().split('\n').last);
 
-      // When a detached audio clip exists, apply its own trim range during export.
-      // It replaces the source audio without changing the video edit decisions.
+      await listFile.writeAsString(lines.join('\\n'));
+      final joinedVideo = audioPath == null
+          ? savePath
+          : p.join(temp.path, 'joined_video.mp4');
+      final concatResult = await Process.run(ffmpeg, [
+        '-hide_banner',
+        '-y',
+        '-f',
+        'concat',
+        '-safe',
+        '0',
+        '-i',
+        listFile.path,
+        '-c',
+        'copy',
+        '-movflags',
+        '+faststart',
+        joinedVideo,
+      ]);
+      if (concatResult.exitCode != 0) {
+        throw Exception(concatResult.stderr.toString().split('\\n').last);
+      }
+
+      // Detached audio replaces source audio at its own trim range.
       final detachedAudio = audioPath;
       if (detachedAudio != null && audioClipEnd > audioClipStart) {
-        final audioResult = await Process.run(await findFfmpeg(), [
-          '-hide_banner', '-y',
-          '-i', joinedVideo,
-          '-ss', audioClipStart.toStringAsFixed(3), '-t', (audioClipEnd - audioClipStart).toStringAsFixed(3), '-i', detachedAudio,
-          '-map', '0:v:0', '-map', '1:a:0',
-          '-c:v', 'copy', '-af', 'volume=${exportVolume.toStringAsFixed(2)}', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart',
+        final audioResult = await Process.run(ffmpeg, [
+          '-hide_banner',
+          '-y',
+          '-i',
+          joinedVideo,
+          '-ss',
+          audioClipStart.toStringAsFixed(3),
+          '-t',
+          (audioClipEnd - audioClipStart).toStringAsFixed(3),
+          '-i',
+          detachedAudio,
+          '-map',
+          '0:v:0',
+          '-map',
+          '1:a:0',
+          '-c:v',
+          'copy',
+          '-af',
+          'volume=${exportVolume.toStringAsFixed(2)}',
+          '-c:a',
+          'aac',
+          '-b:a',
+          '192k',
+          '-movflags',
+          '+faststart',
           savePath,
         ]);
-        if (audioResult.exitCode != 0) throw Exception(audioResult.stderr.toString().split('\n').last);
+        if (audioResult.exitCode != 0) {
+          throw Exception(audioResult.stderr.toString().split('\\n').last);
+        }
       }
+
       if (mounted) setState(() => status = 'Экспорт завершён: $savePath');
     } catch (e) {
       if (mounted) setState(() => status = 'Ошибка экспорта: $e');
     } finally {
-      if (temp != null && await temp.exists()) await temp.delete(recursive: true);
+      if (temp != null && await temp.exists()) {
+        await temp.delete(recursive: true);
+      }
       if (mounted) setState(() => busy = false);
     }
   }
