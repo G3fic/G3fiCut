@@ -1661,12 +1661,6 @@ class _EditorPageState extends State<EditorPage> {
                 icon: const Icon(Icons.undo_rounded, size: 17),
               ),
               IconButton(
-                tooltip: 'Отменить (Ctrl+Z)',
-                visualDensity: VisualDensity.compact,
-                onPressed: undoTimelineEdit,
-                icon: const Icon(Icons.undo_rounded, size: 17),
-              ),
-              IconButton(
                 tooltip: 'Повторить (Ctrl+Y)',
                 visualDensity: VisualDensity.compact,
                 onPressed: redoTimelineEdit,
