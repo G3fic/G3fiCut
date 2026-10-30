@@ -1133,6 +1133,7 @@ class _EditorPageState extends State<EditorPage> {
             Tooltip(
               message: 'Отменить (Ctrl+Z)',
               child: OutlinedButton.icon(
+                key: const ValueKey('toolbar-undo'),
                 onPressed: _timelineHistory.canUndo ? undoTimelineEdit : null,
                 icon: const Icon(Icons.undo, size: 18),
                 label: const Text('Отменить'),
@@ -1141,6 +1142,7 @@ class _EditorPageState extends State<EditorPage> {
             Tooltip(
               message: 'Повторить (Ctrl+Y, Ctrl+Shift+Z)',
               child: OutlinedButton.icon(
+                key: const ValueKey('toolbar-redo'),
                 onPressed: _timelineHistory.canRedo ? redoTimelineEdit : null,
                 icon: const Icon(Icons.redo, size: 18),
                 label: const Text('Повторить'),
