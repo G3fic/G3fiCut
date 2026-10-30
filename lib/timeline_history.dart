@@ -9,6 +9,16 @@ class TimelineClipRange {
 
   double get length => end - start;
   double get timelineEnd => timelineStart + length;
+
+  @override
+  bool operator ==(Object other) =>
+      other is TimelineClipRange &&
+      other.start == start &&
+      other.end == end &&
+      other.timelineStart == timelineStart;
+
+  @override
+  int get hashCode => Object.hash(start, end, timelineStart);
 }
 
 /// An immutable snapshot of user-editable timeline state.
