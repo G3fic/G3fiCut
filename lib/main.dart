@@ -1053,10 +1053,12 @@ class _EditorPageState extends State<EditorPage> {
     if (before != null) _timelineHistory.record(before: before, after: _captureTimelineSnapshot());
     _edgeDragBefore = null;
     _edgeDragIndex = -1;
-    if (mounted) setState(() {
-      _timelineSnapAt = null;
-      status = 'Длина клипа изменена. Ctrl+Z — отменить.';
-    });
+    if (mounted) {
+      setState(() {
+        _timelineSnapAt = null;
+        status = 'Длина клипа изменена. Ctrl+Z — отменить.';
+      });
+    }
   }
 
   void setTimelineZoom(double next) {
@@ -1088,10 +1090,10 @@ class _EditorPageState extends State<EditorPage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Горячие клавиши'),
-        content: SizedBox(
+        content: const SizedBox(
           width: 420,
           child: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, children: const [
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
               _ShortcutRow('Пробел', 'Воспроизведение / пауза'),
               _ShortcutRow('← / →', 'На один кадр назад / вперёд'),
               _ShortcutRow('Shift + ← / →', 'На одну секунду назад / вперёд'),
