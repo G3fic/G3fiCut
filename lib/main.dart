@@ -1249,12 +1249,12 @@ class _EditorPageState extends State<EditorPage> {
         child: Column(children: [
           Container(
             height: 39,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
             decoration: const BoxDecoration(color: Color(0xFF171820), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
             child: Row(children: [
               const Text('ПРЕДПРОСМОТР', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
               const Spacer(),
-              Text(videoPath == null ? 'Нет клипа' : p.basename(videoPath!), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFFB8B8C6), fontSize: 11)),
+              Expanded(child: Text(videoPath == null ? 'Нет клипа' : p.basename(videoPath!), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.end, style: const TextStyle(color: Color(0xFFB8B8C6), fontSize: 11))),
             ]),
           ),
           Expanded(
@@ -1427,7 +1427,7 @@ class _EditorPageState extends State<EditorPage> {
           ),
           Container(
             height: 63,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 8),
             decoration: const BoxDecoration(color: Color(0xFF171820), border: Border(top: BorderSide(color: Color(0xFF292B36)))),
             child: Row(children: [
               Text(time(position), style: const TextStyle(fontSize: 11, color: Color(0xFFD7D7E3))),
@@ -1506,8 +1506,6 @@ class _EditorPageState extends State<EditorPage> {
                 IconButton(tooltip: 'Добавить видео', visualDensity: VisualDensity.compact, onPressed: busy ? null : pickVideo, icon: const Icon(Icons.video_call_outlined, size: 18)),
                 IconButton(tooltip: 'Добавить фото', visualDensity: VisualDensity.compact, onPressed: busy || videoPath == null ? null : importPhotoOverlay, icon: const Icon(Icons.add_photo_alternate_outlined, size: 18)),
                 IconButton(tooltip: 'Экспорт', visualDensity: VisualDensity.compact, onPressed: videoClips.isEmpty || busy ? null : exportEditedVideo, icon: const Icon(Icons.ios_share, size: 18)),
-                Tooltip(message: 'Отменить (Ctrl+Z)', child: OutlinedButton.icon(onPressed: _timelineHistory.canUndo ? undoTimelineEdit : null, icon: const Icon(Icons.undo, size: 16), label: const Text('Отменить'))),
-                Tooltip(message: 'Повторить (Ctrl+Y, Ctrl+Shift+Z)', child: OutlinedButton.icon(onPressed: _timelineHistory.canRedo ? redoTimelineEdit : null, icon: const Icon(Icons.redo, size: 16), label: const Text('Повторить'))),
               ]),
               const Divider(),
               const Text('ФИЛЬТРЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
