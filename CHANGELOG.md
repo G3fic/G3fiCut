@@ -1,6 +1,14 @@
 # Changelog
 
-## G3fiCut v0.3.0 — planned
+## G3fiCut v0.3.63 — 2026-10-30
+
+- Added sequence-aware timeline editing with separate source and sequence time.
+- Added clip insert/reordering, snapping, pointer-anchored zoom, and sequence-aware export with preserved gaps.
+- Added desktop editing shortcuts, frame stepping, edit-point navigation, and shortcut help.
+- Improved FFmpeg export path handling and concat-list newline escaping.
+- Retained project-file migration from schema v1 to schema v2.
+
+## G3fiCut v0.3.0 — 2026-10-29
 
 - Added versioned `.g3ficut` project files with open, save, and save-as controls.
 - Restored video clip ranges, selected clip, detached audio range, zoom, and playhead from saved projects.
