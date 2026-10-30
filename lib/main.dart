@@ -1034,6 +1034,7 @@ class _EditorPageState extends State<EditorPage> {
           child: Column(
             children: [
               topBar(),
+              toolbar(),
               Expanded(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
