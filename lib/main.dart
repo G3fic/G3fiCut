@@ -1023,6 +1023,12 @@ class _EditorPageState extends State<EditorPage> {
         body: SafeArea(
           child: Column(
             children: [
+              Container(
+                height: 42,
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: const Text('gifcut', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: .4)),
+              ),
               Expanded(child: Row(children: [mediaPanel(), const VerticalDivider(width: 1), SizedBox(width: 258, child: inspectorPanel()), const VerticalDivider(width: 1), Expanded(child: previewPanel())])),
               const Divider(height: 1),
               timelinePanel(),
