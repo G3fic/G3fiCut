@@ -25,29 +25,22 @@ void main() {
     await tester.pumpWidget(const G3fiCutApp());
     await tester.pump();
 
-    // Both the main toolbar and timeline expose history actions. Check the
-    // controls directly instead of relying on duplicate tooltip semantics.
-    expect(find.widgetWithText(OutlinedButton, 'Отменить'), findsOneWidget);
-    expect(find.widgetWithText(OutlinedButton, 'Повторить'), findsOneWidget);
-    expect(find.byTooltip('Отменить (Ctrl+Z)'), findsOneWidget);
-    expect(find.byTooltip('Повторить (Ctrl+Y)'), findsOneWidget);
-
-    expect(
-      tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Отменить')).onPressed,
-      isNull,
-    );
-    expect(
-      tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Повторить')).onPressed,
-      isNull,
-    );
-    expect(
-      tester.widget<IconButton>(find.byKey(const ValueKey('timeline-undo'))).onPressed,
-      isNull,
-    );
-    expect(
-      tester.widget<IconButton>(find.byKey(const ValueKey('timeline-redo'))).onPressed,
-      isNull,
-    );
+    // Use explicit keys: the controls live in separate scrollable panels,
+    // and disabled tooltip widgets are not guaranteed to enter the finder tree.
+    for (final key in const ['toolbar-undo', 'toolbar-redo']) {
+      expect(find.byKey(ValueKey(key)), findsOneWidget);
+      expect(
+        tester.widget<OutlinedButton>(find.byKey(ValueKey(key))).onPressed,
+        isNull,
+      );
+    }
+    for (final key in const ['timeline-undo', 'timeline-redo']) {
+      expect(find.byKey(ValueKey(key)), findsOneWidget);
+      expect(
+        tester.widget<IconButton>(find.byKey(ValueKey(key))).onPressed,
+        isNull,
+      );
+    }
     expect(tester.takeException(), isNull);
   });
 
