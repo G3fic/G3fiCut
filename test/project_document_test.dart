@@ -49,9 +49,10 @@ void main() {
       expect(decoded.appVersion, '0.3.0');
       expect(decoded.videoPath, r'C:\media\sample.mp4');
       expect(decoded.videoDurationMs, 12000);
+      expect(decoded.schemaVersion, ProjectDocument.currentSchemaVersion);
       expect(decoded.videoClips, [
-        const ProjectClipRange(0, 4),
-        const ProjectClipRange(5, 12),
+        const ProjectClipRange(0, 4, timelineStart: 0),
+        const ProjectClipRange(5, 12, timelineStart: 5),
       ]);
       expect(decoded.selectedClipIndex, 1);
       expect(decoded.audioPath, r'C:\media\sample_audio.wav');
@@ -60,6 +61,35 @@ void main() {
       expect(decoded.audioClipEnd, 9.5);
       expect(decoded.timelineZoom, 40);
       expect(decoded.playheadMs, 6200);
+    });
+
+    test('migrates schema v1 ranges in historical export order', () {
+      final legacy = makeProject(schemaVersion: 1).toJson();
+      for (final rawClip in legacy['videoClips'] as List) {
+        (rawClip as Map<String, dynamic>).remove('timelineStart');
+      }
+      final migrated = ProjectDocument.decode(jsonEncode(legacy));
+      expect(migrated.schemaVersion, ProjectDocument.currentSchemaVersion);
+      expect(migrated.videoClips, [
+        const ProjectClipRange(0, 4, timelineStart: 0),
+        const ProjectClipRange(5, 12, timelineStart: 4),
+      ]);
+      expect(migrated.videoClips.last.timelineEnd, 11);
+    });
+
+    test('preserves identical source ranges at different sequence positions', () {
+      final original = makeProject(
+        videoClips: const [
+          ProjectClipRange(0, 4, timelineStart: 0),
+          ProjectClipRange(0, 4, timelineStart: 4),
+        ],
+        selectedClipIndex: 1,
+        playheadMs: 6500,
+      );
+      final decoded = ProjectDocument.decode(original.encode());
+      expect(decoded.videoClips[1].start, 0);
+      expect(decoded.videoClips[1].timelineStart, 4);
+      expect(decoded.playheadMs, 6500);
     });
 
     test('rejects an unknown format and an unsupported schema version', () {

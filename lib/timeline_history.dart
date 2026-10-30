@@ -1,11 +1,14 @@
 /// Immutable source-time range for one video clip on the timeline.
 class TimelineClipRange {
-  const TimelineClipRange(this.start, this.end);
+  const TimelineClipRange(this.start, this.end, {double? timelineStart})
+      : timelineStart = timelineStart ?? start;
 
   final double start;
   final double end;
+  final double timelineStart;
 
   double get length => end - start;
+  double get timelineEnd => timelineStart + length;
 }
 
 /// An immutable snapshot of user-editable timeline state.
@@ -36,7 +39,11 @@ class TimelineSnapshot {
     for (var i = 0; i < videoClips.length; i++) {
       final left = videoClips[i];
       final right = other.videoClips[i];
-      if (left.start != right.start || left.end != right.end) return false;
+      if (left.start != right.start ||
+          left.end != right.end ||
+          left.timelineStart != right.timelineStart) {
+        return false;
+      }
     }
     return true;
   }

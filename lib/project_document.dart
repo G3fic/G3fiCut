@@ -2,26 +2,31 @@ import 'dart:convert';
 
 /// Source-time range for a single video clip in a saved project.
 class ProjectClipRange {
-  const ProjectClipRange(this.start, this.end);
+  const ProjectClipRange(this.start, this.end, {double? timelineStart})
+      : timelineStart = timelineStart ?? start;
 
   final double start;
   final double end;
+  final double timelineStart;
 
   double get length => end - start;
+  double get timelineEnd => timelineStart + length;
 
   Map<String, Object> toJson() => <String, Object>{
         'start': start,
         'end': end,
+        'timelineStart': timelineStart,
       };
 
   @override
   bool operator ==(Object other) =>
       other is ProjectClipRange &&
       other.start == start &&
-      other.end == end;
+      other.end == end &&
+      other.timelineStart == timelineStart;
 
   @override
-  int get hashCode => Object.hash(start, end);
+  int get hashCode => Object.hash(start, end, timelineStart);
 }
 
 /// Versioned, validated representation of a GifCut editing project.
@@ -48,7 +53,7 @@ class ProjectDocument {
   }
 
   static const formatId = 'g3ficut-project';
-  static const currentSchemaVersion = 1;
+  static const currentSchemaVersion = 2;
 
   final String format;
   final int schemaVersion;
@@ -68,7 +73,7 @@ class ProjectDocument {
     if (format != formatId) {
       throw const FormatException('Неподдерживаемый формат файла проекта.');
     }
-    if (schemaVersion != currentSchemaVersion) {
+    if (schemaVersion != 1 && schemaVersion != currentSchemaVersion) {
       throw FormatException('Версия формата проекта $schemaVersion не поддерживается.');
     }
     if (appVersion.trim().isEmpty) {
@@ -99,8 +104,10 @@ class ProjectDocument {
       final clip = videoClips[i];
       if (!_isFinite(clip.start) ||
           !_isFinite(clip.end) ||
+          !_isFinite(clip.timelineStart) ||
           clip.start < 0 ||
-          clip.end <= clip.start) {
+          clip.end <= clip.start ||
+          clip.timelineStart < 0) {
         throw FormatException('Некорректные границы видеоклипа ${i + 1}.');
       }
       if (videoDurationMs > 0 && clip.end * 1000 > videoDurationMs + 1) {
@@ -125,8 +132,17 @@ class ProjectDocument {
       }
     }
 
-    if (videoDurationMs > 0 && playheadMs > videoDurationMs) {
-      throw const FormatException('Позиция курсора выходит за длительность видео.');
+    if (schemaVersion == 1) {
+      if (videoDurationMs > 0 && playheadMs > videoDurationMs) {
+        throw const FormatException('Позиция курсора выходит за длительность видео.');
+      }
+    } else if (videoClips.isNotEmpty) {
+      final sequenceEnd = videoClips
+          .map((clip) => clip.timelineEnd)
+          .reduce((left, right) => left > right ? left : right);
+      if (playheadMs > sequenceEnd * 1000 + 1) {
+        throw const FormatException('Позиция курсора выходит за длительность таймлайна.');
+      }
     }
   }
 
@@ -161,6 +177,7 @@ class ProjectDocument {
         throw const FormatException('Поле videoClips должно быть массивом.');
       }
       final clips = <ProjectClipRange>[];
+      var legacyTimelineCursor = 0.0;
       for (var i = 0; i < rawClips.length; i++) {
         final rawClip = rawClips[i];
         if (rawClip is! Map) {
@@ -173,10 +190,19 @@ class ProjectDocument {
           }
           clipJson[entry.key as String] = entry.value;
         }
+        final sourceStart = _readDouble(clipJson, 'start');
+        final sourceEnd = _readDouble(clipJson, 'end');
+        final timelineStart = schemaVersion == 1
+            ? legacyTimelineCursor
+            : (clipJson.containsKey('timelineStart')
+                ? _readDouble(clipJson, 'timelineStart')
+                : legacyTimelineCursor);
         clips.add(ProjectClipRange(
-          _readDouble(clipJson, 'start'),
-          _readDouble(clipJson, 'end'),
+          sourceStart,
+          sourceEnd,
+          timelineStart: timelineStart,
         ));
+        legacyTimelineCursor += sourceEnd - sourceStart;
       }
 
       final rawAudioPath = json['audioPath'];
@@ -186,7 +212,7 @@ class ProjectDocument {
 
       return ProjectDocument(
         format: format,
-        schemaVersion: schemaVersion,
+        schemaVersion: schemaVersion == 1 ? currentSchemaVersion : schemaVersion,
         appVersion: appVersion,
         videoPath: videoPath,
         videoDurationMs: videoDurationMs,

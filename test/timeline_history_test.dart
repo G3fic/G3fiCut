@@ -38,6 +38,15 @@ void main() {
       expect(history.canUndo, isTrue);
     });
 
+    test('records sequence placement changes with identical source ranges', () {
+      final history = TimelineHistory();
+      final before = snapshot(clips: [const TimelineClipRange(0, 4, timelineStart: 0)]);
+      final after = snapshot(clips: [const TimelineClipRange(0, 4, timelineStart: 4)]);
+      history.record(before: before, after: after);
+      expect(history.canUndo, isTrue);
+      expect(history.undo(after)?.videoClips.single.timelineStart, 0);
+    });
+
     test('does not record a no-op edit', () {
       final history = TimelineHistory();
       final state = snapshot(clips: [const TimelineClipRange(0, 5)]);
