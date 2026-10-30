@@ -61,7 +61,7 @@ class PhotoOverlay {
 }
 
 class _EditorPageState extends State<EditorPage> {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.20');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.43');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -360,7 +360,10 @@ class _EditorPageState extends State<EditorPage> {
     final current = player;
     if (current != null) return current;
 
-    final created = Player();
+    // mpv falls back to software decoding when safe hardware decoding is unavailable.
+    final created = Player(configuration: const PlayerConfiguration(
+      options: {'hwdec': 'auto-safe', 'vo': 'gpu'},
+    ));
     try {
       final controller = VideoController(created);
       player = created;
@@ -2139,6 +2142,34 @@ class _EditorPageState extends State<EditorPage> {
     return filters.isEmpty ? 'null' : filters.join(',');
   }
 
+  Future<String> _detectH264Encoder(String ffmpeg) async {
+    try {
+      final result = await Process.run(ffmpeg, ['-hide_banner', '-encoders']);
+      if (result.exitCode == 0) {
+        final output = '${result.stdout}\\n${result.stderr}';
+        for (final encoder in ['h264_nvenc', 'h264_qsv', 'h264_amf']) {
+          if (output.contains(encoder)) return encoder;
+        }
+      }
+    } catch (_) {
+      // Capability probing must never prevent a software export.
+    }
+    return 'libx264';
+  }
+
+  List<String> _videoEncoderArguments(String encoder) {
+    switch (encoder) {
+      case 'h264_nvenc':
+        return ['-c:v', encoder, '-preset', 'p4', '-cq', '18', '-b:v', '0'];
+      case 'h264_qsv':
+        return ['-c:v', encoder, '-preset', 'medium', '-global_quality', '18'];
+      case 'h264_amf':
+        return ['-c:v', encoder, '-quality', 'quality', '-qp_i', '18', '-qp_p', '18'];
+      default:
+        return ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18'];
+    }
+  }
+
   Future<void> exportEditedVideo() async {
     final source = videoPath;
     if (source == null || videoClips.isEmpty || busy) return;
@@ -2183,10 +2214,16 @@ class _EditorPageState extends State<EditorPage> {
           }
           args.addAll(['-filter_complex', graph.join(';'), '-map', '[vout]', '-map', '0:a?']);
         }
-        args.addAll(['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-af', 'volume=${exportVolume.toStringAsFixed(2)}', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', segmentPath]);
-        final result = await Process.run(await findFfmpeg(), args);
+        final ffmpeg = await findFfmpeg();
+        final selectedEncoder = await _detectH264Encoder(ffmpeg);
+        final commonOutputArgs = ['-af', 'volume=${exportVolume.toStringAsFixed(2)}', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', segmentPath];
+        var result = await Process.run(ffmpeg, [...args, ..._videoEncoderArguments(selectedEncoder), ...commonOutputArgs]);
+        if ((result.exitCode != 0 || !await File(segmentPath).exists()) && selectedEncoder != 'libx264') {
+          // An encoder may be listed by FFmpeg but unavailable at runtime due to drivers.
+          result = await Process.run(ffmpeg, [...args, ..._videoEncoderArguments('libx264'), ...commonOutputArgs]);
+        }
         if (result.exitCode != 0 || !await File(segmentPath).exists()) {
-          throw Exception('Не удалось обработать фрагмент ${i + 1}: ${result.stderr.toString().split('\n').last}');
+          throw Exception('Не удалось обработать фрагмент ${i + 1}: ${result.stderr.toString().split('\\n').last}');
         }
         lines.add("file '${segmentPath.replaceAll('\\', '/')}'");
       }
