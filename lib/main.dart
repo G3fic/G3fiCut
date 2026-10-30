@@ -61,7 +61,7 @@ class PhotoOverlay {
 }
 
 class _EditorPageState extends State<EditorPage> {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.5');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.7');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -1023,11 +1023,7 @@ class _EditorPageState extends State<EditorPage> {
         body: SafeArea(
           child: Column(
             children: [
-              topBar(),
-              const Divider(height: 1),
-              toolbar(),
-              const Divider(height: 1),
-              Expanded(child: Row(children: [mediaPanel(), const VerticalDivider(width: 1), Expanded(child: previewPanel()), const VerticalDivider(width: 1), inspectorPanel()])),
+              Expanded(child: Row(children: [mediaPanel(), const VerticalDivider(width: 1), SizedBox(width: 258, child: inspectorPanel()), const VerticalDivider(width: 1), Expanded(child: previewPanel())])),
               const Divider(height: 1),
               timelinePanel(),
               const Divider(height: 1),
@@ -1442,6 +1438,14 @@ class _EditorPageState extends State<EditorPage> {
             ]),
             const SizedBox(height: 12),
             if (inspectorTab == 'video') ...[
+              Row(children: [
+                IconButton(tooltip: 'Открыть проект', onPressed: busy ? null : openProject, icon: const Icon(Icons.folder_open_outlined, size: 18)),
+                IconButton(tooltip: 'Сохранить', onPressed: videoPath == null || busy ? null : () => unawaited(saveProject()), icon: const Icon(Icons.save_outlined, size: 18)),
+                IconButton(tooltip: 'Добавить видео', onPressed: busy ? null : pickVideo, icon: const Icon(Icons.video_call_outlined, size: 18)),
+                IconButton(tooltip: 'Добавить фото', onPressed: busy || videoPath == null ? null : importPhotoOverlay, icon: const Icon(Icons.add_photo_alternate_outlined, size: 18)),
+                IconButton(tooltip: 'Экспорт', onPressed: videoClips.isEmpty || busy ? null : exportEditedVideo, icon: const Icon(Icons.ios_share, size: 18)),
+              ]),
+              const Divider(),
               const Text('ФИЛЬТРЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
               Material(
                 color: panel,
@@ -1683,6 +1687,7 @@ class _EditorPageState extends State<EditorPage> {
                   left: 4, top: 5 + i * 2.0, bottom: 5,
                   width: math.max(20.0, timelineWidth - 8).toDouble(),
                   child: GestureDetector(
+                    onTapDown: (d) => seekTimeline(d.localPosition.dx),
                     onTap: () => setState(() => selectedPhotoOverlay = i),
                     child: Container(
                       decoration: BoxDecoration(color: const Color(0x443D2C69), borderRadius: BorderRadius.circular(5), border: Border.all(color: selectedPhotoOverlay == i ? Colors.white : const Color(0xFFB18CFF), width: selectedPhotoOverlay == i ? 2 : 1)),
@@ -1756,6 +1761,7 @@ class _EditorPageState extends State<EditorPage> {
                     bottom: 7,
                     width: math.max(12.0, videoClips[i].length * zoom - 2).toDouble(),
                     child: GestureDetector(
+                      onTapDown: (d) => seekTimeline(videoClips[i].start * zoom + d.localPosition.dx),
                       onTap: () => setState(() { selectedClipIndex = i; projectDirty = true; }),
                       onSecondaryTapDown: (details) => showClipMenu(details.globalPosition, i),
                       child: Stack(
@@ -1829,8 +1835,8 @@ class _EditorPageState extends State<EditorPage> {
                       ),
                     ),
                   ),
-              Positioned(left: playhead, top: 0, bottom: 0, width: 2, child: Container(color: const Color(0xFFFF5E7D))),
-              Positioned(left: (playhead - 4).clamp(0.0, timelineWidth - 10).toDouble(), top: 0, width: 10, height: 8, child: const DecoratedBox(decoration: BoxDecoration(color: Color(0xFFFF5E7D), borderRadius: BorderRadius.only(bottomLeft: Radius.circular(3), bottomRight: Radius.circular(3))))),
+              Positioned(left: playhead, top: 0, bottom: 0, width: 2, child: Container(color: Colors.white)),
+              Positioned(left: (playhead - 4).clamp(0.0, timelineWidth - 10).toDouble(), top: 0, width: 10, height: 8, child: const DecoratedBox(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.only(bottomLeft: Radius.circular(3), bottomRight: Radius.circular(3))))),
             ]),
           ),
         ),
