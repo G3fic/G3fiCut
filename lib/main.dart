@@ -1059,51 +1059,6 @@ class _EditorPageState extends State<EditorPage> {
     });
   }
 
-  void _startEdgeDrag(int index, bool left) {
-    if (index < 0 || index >= videoClips.length) return;
-    _edgeDragBefore = _captureTimelineSnapshot();
-    _edgeDragIndex = index;
-    _edgeDragLeft = left;
-    _edgeDragOriginalEdge = left ? videoClips[index].start : videoClips[index].end;
-    _edgeDragPointerX = 0;
-    setState(() => selectedClipIndex = index);
-  }
-
-  void _updateEdgeDrag(DragUpdateDetails details) {
-    if (_edgeDragIndex < 0 || _edgeDragIndex >= videoClips.length) return;
-    _edgeDragPointerX += details.delta.dx;
-    final clip = videoClips[_edgeDragIndex];
-    final nextEdge = _edgeDragOriginalEdge + _edgeDragPointerX / zoom;
-    setState(() {
-      if (_edgeDragLeft) {
-        clip.start = nextEdge.clamp(0.0, clip.end - .08).toDouble();
-      } else {
-        final sourceEnd = duration.inMilliseconds > 0
-            ? duration.inMilliseconds / 1000
-            : _edgeDragOriginalEdge + 3600;
-        clip.end = nextEdge.clamp(clip.start + .08, math.max(clip.start + .08, sourceEnd)).toDouble();
-      }
-      projectDirty = true;
-    });
-  }
-
-  void _finishEdgeDrag() {
-    if (_edgeDragIndex < 0) return;
-    final before = _edgeDragBefore;
-    if (before != null) {
-      _timelineHistory.record(before: before, after: _captureTimelineSnapshot());
-    }
-    _edgeDragBefore = null;
-    _edgeDragIndex = -1;
-    if (mounted) setState(() => status = 'Длина клипа изменена. Ctrl+Z — отменить.');
-  }
-
-  Future<void> seek(Duration target) async {
-    final activePlayer = player;
-    if (activePlayer == null || duration.inMilliseconds <= 0) return;
-    final ms = target.inMilliseconds.clamp(0, duration.inMilliseconds).toInt();
-    await activePlayer.seek(Duration(milliseconds: ms));
-  }
   void setTimelineZoom(double next) {
     setState(() {
       zoom = next.clamp(8.0, 160.0).toDouble();
