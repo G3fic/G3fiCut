@@ -2802,7 +2802,7 @@ class _EditorPageState extends State<EditorPage> {
         }
         if (result.exitCode != 0 || !await File(segmentPath).exists()) {
           throw Exception(
-            'Не удалось обработать фрагмент ${i + 1}: ${result.stderr.toString().split('\\n').last}',
+            'Не удалось обработать фрагмент ${i + 1}: ${result.stderr.toString().split('\n').last}',
           );
         }
 
@@ -2815,7 +2815,7 @@ class _EditorPageState extends State<EditorPage> {
         }
       }
 
-      await listFile.writeAsString(lines.join('\\n'));
+      await listFile.writeAsString(lines.join('\n'));
       final joinedVideo = audioPath == null
           ? savePath
           : p.join(temp.path, 'joined_video.mp4');
@@ -2835,7 +2835,7 @@ class _EditorPageState extends State<EditorPage> {
         joinedVideo,
       ]);
       if (concatResult.exitCode != 0) {
-        throw Exception(concatResult.stderr.toString().split('\\n').last);
+        throw Exception(concatResult.stderr.toString().split('\n').last);
       }
 
       // Detached audio replaces source audio at its own trim range.
@@ -2869,7 +2869,7 @@ class _EditorPageState extends State<EditorPage> {
           savePath,
         ]);
         if (audioResult.exitCode != 0) {
-          throw Exception(audioResult.stderr.toString().split('\\n').last);
+          throw Exception(audioResult.stderr.toString().split('\n').last);
         }
       }
 
