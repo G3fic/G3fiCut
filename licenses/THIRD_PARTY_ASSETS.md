@@ -14,6 +14,7 @@ release build:
 
 **Creator:** slay / slaycamera.com  
 **Source:** https://github.com/slaycamera/luts  
+**Bundled upstream revision:** `a1709044efe115640dde1dee17d4185fc059af0d`  
 **License:** Creative Commons Attribution 4.0 International (CC BY 4.0)  
 **License text:** https://creativecommons.org/licenses/by/4.0/
 
