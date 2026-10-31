@@ -1,16 +1,20 @@
-# GifCut v0.3.79 — desktop video editor MVP
+# GifCut v0.3.80 — desktop video editor MVP
 
 GifCut is a Windows-first desktop video editor prototype built with Flutter.
 
 ## Included in this version
 
-- Import a local video file.
+- Import multiple local video, image, and audio files into a searchable-style media library; add files through the picker or drag them directly from Windows File Explorer.
+- Dedicated Media, Audio, Text, Stickers, Effects, Transitions, Captions, and Filters categories in a CapCut-style left workspace.
 - Video preview with play/pause and seeking controls, direct on-canvas resize/rotation handles, and black frames during empty timeline gaps.
-- CapCut-inspired resizable docked layout: media bin, central preview, right-side inspector, and bottom timeline.
-- Black preview canvas by default, with a separate toggle for the blurred-video background; clip blur remains independent.
+- CapCut-inspired resizable layout: tool categories, media/preset browser, central preview, right-side context inspector, and a full-width bottom timeline.
+- Black preview and export canvas by default; blurred duplicate-video background is an explicit optional canvas setting. Clip blur remains independent.
+- Effect and transition preset cards use real frames from the loaded source video, animate the preview on hover/selection, and open editable settings on the right before a separate Apply action.
+- Editable text overlays with timing, font size, and position controls; text is visible in the preview and included in MP4 exports.
+- Project schema v4 saves text overlays and all imported media paths.
 - Timeline clip selection, right-click context menu, split at playhead, trim start/end to playhead, duplicate, delete, and undo/redo history.
 - MP4 export of the edited clip sequence using local FFmpeg.
-- Timeline with video and audio tracks, timeline zoom, and a draggable playhead.
+- Timeline with video, audio, photo, effect, transition, and text rows, timeline zoom, and a draggable playhead.
 - Extract the video's audio to a WAV file.
 - Project open/save/save-as in the .g3ficut format (Ctrl+O, Ctrl+S, Ctrl+Shift+S); Ctrl+Shift+O imports video.
 - Desktop shortcuts for frame stepping, edit-point navigation, playback, split, ripple trim, duplicate, delete/ripple delete, export, project save/open, and undo/redo. Press F1 or use the keyboard icon to view the shortcut reference.
@@ -23,7 +27,7 @@ Project files store local media paths and edit state; the media itself stays on 
 
 ## Not included yet
 
-Multiple independent source assets and video/audio tracks, multi-select, autosave/recovery, media relinking, timed photo/title clips, keyframes, track mute/solo/lock, advanced effects, audio preview mixing, and advanced export profiles remain planned. G3fiCut is an early desktop editor and is not yet feature-equivalent to CapCut or Premiere Pro.
+Multiple independent video sources on separate tracks, simultaneous multi-track audio mixing, timed photo clips with full project persistence, multi-select, autosave/recovery, media relinking, keyframes, track mute/solo/lock, advanced effect parameterization, and advanced export profiles remain planned. The current media library can hold multiple imported assets, but the editing sequence still uses one active source video and one audio lane. G3fiCut is an early desktop editor and is not yet feature-equivalent to CapCut or Premiere Pro.
 
 ## Install and update
 
@@ -37,16 +41,16 @@ Updates are published from semantic version tags. For example, push a tag named 
 
 ## Publish a release
 
-Create and push a tag on the commit to release:
+Create and push a new semantic version tag on the validated commit to publish a stable release. For example:
 
-    git tag v0.2.2
-    git push origin v0.2.2
+    git tag v0.3.80
+    git push origin v0.3.80
 
 Use a new vMAJOR.MINOR.PATCH value for every release. GitHub Actions will analyze the Dart code, run tests, build the Windows application and installer, and attach the matching installer to the release. Check the Actions run before announcing the update.
 
 ## Build on GitHub
 
-For pull requests and normal branch builds, GitHub Actions produces a downloadable installer artifact for testing. Open the Actions tab, select the latest successful **Build GifCut for Windows** run, and download the **GifCut-Windows-Installer** artifact.
+For pull requests, feature branches and release branches, GitHub Actions produces a downloadable installer artifact for testing. Open the Actions tab, select the latest successful **Build GifCut for Windows** run, and download the **GifCut-Windows-Installer** artifact.
 
 For local development, install Flutter stable and Visual Studio with the **Desktop development with C++** workload. Run flutter pub get, then flutter run -d windows. For local audio extraction, put ffmpeg.exe in the app's executable folder or add FFmpeg to PATH.
 
