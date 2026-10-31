@@ -631,8 +631,15 @@ try {
 
 if (-not $isAdmin -and -not $canWrite) {
   $elevationArgs = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -ProcessId {1} -ArchivePath "{2}" -TargetDirectory "{3}" -ExecutablePath "{4}"' -f $PSCommandPath, $ProcessId, $ArchivePath, $TargetDirectory, $ExecutablePath
-  Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $elevationArgs
-  exit 0
+  try {
+    Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $elevationArgs
+    exit 0
+  } catch {
+    # If the user cancels UAC, restore the previous working application session.
+    Start-Process -FilePath $ExecutablePath -WorkingDirectory $TargetDirectory
+    Remove-Item -LiteralPath $ArchivePath -Force -ErrorAction SilentlyContinue
+    exit 1
+  }
 }
 
 Wait-Process -Id $ProcessId -ErrorAction SilentlyContinue
