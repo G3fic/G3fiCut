@@ -502,12 +502,12 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           downloadUri.host != 'github.com' ||
           !(downloadUri.path.startsWith('/G3fic/G3fiCut/releases/download/') ||
             downloadUri.path.startsWith('/G3fic/GifCut/releases/download/'))) {
-        throw const FormatException('Ссылка на архив приложения не принадлежит официальным GitHub Releases GifCut.');
+        throw const FormatException('Ссылка на установщик не принадлежит официальным GitHub Releases GifCut.');
       }
 
-      final digest = archiveAsset['digest'] as String?;
+      final digest = installerAsset['digest'] as String?;
       if (digest == null || !digest.startsWith('sha256:')) {
-        throw StateError('GitHub не предоставил SHA-256 архива приложения. Обновление отменено без проверки целостности.');
+        throw StateError('GitHub не предоставил SHA-256 установщика. Обновление отменено без проверки целостности.');
       }
       if (mounted) setStatus('Доступно обновление $latestVersion.');
       if (!mounted) return;
@@ -517,9 +517,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           title: const Text('Доступно обновление GifCut'),
           content: Text(
             'Установлена версия $appVersion. Доступна версия $latestVersion.\n\n'
-            'GifCut скачает файлы обновления, проверит SHA-256 и заменит файлы приложения. '
-            'Программа автоматически закроется и запустится снова — окно Windows Setup открываться не будет. '
-            'Запрос администратора появится только при необходимости записи в защищённую папку Windows.',
+            'GifCut скачает установщик Windows и проверит его SHA-256. Затем откроется мастер установки GifCut. '
+            'Программа закроется, пока установщик обновляет файлы. '
+            'Подтвердите запрос Windows, если появится окно контроля учётных записей.',
           ),
           actions: [
             TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Позже')),
