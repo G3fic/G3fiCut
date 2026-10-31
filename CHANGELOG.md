@@ -1,5 +1,10 @@
 # Changelog
 
+## GifCut v0.3.76 — 2026-10-31
+
+- Fix in-app updates to launch the visible, SHA-256-verified Windows installer instead of silently copying files from a ZIP archive.
+- Keep GifCut open if the installer cannot be started, and let Inno Setup handle administrator permissions and application replacement.
+
 ## GifCut v0.3.75 — 2026-10-31
 
 - Restore the selected aspect ratio in the preview and use a dark-grey surround for letterboxed areas.
