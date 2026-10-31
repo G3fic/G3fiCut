@@ -4365,9 +4365,14 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   String _buildExportVideoFilter(int index, TimelineClip clip) {
     final filters = <String>[];
     if (filtersEnabled) {
+      final gain = contrast;
+      final offset = brightness + (1 - gain) / 2;
       filters.add(
-        'eq=brightness=${brightness.toStringAsFixed(3)}:contrast=${contrast.toStringAsFixed(3)}:saturation=${saturation.toStringAsFixed(3)}',
+        'colorchannelmixer=rr=${gain.toStringAsFixed(3)}:gg=${gain.toStringAsFixed(3)}:bb=${gain.toStringAsFixed(3)}:ro=${offset.toStringAsFixed(3)}:go=${offset.toStringAsFixed(3)}:bo=${offset.toStringAsFixed(3)}',
       );
+      if ((saturation - 1).abs() > 0.001) {
+        filters.add('hue=s=${saturation.toStringAsFixed(3)}');
+      }
     }
     if (videoEffect != 'Оригинал' && _exportEffectFilter != 'null') {
       filters.add(_exportEffectFilter);
@@ -4604,7 +4609,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           '[0:v]split=2[fitSource][backdropSource]',
           '[backdropSource]scale=$outputWidth:$outputHeight:force_original_aspect_ratio=increase,'
               'crop=$outputWidth:$outputHeight,gblur=sigma=18,'
-              'eq=brightness=-0.30:saturation=0.82[backdrop]',
+              'colorchannelmixer=rr=0.62:gg=0.62:bb=0.62,hue=s=0.82[backdrop]',
           '[fitSource]$effectPrefix$foregroundTransforms[foreground]',
           '[backdrop][foreground]overlay=(W-w)/2:(H-h)/2:shortest=1[base0]',
         ];
