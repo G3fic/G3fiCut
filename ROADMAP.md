@@ -17,13 +17,13 @@ This roadmap tracks real editing capabilities, not decorative controls. A featur
 - [x] Project schema v2 with v1 timing migration.
 - [x] Export clips in sequence order and preserve gaps with black segments.
 - [ ] Stable clip IDs, multi-select, multi-track media, and cross-track editing.
-- [ ] Complete audio preview mixing and timed photo/title clips.
+- [ ] Complete audio preview mixing and multiple independent video/audio tracks.
 - [x] Implemented in feature branch: versioned .g3ficut project format, open/save/save-as, media existence checks, clip ranges, selected clip, audio trim, zoom and playhead (release validation still pending).
 - Autosave/recovery with clear handling of moved or missing media.
-- Media bin with multiple source video/audio/image files.
+- [x] Media library with multiple video/image/audio imports, Windows Explorer drag-and-drop, and separate asset categories (v0.3.80; sequence editing is still single-source).
 - Drag clips to move them on the timeline; move/insert without overlapping unexpectedly.
 - Resizable trim handles, timeline snapping, ripple delete, copy/paste clips, and select multiple clips.
-- Accurate thumbnails and audio waveforms generated from the actual media rather than decorative placeholders.
+- [x] Effect and transition preset cards with real source-frame thumbnails and animated preview states; right-side settings and explicit timeline application (v0.3.80).
 
 ## 0.4 — Tracks and audio finishing
 - Multiple video and audio tracks with track visibility, mute/solo, and locking.
@@ -32,10 +32,13 @@ This roadmap tracks real editing capabilities, not decorative controls. A featur
 - Per-clip transform and fit/fill controls for images/video.
 
 ## 0.5 — Text, captions, transitions, and basic effects
-- Text/title clips with font, size, color, alignment, outline/shadow, background, and duration.
+- [x] Basic timed text/title overlays with size and position controls, preview, project persistence, and FFmpeg export (v0.3.80).
+- Extended text/title styling: font selection, color picker, alignment, outline/shadow, background, and keyframed animation.
 - Subtitle import/export (SRT/VTT) and editable caption segments.
-- Transitions such as dissolve, fade to/from black, and wipe with adjustable duration.
-- Crop, rotate, scale, opacity, and basic color correction (brightness, contrast, saturation, temperature).
+- [x] Named transition presets with animated preview, editable duration, per-cut placement, and FFmpeg xfade export (v0.3.80).
+- Further transition modes and timing curves, including handles on the timeline.
+- [x] Existing FFmpeg effects/filters and registered timeline effects are available through the new preset browser (v0.3.80).
+- Extended parameterized effects, crop, color correction (brightness, contrast, saturation, temperature), and per-clip keyframes.
 - Preview and export must use the same rendering graph.
 
 ## 0.6 — Motion and export controls
