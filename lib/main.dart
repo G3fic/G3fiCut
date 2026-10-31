@@ -186,6 +186,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   String _selectedCanvasObject = 'video';
   double _videoRotateStartAngle = 0;
   double _videoRotateStartRotation = 0;
+  final Map<int, double> _photoRotateStartAngles = {};
+  final Map<int, double> _photoRotateStartRotations = {};
   int _gapNextClipIndex = -1;
   bool _gapResumePending = false;
   bool _suppressPlayerStateEvents = false;
@@ -1984,6 +1986,50 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                                 decoration: BoxDecoration(border: selectedPhotoOverlay == i ? Border.all(color: accent, width: 2) : null),
                                                 child: Stack(fit: StackFit.expand, children: [
                                                   Image.file(File(photoOverlays[i].path), fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined)),
+                                                  if (selectedPhotoOverlay == i)
+                                                    Align(
+                                                      alignment: Alignment.topCenter,
+                                                      child: Transform.translate(
+                                                        offset: const Offset(0, -19),
+                                                        child: GestureDetector(
+                                                          key: ValueKey('photo-rotate-$i'),
+                                                          behavior: HitTestBehavior.opaque,
+                                                          onPanStart: (details) {
+                                                            final box = _previewCanvasKey.currentContext?.findRenderObject() as RenderBox?;
+                                                            if (box == null) return;
+                                                            final centerLocal = Offset(
+                                                              bounds.maxWidth / 2 + photoOverlays[i].x * bounds.maxWidth,
+                                                              bounds.maxHeight / 2 + photoOverlays[i].y * bounds.maxHeight,
+                                                            );
+                                                            final center = box.localToGlobal(centerLocal);
+                                                            _photoRotateStartAngles[i] = math.atan2(details.globalPosition.dy - center.dy, details.globalPosition.dx - center.dx);
+                                                            _photoRotateStartRotations[i] = photoOverlays[i].rotation;
+                                                          },
+                                                          onPanUpdate: (details) {
+                                                            final box = _previewCanvasKey.currentContext?.findRenderObject() as RenderBox?;
+                                                            if (box == null) return;
+                                                            final centerLocal = Offset(
+                                                              bounds.maxWidth / 2 + photoOverlays[i].x * bounds.maxWidth,
+                                                              bounds.maxHeight / 2 + photoOverlays[i].y * bounds.maxHeight,
+                                                            );
+                                                            final center = box.localToGlobal(centerLocal);
+                                                            final angle = math.atan2(details.globalPosition.dy - center.dy, details.globalPosition.dx - center.dx);
+                                                            var delta = (angle - (_photoRotateStartAngles[i] ?? angle)) * 180 / math.pi;
+                                                            if (delta > 180) delta -= 360;
+                                                            if (delta < -180) delta += 360;
+                                                            setState(() {
+                                                              photoOverlays[i].rotation = ((_photoRotateStartRotations[i] ?? photoOverlays[i].rotation) + delta) % 360;
+                                                              projectDirty = true;
+                                                            });
+                                                          },
+                                                          child: Container(
+                                                            width: 26, height: 26,
+                                                            decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white, width: 1.5)),
+                                                            child: const Icon(Icons.rotate_right, size: 15, color: Colors.white),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
                                                   if (selectedPhotoOverlay == i)
                                                     for (final point in const [Alignment.topLeft, Alignment.topCenter, Alignment.topRight, Alignment.centerLeft, Alignment.centerRight, Alignment.bottomLeft, Alignment.bottomCenter, Alignment.bottomRight])
                                                       Align(alignment: point, child: GestureDetector(
