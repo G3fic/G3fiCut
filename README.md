@@ -26,7 +26,7 @@ Multiple independent source assets and video/audio tracks, multi-select, autosav
 
 ## Install and update
 
-1. Download the installer named **G3fiCut-Setup-X.Y.Z.exe** from the repository's **Releases** page.
+1. Download the installer named **GifCut-Setup-X.Y.Z.exe** from the repository's **Releases** page.
 2. Run the installer and follow the prompts.
 3. GifCut checks for a newer stable release on startup. You can also click the update icon in the title bar.
 4. When you accept an update, GifCut downloads the published installer, verifies its SHA-256 digest from the GitHub Releases API, and launches the installer. Windows may request administrator permission.
@@ -44,7 +44,7 @@ Use a new vMAJOR.MINOR.PATCH value for every release. GitHub Actions will analyz
 
 ## Build on GitHub
 
-For pull requests and normal branch builds, GitHub Actions produces a downloadable installer artifact for testing. Open the Actions tab, select the latest successful **Build GifCut for Windows** run, and download the **G3fiCut-Windows-Installer** artifact.
+For pull requests and normal branch builds, GitHub Actions produces a downloadable installer artifact for testing. Open the Actions tab, select the latest successful **Build GifCut for Windows** run, and download the **GifCut-Windows-Installer** artifact.
 
 For local development, install Flutter stable and Visual Studio with the **Desktop development with C++** workload. Run flutter pub get, then flutter run -d windows. For local audio extraction, put ffmpeg.exe in the app's executable folder or add FFmpeg to PATH.
 
