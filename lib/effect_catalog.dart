@@ -181,3 +181,41 @@ const Map<String, List<double>> lutPreviewMatrices = {
 
 String transitionFilterName(String type) =>
     builtinTransitionFilters[type] ?? 'fadeblack';
+
+
+String applyEnableToFilterChain(String filterChain, String expression) {
+  final segments = <String>[];
+  var segmentStart = 0;
+  var parenthesisDepth = 0;
+  var quote = 0;
+
+  for (var i = 0; i < filterChain.length; i++) {
+    final unit = filterChain.codeUnitAt(i);
+    if (quote != 0) {
+      if (unit == quote &&
+          (i == 0 || filterChain.codeUnitAt(i - 1) != 0x5c)) {
+        quote = 0;
+      }
+      continue;
+    }
+
+    if (unit == 0x22 || unit == 0x27) {
+      quote = unit;
+    } else if (unit == 0x28) {
+      parenthesisDepth++;
+    } else if (unit == 0x29) {
+      if (parenthesisDepth > 0) parenthesisDepth--;
+    } else if (unit == 0x2c && parenthesisDepth == 0) {
+      final segment = filterChain.substring(segmentStart, i).trim();
+      if (segment.isNotEmpty) segments.add(segment);
+      segmentStart = i + 1;
+    }
+  }
+
+  final lastSegment = filterChain.substring(segmentStart).trim();
+  if (lastSegment.isNotEmpty) segments.add(lastSegment);
+
+  return segments
+      .map((segment) => "$segment:enable='$expression'")
+      .join(',');
+}
