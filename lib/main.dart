@@ -2303,6 +2303,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       controller: videoController!,
       controls: NoVideoControls,
       fit: BoxFit.contain,
+      fill: Colors.transparent,
     );
     final activeEffects = effectClips.where((effect) =>
         playheadSeconds >= effect.start && playheadSeconds < effect.end);
