@@ -53,6 +53,27 @@ void main() {
     });
   });
 
+  group('findReleaseUpdateAsset', () {
+    test('chooses the visible Windows installer instead of the portable zip', () {
+      final asset = findReleaseUpdateAsset([
+        {'name': 'GifCut-0.3.75-win-x64.zip', 'id': 1},
+        {'name': 'GifCut-Setup-0.3.75.exe', 'id': 2},
+      ], '0.3.75');
+
+      expect(asset?['id'], 2);
+      expect(asset?['name'], 'GifCut-Setup-0.3.75.exe');
+    });
+
+    test('does not fall back to a portable archive when no installer exists', () {
+      expect(
+        findReleaseUpdateAsset([
+          {'name': 'GifCut-0.3.75-win-x64.zip', 'id': 1},
+        ], '0.3.75'),
+        isNull,
+      );
+    });
+  });
+
   group('findReleaseAppArchiveAsset', () {
     test('finds the versioned portable Windows archive', () {
       final asset = findReleaseAppArchiveAsset([
