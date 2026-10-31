@@ -3056,6 +3056,7 @@ try {
                         onPanStart: (_) => _startEffectClipMove(i),
                         onPanUpdate: _updateEffectClipMove,
                         onPanEnd: (_) => _finishEffectClipMove(),
+                        onPanCancel: _finishEffectClipMove,
                         child: Container(
                           alignment: Alignment.centerLeft,
                           padding: const EdgeInsets.symmetric(horizontal: 11),
@@ -3087,6 +3088,7 @@ try {
                           onHorizontalDragStart: (_) => _startEffectResize(i, fromLeft: true),
                           onHorizontalDragUpdate: _updateEffectResize,
                           onHorizontalDragEnd: (_) => _finishEffectResize(),
+                          onHorizontalDragCancel: _finishEffectResize,
                           child: Container(
                             decoration: BoxDecoration(
                               color: selectedEffectClipIndex == i ? Colors.white : const Color(0x88FFFFFF),
@@ -3109,6 +3111,7 @@ try {
                           onHorizontalDragStart: (_) => _startEffectResize(i, fromLeft: false),
                           onHorizontalDragUpdate: _updateEffectResize,
                           onHorizontalDragEnd: (_) => _finishEffectResize(),
+                          onHorizontalDragCancel: _finishEffectResize,
                           child: Container(
                             decoration: BoxDecoration(
                               color: selectedEffectClipIndex == i ? Colors.white : const Color(0x88FFFFFF),
