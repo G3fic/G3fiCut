@@ -113,6 +113,102 @@ class TimelineEditing {
     return List<TimelineClipRange>.of(clips)..removeAt(index);
   }
 
+  /// Returns the closest position that keeps a standalone effect block out of
+  /// every occupied effect interval. Returns null when no free interval fits.
+  static double? findAvailableEffectStart({
+    required List<TimelineEffectRange> effects,
+    required double preferred,
+    required double length,
+    required double timelineEnd,
+    int ignoreIndex = -1,
+  }) {
+    if (!preferred.isFinite ||
+        !length.isFinite ||
+        !timelineEnd.isFinite ||
+        length <= 0 ||
+        timelineEnd < length) {
+      return null;
+    }
+
+    final occupied = <TimelineEffectRange>[
+      for (var i = 0; i < effects.length; i++)
+        if (i != ignoreIndex) effects[i],
+    ]..sort((a, b) => a.start.compareTo(b.start));
+
+    final candidates = <double>[];
+    var cursor = 0.0;
+    for (final effect in occupied) {
+      final gapEnd = effect.start;
+      if (gapEnd - cursor >= length - epsilon) {
+        final candidate = preferred < cursor
+            ? cursor
+            : preferred > gapEnd - length
+                ? gapEnd - length
+                : preferred;
+        candidates.add(candidate);
+      }
+      if (effect.end > cursor) cursor = effect.end;
+    }
+
+    if (timelineEnd - cursor >= length - epsilon) {
+      final candidate = preferred < cursor
+          ? cursor
+          : preferred > timelineEnd - length
+              ? timelineEnd - length
+              : preferred;
+      candidates.add(candidate);
+    }
+    if (candidates.isEmpty) return null;
+    candidates.sort((a, b) =>
+        (a - preferred).abs().compareTo((b - preferred).abs()));
+    return candidates.first;
+  }
+
+  /// Resizes one edge while respecting neighboring effect blocks and the
+  /// minimum effect duration.
+  static TimelineEffectRange resizeEffectEdge({
+    required List<TimelineEffectRange> effects,
+    required int index,
+    required double requestedTime,
+    required double timelineEnd,
+    required bool resizeStart,
+    double minimumLength = 0.25,
+  }) {
+    if (index < 0 || index >= effects.length) {
+      throw RangeError.index(index, effects, 'index');
+    }
+    final selected = effects[index];
+    var previousEnd = 0.0;
+    var nextStart = timelineEnd;
+    for (var i = 0; i < effects.length; i++) {
+      if (i == index) continue;
+      final other = effects[i];
+      if (other.end <= selected.start + epsilon &&
+          other.end > previousEnd) {
+        previousEnd = other.end;
+      }
+      if (other.start >= selected.end - epsilon &&
+          other.start < nextStart) {
+        nextStart = other.start;
+      }
+    }
+
+    if (resizeStart) {
+      final upper = selected.end - minimumLength;
+      final nextStartValue = requestedTime
+          .clamp(previousEnd, upper)
+          .toDouble();
+      return TimelineEffectRange(
+        selected.type,
+        nextStartValue,
+        selected.end,
+      );
+    }
+    final lower = selected.start + minimumLength;
+    final endValue = requestedTime.clamp(lower, nextStart).toDouble();
+    return TimelineEffectRange(selected.type, selected.start, endValue);
+  }
+
   static TimelineClipRange _copyAt(TimelineClipRange clip, double timelineStart) =>
       TimelineClipRange(clip.start, clip.end, timelineStart: timelineStart);
 
