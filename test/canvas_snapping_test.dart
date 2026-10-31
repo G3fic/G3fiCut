@@ -111,7 +111,7 @@ void main() {
       expect(result.guide, CanvasGuide.center);
     });
 
-    test('snaps an object's leading edge to the canvas edge', () {
+    test("snaps an object's leading edge to the canvas edge", () {
       const halfExtent = 90.0;
       final target = -0.5 + halfExtent / 800;
       final result = snapper.update(
