@@ -93,6 +93,70 @@ void main() {
       expect(TimelineEditing.deleteLeaveGap(source, 0).single.timelineStart, 4);
     });
 
+    test('effect placement never overlaps existing effects', () {
+      final effects = [
+        const TimelineEffectRange('blur', 2, 4),
+        const TimelineEffectRange('sepia', 6, 8),
+      ];
+
+      expect(
+        TimelineEffectEditing.findAvailableEffectStart(
+          effects: effects,
+          preferred: 3,
+          length: 1.5,
+          timelineEnd: 10,
+        ),
+        4,
+      );
+      expect(
+        TimelineEffectEditing.findAvailableEffectStart(
+          effects: effects,
+          preferred: 3,
+          length: 3,
+          timelineEnd: 10,
+        ),
+        0,
+      );
+      expect(
+        TimelineEffectEditing.findAvailableEffectStart(
+          effects: effects,
+          preferred: 7,
+          length: 2,
+          timelineEnd: 8,
+        ),
+        isNull,
+      );
+    });
+
+    test('effect edge resize respects neighboring effect blocks', () {
+      final effects = [
+        const TimelineEffectRange('blur', 1, 3),
+        const TimelineEffectRange('sepia', 4, 6),
+        const TimelineEffectRange('warm', 7, 9),
+      ];
+
+      expect(
+        TimelineEffectEditing.resizeEffectEdge(
+          effects: effects,
+          index: 1,
+          requestedTime: 2,
+          timelineEnd: 10,
+          resizeStart: true,
+        ),
+        const TimelineEffectRange('sepia', 3, 6),
+      );
+      expect(
+        TimelineEffectEditing.resizeEffectEdge(
+          effects: effects,
+          index: 1,
+          requestedTime: 8,
+          timelineEnd: 10,
+          resizeStart: false,
+        ),
+        const TimelineEffectRange('sepia', 4, 7),
+      );
+    });
+
     test('rejects split at clip edges', () {
       expect(() => TimelineEditing.splitAt(source, 0, 0.01), throwsArgumentError);
       expect(() => TimelineEditing.splitAt(source, 0, 4), throwsArgumentError);
