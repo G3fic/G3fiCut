@@ -101,9 +101,9 @@ void main() {
     expect(inspectorSplitter, findsOneWidget);
     expect(timelineSplitter, findsOneWidget);
 
-    await tester.drag(mediaSplitter, const Offset(28, 0));
+    await tester.drag(mediaSplitter, const Offset(-28, 0));
     await tester.pump();
-    await tester.drag(inspectorSplitter, const Offset(-24, 0));
+    await tester.drag(inspectorSplitter, const Offset(24, 0));
     await tester.pump();
     await tester.drag(timelineSplitter, const Offset(0, -24));
     await tester.pump();
