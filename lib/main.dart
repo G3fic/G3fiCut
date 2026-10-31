@@ -41,6 +41,56 @@ class _ShortcutRow extends StatelessWidget {
   );
 }
 
+class ContinuousPointerDrag extends StatefulWidget {
+  const ContinuousPointerDrag({
+    super.key,
+    required this.onDelta,
+    required this.child,
+  });
+
+  final ValueChanged<Offset> onDelta;
+  final Widget child;
+
+  @override
+  State<ContinuousPointerDrag> createState() => _ContinuousPointerDragState();
+}
+
+class _ContinuousPointerDragState extends State<ContinuousPointerDrag> {
+  int? _activePointer;
+  Offset? _lastGlobalPosition;
+
+  void _handlePointerDown(PointerDownEvent event) {
+    if (_activePointer != null || (event.buttons & kPrimaryButton) == 0) return;
+    _activePointer = event.pointer;
+    _lastGlobalPosition = event.position;
+  }
+
+  void _handlePointerMove(PointerMoveEvent event) {
+    if (event.pointer != _activePointer) return;
+    final previous = _lastGlobalPosition;
+    _lastGlobalPosition = event.position;
+    if (previous == null) return;
+    final delta = event.position - previous;
+    if (delta.distanceSquared > 0) widget.onDelta(delta);
+  }
+
+  void _finishPointer(PointerEvent event) {
+    if (event.pointer != _activePointer) return;
+    _activePointer = null;
+    _lastGlobalPosition = null;
+  }
+
+  @override
+  Widget build(BuildContext context) => Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: _handlePointerDown,
+        onPointerMove: _handlePointerMove,
+        onPointerUp: _finishPointer,
+        onPointerCancel: _finishPointer,
+        child: widget.child,
+      );
+}
+
 class G3fiCutApp extends StatelessWidget {
   const G3fiCutApp({super.key});
   @override
@@ -132,7 +182,6 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   double _mediaPanelWidth = 188;
   double _inspectorPanelWidth = 220;
   double _timelinePanelHeight = 276;
-  Offset? _videoMoveLastGlobal;
   Offset? _videoRotateLastGlobal;
   final Map<String, Offset> _resizeHandleLastGlobal = {};
   double frameRate = 30.0;
@@ -1795,36 +1844,27 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                                   Positioned.fill(
                                                     child: MouseRegion(
                                                       cursor: SystemMouseCursors.move,
-                                                      child: GestureDetector(
-                                                        behavior: HitTestBehavior.opaque,
-                                                        onPanStart: (details) => _videoMoveLastGlobal = details.globalPosition,
-                                                        onPanUpdate: (details) => setState(() {
-                                                          final previous = _videoMoveLastGlobal ?? details.globalPosition;
-                                                          final screenDelta = details.globalPosition - previous;
-                                                          _videoMoveLastGlobal = details.globalPosition;
+                                                      child: ContinuousPointerDrag(
+                                                        key: const ValueKey('video-canvas-drag-surface'),
+                                                        onDelta: (screenDelta) => setState(() {
                                                           videoOffsetX += screenDelta.dx / math.max(1, bounds.maxWidth);
                                                           videoOffsetY += screenDelta.dy / math.max(1, bounds.maxHeight);
                                                           _showVerticalSnapGuide = videoOffsetX.abs() < 0.014;
                                                           _showHorizontalSnapGuide = videoOffsetY.abs() < 0.014;
                                                           projectDirty = true;
                                                         }),
-                                                        onPanEnd: (_) {
-                                                          _videoMoveLastGlobal = null;
-                                                          setState(() {
-                                                            _showVerticalSnapGuide = false;
-                                                            _showHorizontalSnapGuide = false;
-                                                          });
-                                                        },
-                                                        child: ColorFiltered(
-                                                          colorFilter: ColorFilter.matrix(filtersEnabled ? previewColorMatrix : const <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0]),
+                                                        child: IgnorePointer(
                                                           child: ColorFiltered(
-                                                            colorFilter: ColorFilter.matrix(effectColorMatrix),
-                                                            child: ImageFiltered(
-                                                              imageFilter: ui.ImageFilter.blur(
-                                                                sigmaX: (videoEffect == 'Мягкое размытие' ? 2.0 : 0.0) + (motionBlurEnabled ? 1.2 : 0.0),
-                                                                sigmaY: (videoEffect == 'Мягкое размытие' ? 2.0 : 0.0) + (motionBlurEnabled ? 1.2 : 0.0),
+                                                            colorFilter: ColorFilter.matrix(filtersEnabled ? previewColorMatrix : const <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0]),
+                                                            child: ColorFiltered(
+                                                              colorFilter: ColorFilter.matrix(effectColorMatrix),
+                                                              child: ImageFiltered(
+                                                                imageFilter: ui.ImageFilter.blur(
+                                                                  sigmaX: (videoEffect == 'Мягкое размытие' ? 2.0 : 0.0) + (motionBlurEnabled ? 1.2 : 0.0),
+                                                                  sigmaY: (videoEffect == 'Мягкое размытие' ? 2.0 : 0.0) + (motionBlurEnabled ? 1.2 : 0.0),
+                                                                ),
+                                                                child: Video(controller: videoController!, controls: NoVideoControls, fit: BoxFit.cover),
                                                               ),
-                                                              child: Video(controller: videoController!, controls: NoVideoControls, fit: BoxFit.cover),
                                                             ),
                                                           ),
                                                         ),
