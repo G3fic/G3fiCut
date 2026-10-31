@@ -3116,7 +3116,11 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     );
     if (!mounted || type == null) return;
     final limit = math.min(join.left.length / 2, join.right.length / 2);
-    final length = math.min(0.6, limit).clamp(0.1, 0.6).toDouble();
+    if (limit < 0.1) {
+      setStatus('Эти клипы слишком короткие для перехода. Увеличьте их длину.');
+      return;
+    }
+    final length = math.min(0.6, limit).toDouble();
     _performTimelineEdit(() {
       final existing = timelineTransitions.indexWhere((item) => (item.at - join.at).abs() <= 0.025);
       final transition = TimelineTransition(type: type, at: join.at, duration: length);
@@ -3863,7 +3867,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           if (sourceHasAudio) activeAudio = audioOutput;
         }
 
-        final graphArgs = <String>[
+        final graphOutputArgs = <String>[
           ...args,
           '-filter_complex',
           graph.join(';'),
@@ -3883,26 +3887,22 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           ],
           '-r',
           frameRate.toStringAsFixed(3),
+        ];
+        var joinResult = await Process.run(ffmpeg, [
+          ...graphOutputArgs,
           ..._videoEncoderArguments(encoder),
           '-movflags',
           '+faststart',
           joinedVideo,
-        ];
-        var joinResult = await Process.run(ffmpeg, graphArgs);
+        ]);
         if (joinResult.exitCode != 0 && encoder != 'libx264') {
-          final fallbackArgs = List<String>.of(graphArgs);
-          final encoderIndex = fallbackArgs.indexOf(encoder);
-          if (encoderIndex >= 0) {
-            fallbackArgs.replaceRange(
-              encoderIndex - 1,
-              encoderIndex + 1,
-              ['-c:v', 'libx264'],
-            );
-            final presetIndex = fallbackArgs.indexOf('-preset');
-            if (presetIndex >= 0) fallbackArgs.replaceRange(presetIndex, presetIndex + 2, ['-preset', 'veryfast']);
-            fallbackArgs.addAll(['-crf', '18']);
-          }
-          joinResult = await Process.run(ffmpeg, fallbackArgs);
+          joinResult = await Process.run(ffmpeg, [
+            ...graphOutputArgs,
+            ..._videoEncoderArguments('libx264'),
+            '-movflags',
+            '+faststart',
+            joinedVideo,
+          ]);
         }
         if (joinResult.exitCode != 0 || !await File(joinedVideo).exists()) {
           throw Exception(joinResult.stderr.toString().split('\n').last);
