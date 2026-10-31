@@ -129,8 +129,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   int _gapNextClipIndex = -1;
   bool _gapResumePending = false;
   bool _suppressPlayerStateEvents = false;
-  double _mediaPanelWidth = 236;
-  double _inspectorPanelWidth = 292;
+  double _mediaPanelWidth = 188;
+  double _inspectorPanelWidth = 220;
   double _timelinePanelHeight = 276;
   double frameRate = 30.0;
   bool snappingEnabled = true;
@@ -1436,11 +1436,15 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                     const VerticalDivider(width: 1),
                     SizedBox(width: _mediaPanelWidth, child: mediaPanel()),
                     _verticalPanelSplitter('media-panel-splitter', (dx) {
-                      _mediaPanelWidth = (_mediaPanelWidth + dx).clamp(170.0, 420.0).toDouble();
+                      final screenWidth = MediaQuery.sizeOf(context).width;
+                      final maxWidth = (screenWidth - 64 - 1 - 14 - _inspectorPanelWidth - 220).clamp(150.0, 420.0).toDouble();
+                      _mediaPanelWidth = (_mediaPanelWidth + dx).clamp(150.0, maxWidth).toDouble();
                     }),
                     Expanded(child: previewPanel()),
                     _verticalPanelSplitter('inspector-panel-splitter', (dx) {
-                      _inspectorPanelWidth = (_inspectorPanelWidth - dx).clamp(220.0, 440.0).toDouble();
+                      final screenWidth = MediaQuery.sizeOf(context).width;
+                      final maxWidth = (screenWidth - 64 - 1 - 14 - _mediaPanelWidth - 220).clamp(190.0, 440.0).toDouble();
+                      _inspectorPanelWidth = (_inspectorPanelWidth - dx).clamp(190.0, maxWidth).toDouble();
                     }),
                     SizedBox(width: _inspectorPanelWidth, child: inspectorPanel()),
                   ],
@@ -1698,11 +1702,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             height: 39,
             padding: const EdgeInsets.symmetric(horizontal: 8),
             decoration: const BoxDecoration(color: Color(0xFF171820), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
-            child: Row(children: [
+            child: LayoutBuilder(builder: (context, constraints) => Row(children: [
               const Text('ПРЕДПРОСМОТР', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
-              const Spacer(),
-              Expanded(child: Text(videoPath == null ? 'Нет клипа' : p.basename(videoPath!), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.end, style: const TextStyle(color: Color(0xFFB8B8C6), fontSize: 11))),
-            ]),
+              if (constraints.maxWidth > 300) ...[
+                const SizedBox(width: 8),
+                Expanded(child: Text(videoPath == null ? 'Нет клипа' : p.basename(videoPath!), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.end, style: const TextStyle(color: Color(0xFFB8B8C6), fontSize: 11))),
+              ],
+            ])),
           ),
           Expanded(
             child: Container(
@@ -1898,35 +1904,49 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             height: 63,
             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 8),
             decoration: const BoxDecoration(color: Color(0xFF171820), border: Border(top: BorderSide(color: Color(0xFF292B36)))),
-            child: Row(children: [
-              Text(time(position), style: const TextStyle(fontSize: 11, color: Color(0xFFD7D7E3))),
-              const SizedBox(width: 8),
-              Expanded(
-                child: SliderTheme(
-                  data: SliderTheme.of(context).copyWith(trackHeight: 3, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5), overlayShape: const RoundSliderOverlayShape(overlayRadius: 11)),
-                  child: Slider(
-                    value: timelineDuration.inMilliseconds > 0 ? (position.inMilliseconds / timelineDuration.inMilliseconds).clamp(0.0, 1.0).toDouble() : 0,
-                    onChanged: timelineDuration.inMilliseconds > 0 ? (v) => seek(Duration(milliseconds: (timelineDuration.inMilliseconds * v).round())) : null,
-                  ),
+            child: LayoutBuilder(builder: (context, constraints) {
+              final compact = constraints.maxWidth < 380;
+              final seekSlider = SliderTheme(
+                data: SliderTheme.of(context).copyWith(trackHeight: 3, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5), overlayShape: const RoundSliderOverlayShape(overlayRadius: 11)),
+                child: Slider(
+                  value: timelineDuration.inMilliseconds > 0 ? (position.inMilliseconds / timelineDuration.inMilliseconds).clamp(0.0, 1.0).toDouble() : 0,
+                  onChanged: timelineDuration.inMilliseconds > 0 ? (v) => seek(Duration(milliseconds: (timelineDuration.inMilliseconds * v).round())) : null,
                 ),
-              ),
-              const SizedBox(width: 8),
-              Text(time(timelineDuration), style: const TextStyle(fontSize: 11, color: muted)),
-              const SizedBox(width: 4),
-              IconButton(
-                tooltip: 'Скорость предпросмотра',
-                visualDensity: VisualDensity.compact,
-                onPressed: videoPath == null ? null : cyclePlaybackRate,
-                icon: Text('$playbackRate×', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: accent)),
-              ),
-              const SizedBox(width: 4),
-              IconButton.filledTonal(
+              );
+              final playButton = IconButton.filledTonal(
                 tooltip: playing ? 'Пауза' : 'Воспроизвести',
                 onPressed: videoPath == null ? null : togglePlayback,
                 icon: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 21),
                 visualDensity: VisualDensity.compact,
-              ),
-            ]),
+              );
+              if (compact) {
+                return Row(children: [
+                  Text(time(position), style: const TextStyle(fontSize: 10, color: Color(0xFFD7D7E3))),
+                  const SizedBox(width: 5),
+                  Expanded(child: seekSlider),
+                  const SizedBox(width: 5),
+                  Text(time(timelineDuration), style: const TextStyle(fontSize: 10, color: muted)),
+                  const SizedBox(width: 2),
+                  playButton,
+                ]);
+              }
+              return Row(children: [
+                Text(time(position), style: const TextStyle(fontSize: 11, color: Color(0xFFD7D7E3))),
+                const SizedBox(width: 8),
+                Expanded(child: seekSlider),
+                const SizedBox(width: 8),
+                Text(time(timelineDuration), style: const TextStyle(fontSize: 11, color: muted)),
+                const SizedBox(width: 4),
+                IconButton(
+                  tooltip: 'Скорость предпросмотра',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: videoPath == null ? null : cyclePlaybackRate,
+                  icon: Text('$playbackRate×', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: accent)),
+                ),
+                const SizedBox(width: 4),
+                playButton,
+              ]);
+            }),
           ),
         ]),
       );
