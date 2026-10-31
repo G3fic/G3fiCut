@@ -1,3 +1,27 @@
+/// Snaps rotations to regular angular increments when they are close enough.
+class AngleSnapper {
+  const AngleSnapper({
+    this.stepDegrees = 15,
+    this.catchDistance = 3,
+  })  : assert(stepDegrees > 0),
+        assert(catchDistance >= 0);
+
+  final double stepDegrees;
+  final double catchDistance;
+
+  double snap(double degrees, {bool enabled = true}) {
+    if (!enabled || !degrees.isFinite || !stepDegrees.isFinite || stepDegrees <= 0) {
+      return degrees;
+    }
+
+    final nearest = (degrees / stepDegrees).round() * stepDegrees;
+    var difference = nearest - degrees;
+    if (difference > 180) difference -= 360;
+    if (difference < -180) difference += 360;
+    return difference.abs() <= catchDistance ? degrees + difference : degrees;
+  }
+}
+
 /// Hysteresis-based snapping of an object's center to one canvas axis.
 class AxisSnapResult {
   const AxisSnapResult({required this.offset, required this.isSnapped});
