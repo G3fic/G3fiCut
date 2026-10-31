@@ -5,8 +5,8 @@ GifCut is a Windows-first desktop video editor prototype built with Flutter.
 ## Included in this version
 
 - Import a local video file.
-- Video preview with play/pause and seeking controls.
-- CapCut-inspired desktop layout: media bin, central preview, right-side inspector, and bottom timeline.
+- Video preview with play/pause and seeking controls, direct on-canvas resize/rotation handles, and black frames during empty timeline gaps.
+- CapCut-inspired resizable docked layout: media bin, central preview, right-side inspector, and bottom timeline.
 - Timeline clip selection, right-click context menu, split at playhead, trim start/end to playhead, duplicate, delete, and undo/redo history.
 - MP4 export of the edited clip sequence using local FFmpeg.
 - Timeline with video and audio tracks, timeline zoom, and a draggable playhead.

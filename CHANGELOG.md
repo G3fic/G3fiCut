@@ -1,5 +1,13 @@
 # Changelog
 
+## G3fiCut v0.3.67 — 2026-10-31
+
+- Restore direct on-canvas video transform controls with eight visible resize handles and a dedicated rotation handle.
+- Remove video width, height and rotation sliders from the inspector; adjust the clip directly on the preview canvas.
+- Make the media bin, preview inspector and timeline dock panels resizable with draggable dividers.
+- Show a black preview during empty timeline gaps and keep playback moving through the gap before resuming the next clip.
+
+
 ## G3fiCut v0.3.66 — 2026-10-31
 
 - Move primary editing actions from the horizontal toolbar into a vertical left tool rail.
