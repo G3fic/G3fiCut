@@ -2644,7 +2644,15 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               padding: const EdgeInsets.only(bottom: 6),
               child: OutlinedButton(
                 key: ValueKey('transition-card-$type'),
-                onPressed: busy || videoClips.length < 2 ? null : () => unawaited(addTimelineTransition(type)),
+                onPressed: busy ? null : () => setState(() {
+                  _selectedLibraryTransition = type;
+                  _selectedLibraryEffect = null;
+                  selectedEffectClipIndex = -1;
+                  selectedTransitionIndex = -1;
+                  selectedPhotoOverlay = -1;
+                  selectedTextOverlay = -1;
+                  selectedAudioClip = false;
+                }),
                 style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9)),
                 child: Row(children: [
                   const Icon(Icons.compare_arrows, size: 15),
@@ -2868,63 +2876,6 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                           'Высокий контраст': Icons.contrast,
                         }[type] ?? Icons.auto_awesome,
                         transition: false,
-                      ),
-                    ]),
-                  ),
-                ),
-              ),
-            ),
-          const Divider(height: 22),
-          const Text('СТАНДАРТНЫЕ ПЕРЕХОДЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 7),
-          for (final type in (_timelineTransitionTypes.toList()..sort()))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: SizedBox(
-                width: double.infinity,
-                child: MouseRegion(
-                  onEnter: (_) => setState(() => _hoveredLibraryPreview = 'transition:$type'),
-                  onExit: (_) {
-                    if (_hoveredLibraryPreview == 'transition:$type') {
-                      setState(() => _hoveredLibraryPreview = null);
-                    }
-                  },
-                  child: OutlinedButton(
-                    onPressed: busy ? null : () => setState(() {
-                      _selectedLibraryTransition = type;
-                      _selectedLibraryEffect = null;
-                      selectedEffectClipIndex = -1;
-                      selectedTransitionIndex = -1;
-                      selectedPhotoOverlay = -1;
-                      selectedTextOverlay = -1;
-                      selectedAudioClip = false;
-                    }),
-                    style: OutlinedButton.styleFrom(
-                      alignment: Alignment.centerLeft,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                    ),
-                    child: Row(children: [
-                      const Icon(Icons.add, size: 14),
-                      const SizedBox(width: 5),
-                      Expanded(child: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                      const SizedBox(width: 4),
-                      _libraryPreviewIndicator(
-                        'transition:$type',
-                        color: const {
-                          'Затемнение': Color(0xFF8A8D98),
-                          'Белая вспышка': Color(0xFFFFFFFF),
-                          'Растворение': Color(0xFFB79BFF),
-                          'Смахивание влево': Color(0xFF72C8FF),
-                          'Смахивание вправо': Color(0xFF72E0BA),
-                        }[type] ?? const Color(0xFFFFC56B),
-                        icon: const {
-                          'Затемнение': Icons.brightness_3,
-                          'Белая вспышка': Icons.flash_on,
-                          'Растворение': Icons.blur_circular,
-                          'Смахивание влево': Icons.swipe_left,
-                          'Смахивание вправо': Icons.swipe_right,
-                        }[type] ?? Icons.compare_arrows,
-                        transition: true,
                       ),
                     ]),
                   ),
