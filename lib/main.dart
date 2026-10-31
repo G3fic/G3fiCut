@@ -2871,7 +2871,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                   left: (timelineTransitions[i].at * zoom - 24).clamp(0.0, math.max(0.0, timelineWidth - 48)).toDouble(),
                   top: 3, bottom: 3, width: 48,
                   child: GestureDetector(
-                    onTap: () => setState(() { selectedTransitionIndex = i; selectedEffectClipIndex = -1; }),
+                    onTap: () => setState(() {
+                      selectedTransitionIndex = i;
+                      selectedEffectClipIndex = -1;
+                      selectedAudioClip = false;
+                      selectedPhotoOverlay = -1;
+                      _selectedCanvasObject = 'timeline-transition';
+                    }),
                     onSecondaryTapDown: (details) => showTimelineTransitionMenu(details.globalPosition, i),
                     child: Container(
                       decoration: BoxDecoration(
@@ -3286,13 +3292,29 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       ),
     );
     if (!mounted || type == null) return;
-    final start = playheadSeconds.clamp(0.0, math.max(0.0, timelineSeconds - 0.25)).toDouble();
-    final end = math.min(timelineSeconds, start + 2.0).toDouble();
+    final length = math.min(2.0, timelineSeconds).toDouble();
+    if (length < 0.25) {
+      setStatus('Недостаточно места на таймлайне для эффекта.');
+      return;
+    }
+    final start = TimelineEffectEditing.findAvailableEffectStart(
+      effects: effectClips.map((item) => TimelineEffectRange(item.type, item.start, item.end)).toList(),
+      preferred: playheadSeconds,
+      length: length,
+      timelineEnd: timelineSeconds,
+    );
+    if (start == null) {
+      setStatus('На таймлайне нет свободного участка для нового эффекта. Переместите или растяните существующий эффект.');
+      return;
+    }
     _performTimelineEdit(() {
-      effectClips.add(TimelineEffectClip(type: type, start: start, end: end));
+      effectClips.add(TimelineEffectClip(type: type, start: start, end: start + length));
       selectedEffectClipIndex = effectClips.length - 1;
       selectedTransitionIndex = -1;
-      status = 'Эффект «$type» добавлен на дорожку эффектов.';
+      selectedAudioClip = false;
+      selectedPhotoOverlay = -1;
+      _selectedCanvasObject = 'timeline-effect';
+      status = 'Эффект «$type» добавлен на свободный участок таймлайна.';
     });
   }
 
@@ -3442,7 +3464,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     _effectClipMoveIndex = index;
     _effectClipMoveStart = effectClips[index].start;
     _effectClipMovePointerX = 0;
-    setState(() { selectedEffectClipIndex = index; selectedTransitionIndex = -1; });
+    setState(() {
+      selectedEffectClipIndex = index;
+      selectedTransitionIndex = -1;
+      selectedAudioClip = false;
+      selectedPhotoOverlay = -1;
+      _selectedCanvasObject = 'timeline-effect';
+    });
   }
 
   void _updateEffectClipMove(DragUpdateDetails details) {
@@ -3450,9 +3478,71 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     _effectClipMovePointerX += details.delta.dx;
     final effect = effectClips[_effectClipMoveIndex];
     final length = effect.duration;
-    final maxStart = math.max(0.0, timelineSeconds - length).toDouble();
-    final nextStart = (_effectClipMoveStart + _effectClipMovePointerX / zoom).clamp(0.0, maxStart).toDouble();
-    setState(() { effect.start = nextStart; effect.end = nextStart + length; projectDirty = true; });
+    final desiredStart = _effectClipMoveStart + _effectClipMovePointerX / zoom;
+    final nextStart = TimelineEffectEditing.findAvailableEffectStart(
+      effects: effectClips.map((item) => TimelineEffectRange(item.type, item.start, item.end)).toList(),
+      preferred: desiredStart,
+      length: length,
+      timelineEnd: timelineSeconds,
+      ignoreIndex: _effectClipMoveIndex,
+    );
+    if (nextStart == null) return;
+    setState(() {
+      effect.start = nextStart;
+      effect.end = nextStart + length;
+      projectDirty = true;
+    });
+  }
+
+  void _startEffectResize(int index, {required bool fromLeft}) {
+    if (index < 0 || index >= effectClips.length) return;
+    final effect = effectClips[index];
+    _effectResizeBefore = _captureTimelineSnapshot();
+    _effectResizeIndex = index;
+    _effectResizeLeft = fromLeft;
+    _effectResizePointerX = 0;
+    _effectResizeStart = effect.start;
+    _effectResizeEnd = effect.end;
+    setState(() {
+      selectedEffectClipIndex = index;
+      selectedTransitionIndex = -1;
+      selectedAudioClip = false;
+      selectedPhotoOverlay = -1;
+      _selectedCanvasObject = 'timeline-effect';
+    });
+  }
+
+  void _updateEffectResize(DragUpdateDetails details) {
+    final index = _effectResizeIndex;
+    if (index < 0 || index >= effectClips.length) return;
+    _effectResizePointerX += details.delta.dx;
+    final requested = (_effectResizeLeft ? _effectResizeStart : _effectResizeEnd) +
+        _effectResizePointerX / zoom;
+    final ranges = effectClips
+        .map((item) => TimelineEffectRange(item.type, item.start, item.end))
+        .toList();
+    final resized = TimelineEffectEditing.resizeEffectEdge(
+      effects: ranges,
+      index: index,
+      requestedTime: requested,
+      timelineEnd: timelineSeconds,
+      resizeStart: _effectResizeLeft,
+    );
+    setState(() {
+      effectClips[index]
+        ..start = resized.start
+        ..end = resized.end;
+      projectDirty = true;
+    });
+  }
+
+  void _finishEffectResize() {
+    final before = _effectResizeBefore;
+    if (before != null) {
+      _timelineHistory.record(before: before, after: _captureTimelineSnapshot());
+    }
+    _effectResizeBefore = null;
+    _effectResizeIndex = -1;
   }
 
   void _finishEffectClipMove() {
