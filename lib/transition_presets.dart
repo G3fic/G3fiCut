@@ -11,7 +11,7 @@ const Map<String, String> transitionFilterNames = <String, String>{
   'Смахивание вниз': 'wipedown',
   'Скольжение влево': 'slideleft',
   'Скольжение вправо': 'slideright',
-  'Круговое открытие': 'circlecrop',
+  'Круговое открытие': 'circleopen',
   'Пикселизация': 'pixelize',
   'Приближение': 'zoomin',
   'Покрытие слева': 'coverleft',
