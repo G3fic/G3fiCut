@@ -2127,7 +2127,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             height: 43,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
-            child: Row(children: [
+            child: LayoutBuilder(builder: (context, constraints) => SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(width: math.max(720.0, constraints.maxWidth), child: Row(children: [
               const Icon(Icons.view_timeline_outlined, size: 17, color: accent),
               const SizedBox(width: 8),
               const Text('ТАЙМЛАЙН', style: TextStyle(fontSize: 11, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
@@ -2175,7 +2177,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               IconButton(tooltip: 'Уменьшить масштаб', visualDensity: VisualDensity.compact, onPressed: () => setTimelineZoom(zoom - 4), icon: const Icon(Icons.remove, size: 17)),
               SizedBox(width: 48, child: Text('${zoom.toInt()} px/s', textAlign: TextAlign.center, style: const TextStyle(color: muted, fontSize: 10))),
               IconButton(tooltip: 'Увеличить масштаб', visualDensity: VisualDensity.compact, onPressed: () => setTimelineZoom(zoom + 4), icon: const Icon(Icons.add, size: 17)),
-            ]),
+            ])
+              ])),
+            )),,
           ),
           Expanded(
             child: Listener(
