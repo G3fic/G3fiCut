@@ -2237,6 +2237,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           ),
         ),
             ),
+            ),
             if (_isExternalDragOver)
               Positioned.fill(
                 child: IgnorePointer(
