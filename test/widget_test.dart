@@ -12,6 +12,7 @@ void main() {
     expect(find.byTooltip('Импортировать видео'), findsOneWidget);
     expect(find.text('ТАЙМЛАЙН'), findsOneWidget);
     expect(find.text('Ваше видео появится здесь'), findsOneWidget);
+    debugDumpRenderTree();
     expect(tester.takeException(), isNull, reason: 'The editor must open without layout or initialization exceptions.');
   });
 
