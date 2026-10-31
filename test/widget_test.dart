@@ -29,7 +29,7 @@ void main() {
     // The editor now exposes undo/redo in the left tool rail and timeline.
     // Check their visible tooltips and ensure the commands are disabled initially.
     for (final tooltip in const ['Отменить', 'Повторить']) {
-      final button = find.ancestor(
+      final button = find.descendant(
         of: find.byTooltip(tooltip),
         matching: find.byType(IconButton),
       );
@@ -54,11 +54,11 @@ void main() {
     expect(find.byTooltip('Сохранить'), findsOneWidget);
     expect(find.byTooltip('Сохранить как'), findsOneWidget);
     expect(
-      tester.widget<IconButton>(find.ancestor(of: find.byTooltip('Сохранить'), matching: find.byType(IconButton))).onPressed,
+      tester.widget<IconButton>(find.descendant(of: find.byTooltip('Сохранить'), matching: find.byType(IconButton))).onPressed,
       isNull,
     );
     expect(
-      tester.widget<IconButton>(find.ancestor(of: find.byTooltip('Сохранить как'), matching: find.byType(IconButton))).onPressed,
+      tester.widget<IconButton>(find.descendant(of: find.byTooltip('Сохранить как'), matching: find.byType(IconButton))).onPressed,
       isNull,
     );
     expect(tester.takeException(), isNull);
