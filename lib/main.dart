@@ -2721,7 +2721,7 @@ try {
           isExpanded: true, initialValue: t.type,
           decoration: const InputDecoration(labelText: 'Тип перехода', isDense: true, border: OutlineInputBorder()),
           items: (_timelineTransitionTypes.toList()..sort()).map((v) => DropdownMenuItem(value: v, child: Text(v, style: const TextStyle(fontSize: 11)))).toList(),
-          onChanged: (v) { if (v != null) _performTimelineEdit(() { t.type = v; status = 'Переход изменён: ${v}'; }); },
+          onChanged: (v) { if (v != null) _performTimelineEdit(() { t.type = v; status = 'Переход изменён: $v'; }); },
         ),
         _adjustmentSlider('Длительность', t.duration, 0.1, maxDuration, (v) => _performTimelineEdit(() { t.duration = v; })),
         property('Стык', '${t.at.toStringAsFixed(2)} с'),
