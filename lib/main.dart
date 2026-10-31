@@ -1461,7 +1461,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           key: ValueKey(key),
           behavior: HitTestBehavior.opaque,
           onHorizontalDragUpdate: (details) => setState(() => onDrag(details.delta.dx)),
-          child: SizedBox(width: 7, child: Center(child: Container(width: 1, color: const Color(0xFF343744)))),
+          child: SizedBox(width: 7, child: Center(child: Container(width: 1, height: double.infinity, color: const Color(0xFF343744)))),
         ),
       );
 
@@ -1473,7 +1473,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           onVerticalDragUpdate: (details) => setState(() {
             _timelinePanelHeight = (_timelinePanelHeight - details.delta.dy).clamp(160.0, 520.0).toDouble();
           }),
-          child: SizedBox(height: 8, child: Center(child: Container(height: 1, color: const Color(0xFF343744)))),
+          child: SizedBox(height: 8, child: Center(child: Container(width: double.infinity, height: 1, color: const Color(0xFF343744)))),
         ),
       );
 
