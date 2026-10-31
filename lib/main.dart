@@ -1884,11 +1884,27 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               borderRadius: BorderRadius.circular(7),
               border: Border.all(color: mediaPanelTab == id ? accent : const Color(0xFF343644)),
             ),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(icon, size: 14, color: mediaPanelTab == id ? accent : muted),
-              const SizedBox(width: 5),
-              Text(label, style: TextStyle(fontSize: 10, color: mediaPanelTab == id ? Colors.white : muted, fontWeight: FontWeight.w700)),
-            ]),
+            child: Center(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon, size: 14, color: mediaPanelTab == id ? accent : muted),
+                    const SizedBox(width: 5),
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: mediaPanelTab == id ? Colors.white : muted,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
       );
