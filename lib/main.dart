@@ -794,27 +794,25 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
   Future<void> pickVideo() async {
     if (busy) return;
-
     FilePickerResult? result;
     try {
-      result = await FilePicker.platform.pickFiles(
-        type: FileType.video,
-        allowMultiple: false,
-        dialogTitle: 'Выберите видео',
-      );
+      result = await FilePicker.platform.pickFiles(type: FileType.video, allowMultiple: false, dialogTitle: 'Выберите видео');
     } catch (e) {
       setStatus('Не удалось открыть окно выбора видео: $e');
       return;
     }
     if (result == null || result.files.isEmpty) return;
-
     final path = result.files.single.path;
     if (path == null) {
       setStatus('Не удалось получить путь к видео.');
       return;
     }
-    if (!await _confirmReplaceIfDirty()) return;
+    await _loadVideoFile(path);
+  }
 
+  Future<void> _loadVideoFile(String path, {bool confirmReplace = true}) async {
+    if (busy) return;
+    if (confirmReplace && !await _confirmReplaceIfDirty()) return;
     // Keep the current project data intact until the replacement media opens.
     final previousVideoPath = videoPath;
     final previousPosition = position;
@@ -897,6 +895,149 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> importMedia() async {
+    if (busy) return;
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.any, allowMultiple: true, dialogTitle: 'Импортировать видео, фото и аудио');
+      if (result == null) return;
+      await _importMediaPaths(result.files.map((file) => file.path).whereType<String>());
+    } catch (error) {
+      setStatus('Не удалось импортировать медиа: $error');
+    }
+  }
+
+  Future<void> _handleMediaDrop(PerformDropEvent event) async {
+    final paths = <String>[];
+    for (final item in event.session.items) {
+      final reader = item.dataReader;
+      if (reader == null || !reader.canProvide(Formats.fileUri)) continue;
+      try {
+        final uri = await reader.readValue(Formats.fileUri);
+        if (uri != null && uri.scheme == 'file') paths.add(uri.toFilePath());
+      } catch (_) {
+        // Ignore non-file URL payloads; supported files are still imported.
+      }
+    }
+    if (mounted) setState(() => _isLibraryDragOver = false);
+    await _importMediaPaths(paths);
+  }
+
+  Future<void> _importMediaPaths(Iterable<String> sourcePaths) async {
+    final accepted = <String>[];
+    var rejected = 0;
+    for (final rawPath in sourcePaths) {
+      final path = p.normalize(rawPath);
+      if (!await File(path).exists() || _mediaKind(path) == 'other') {
+        rejected++;
+        continue;
+      }
+      if (!mediaLibraryPaths.contains(path) && !accepted.contains(path)) accepted.add(path);
+    }
+    if (!mounted) return;
+    setState(() {
+      mediaLibraryPaths.addAll(accepted);
+      if (accepted.isNotEmpty) selectedLibraryPath = accepted.first;
+      projectDirty = projectDirty || accepted.isNotEmpty;
+      mediaPanelTab = 'media';
+    });
+    final count = accepted.length;
+    setStatus(count == 0
+        ? 'Новых поддерживаемых медиафайлов не найдено.'
+        : 'Добавлено в медиатеку: $count. Выберите файл и нажмите «Добавить на таймлайн».' + (rejected > 0 ? ' Пропущено: $rejected.' : ''));
+  }
+
+  Future<void> _addMediaAssetToTimeline(String path) async {
+    if (busy || !await File(path).exists()) return;
+    switch (_mediaKind(path)) {
+      case 'video':
+        await _loadVideoFile(path);
+        break;
+      case 'image':
+        setState(() {
+          photoOverlays.add(PhotoOverlay(path: path));
+          selectedPhotoOverlay = photoOverlays.length - 1;
+          selectedTextOverlay = -1;
+          selectedAudioClip = false;
+          selectedLibraryPath = path;
+          selectedEffectClipIndex = -1;
+          selectedTransitionIndex = -1;
+          _selectedCanvasObject = 'photo';
+          projectDirty = true;
+          status = 'Фото добавлено поверх видео.';
+        });
+        break;
+      case 'audio':
+        await _attachAudioFile(path);
+        break;
+      default:
+        setStatus('Этот формат пока нельзя поместить на таймлайн.');
+    }
+  }
+
+  Future<void> _attachAudioFile(String path) async {
+    try {
+      final result = await Process.run(await findFfmpeg(), ['-hide_banner', '-i', path]);
+      final diagnostic = result.stdout.toString() + '\\n' + result.stderr.toString();
+      final match = RegExp(r'Duration:\\s*(\\d+):(\\d+):([\\d.]+)').firstMatch(diagnostic);
+      if (match == null) throw const FormatException('Не удалось определить длительность аудиофайла.');
+      final hours = int.parse(match.group(1)!);
+      final minutes = int.parse(match.group(2)!);
+      final seconds = double.parse(match.group(3)!);
+      final length = Duration(milliseconds: ((hours * 3600 + minutes * 60 + seconds) * 1000).round());
+      if (length <= Duration.zero) throw const FormatException('Аудиофайл пустой.');
+      if (!mounted) return;
+      setState(() {
+        audioPath = path;
+        audioDuration = length;
+        audioClipStart = 0;
+        audioClipEnd = length.inMilliseconds / 1000;
+        selectedAudioClip = true;
+        selectedTextOverlay = -1;
+        selectedPhotoOverlay = -1;
+        selectedEffectClipIndex = -1;
+        selectedTransitionIndex = -1;
+        inspectorTab = 'audio';
+        _selectedCanvasObject = 'audio';
+        projectDirty = true;
+        status = 'Аудио добавлено на дорожку.';
+      });
+      if (p.extension(path).toLowerCase() == '.wav') {
+        final wave = await _readWaveform(path);
+        if (mounted && audioPath == path) setState(() => audioWaveform = wave);
+      } else if (mounted) {
+        setState(() => audioWaveform = []);
+      }
+    } catch (error) {
+      setStatus('Не удалось добавить аудио: $error');
+    }
+  }
+
+  void addTextOverlay({String value = 'Ваш текст', double fontSize = 42}) {
+    if (videoClips.isEmpty) {
+      setStatus('Сначала добавьте видео на таймлайн.');
+      return;
+    }
+    final start = playheadSeconds.clamp(0.0, timelineSeconds).toDouble();
+    final end = math.min(timelineSeconds, start + 5).toDouble();
+    if (end - start < 0.1) {
+      setStatus('На таймлайне недостаточно места для текстового слоя.');
+      return;
+    }
+    setState(() {
+      textOverlays.add(TextOverlay(text: value, start: start, end: end, fontSize: fontSize));
+      selectedTextOverlay = textOverlays.length - 1;
+      selectedPhotoOverlay = -1;
+      selectedLibraryPath = null;
+      selectedEffectClipIndex = -1;
+      selectedTransitionIndex = -1;
+      selectedAudioClip = false;
+      inspectorTab = 'video';
+      _selectedCanvasObject = 'text';
+      projectDirty = true;
+      status = 'Текстовый слой добавлен на таймлайн.';
+    });
+  }
+
   Future<bool> _confirmReplaceIfDirty() async {
     if (!projectDirty || videoPath == null) return true;
     final decision = await showDialog<String>(
@@ -974,6 +1115,16 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           at: transition.at,
           duration: transition.duration,
         )).toList(),
+        textOverlays: textOverlays.map((overlay) => ProjectTextOverlay(
+          text: overlay.text,
+          start: overlay.start,
+          end: overlay.end,
+          fontSize: overlay.fontSize,
+          x: overlay.x,
+          y: overlay.y,
+          colorValue: overlay.colorValue,
+        )).toList(),
+        mediaLibraryPaths: mediaLibraryPaths,
       );
       await File(targetPath).writeAsString(document.encode(), flush: true);
       if (!mounted) return true;
@@ -1109,6 +1260,24 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             at: transition.at,
             duration: transition.duration,
           )));
+        textOverlays
+          ..clear()
+          ..addAll(document.textOverlays.map((overlay) => TextOverlay(
+            text: overlay.text,
+            start: overlay.start,
+            end: overlay.end,
+            fontSize: overlay.fontSize,
+            x: overlay.x,
+            y: overlay.y,
+            colorValue: overlay.colorValue,
+          )));
+        mediaLibraryPaths
+          ..clear()
+          ..addAll({
+            ...document.mediaLibraryPaths,
+            document.videoPath,
+            if (document.audioPath != null) document.audioPath!,
+          });
         selectedEffectClipIndex = -1;
         selectedTransitionIndex = -1;
         position = restoredPosition;
@@ -2135,7 +2304,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       Wrap(spacing: 10, runSpacing: 10, children: [
         for (final sticker in stickers)
           InkWell(
-            onTap: videoClips.isEmpty ? null : () => addTextOverlay(sticker, fontSize: 64),
+            onTap: videoClips.isEmpty ? null : () => addTextOverlay(value: sticker, fontSize: 64),
             borderRadius: BorderRadius.circular(8),
             child: Container(width: 54, height: 54, alignment: Alignment.center, decoration: BoxDecoration(color: const Color(0xFF222631), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF3A3D4A))), child: Text(sticker, style: const TextStyle(fontSize: 28))),
           ),
@@ -2146,7 +2315,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   Widget _captionLibraryView() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         const Text('Создайте текстовую дорожку для титров и подписей.', style: TextStyle(color: muted, fontSize: 10)),
         const SizedBox(height: 10),
-        OutlinedButton.icon(onPressed: videoClips.isEmpty ? null : () => addTextOverlay('Новая подпись', fontSize: 32), icon: const Icon(Icons.closed_caption_outlined, size: 16), label: const Text('Добавить подпись', style: TextStyle(fontSize: 11))),
+        OutlinedButton.icon(onPressed: videoClips.isEmpty ? null : () => addTextOverlay(value: 'Новая подпись', fontSize: 32), icon: const Icon(Icons.closed_caption_outlined, size: 16), label: const Text('Добавить подпись', style: TextStyle(fontSize: 11))),
       ]);
 
   Widget _filterLibraryView() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
