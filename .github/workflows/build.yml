@@ -124,7 +124,7 @@ jobs:
         run: |
           $ffmpeg = Join-Path $PWD 'build/windows/x64/runner/Release/ffmpeg.exe'
           $filters = & $ffmpeg -hide_banner -filters 2>&1 | Out-String
-          foreach ($filter in @('xfade', 'lut3d', 'noise', 'chromashift', 'rgbashift', 'vignette', 'unsharp', 'colorchannelmixer', 'hue', 'lutrgb')) {
+          foreach ($filter in @('xfade', 'lut3d', 'noise', 'chromashift', 'rgbashift', 'vignette', 'unsharp', 'colorchannelmixer', 'colorbalance', 'hue', 'lutrgb')) {
             if ($filters -notmatch "(?m)\b$filter\b") {
               Write-Output $filters
               throw "The bundled FFmpeg build does not include required filter: $filter"
@@ -181,6 +181,7 @@ jobs:
             'chromashift=cbh=3:crh=-3',
             'format=rgba,rgbashift=rh=5:rv=0:gh=-3:gv=1:bh=2:bv=-1',
             "lutrgb=r='clip((val-128)*1.12+128,0,255)':g='clip((val-128)*1.12+128,0,255)':b='clip((val-128)*1.12+128,0,255)',hue=s=0.92",
+            'colorchannelmixer=aa=0.85,colorbalance=rs=-0.08:gs=0.01:bs=0.16',
             'vignette=angle=PI/5',
             'unsharp=5:5:1.1:5:5:0.0'
           )
@@ -189,7 +190,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "FFmpeg effect smoke test failed: $filter" }
           }
 
-          $canvasGraph = '[0:v]split=2[fitSource][backdropSource];[backdropSource]scale=64:96:force_original_aspect_ratio=increase,crop=64:96,gblur=sigma=18,lutrgb=r='clip(val*0.62,0,255)':g='clip(val*0.62,0,255)':b='clip(val*0.62,0,255)',hue=s=0.82[backdrop];[fitSource]scale=64:96:force_original_aspect_ratio=decrease,format=rgba,pad=64:96:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1[foreground];[backdrop][foreground]overlay=(W-w)/2:(H-h)/2:shortest=1,setsar=1,format=yuv420p[out]'
+          $canvasGraph = "[0:v]split=2[fitSource][backdropSource];[backdropSource]scale=64:96:force_original_aspect_ratio=increase,crop=64:96,gblur=sigma=18,lutrgb=r='clip(val*0.62,0,255)':g='clip(val*0.62,0,255)':b='clip(val*0.62,0,255)',hue=s=0.82[backdrop];[fitSource]scale=64:96:force_original_aspect_ratio=decrease,format=rgba,pad=64:96:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1[foreground];[backdrop][foreground]overlay=(W-w)/2:(H-h)/2:shortest=1,setsar=1,format=yuv420p[out]"
           & $ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=96x64:rate=30:duration=1' -filter_complex $canvasGraph -map '[out]' -frames:v 1 -f null NUL
           if ($LASTEXITCODE -ne 0) { throw 'Blurred aspect-ratio canvas composition smoke test failed.' }
 
