@@ -5473,15 +5473,23 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           'pad=$outputWidth:$outputHeight:(ow-iw)/2:(oh-ih)/2:color=black@0',
           'setsar=1',
         ].join(',');
-        final graph = <String>[
-          '[0:v]split=2[fitSource][backdropSource]',
-          '[backdropSource]scale=$outputWidth:$outputHeight:force_original_aspect_ratio=increase,'
-              'crop=$outputWidth:$outputHeight,gblur=sigma=18,'
-              "lutrgb=r='clip(val*0.62,0,255)':g='clip(val*0.62,0,255)':b='clip(val*0.62,0,255)',"
-              'hue=s=0.82[backdrop]',
-          '[fitSource]$effectPrefix$foregroundTransforms[foreground]',
-          '[backdrop][foreground]overlay=(W-w)/2:(H-h)/2:shortest=1[base0]',
-        ];
+        final graph = <String>[];
+        if (canvasBackgroundBlurEnabled) {
+          graph.add('[0:v]split=2[fitSource][backdropSource]');
+          graph.add(
+            '[backdropSource]scale=$outputWidth:$outputHeight:force_original_aspect_ratio=increase,'
+            'crop=$outputWidth:$outputHeight,gblur=sigma=18,'
+            "lutrgb=r='clip(val*0.62,0,255)':g='clip(val*0.62,0,255)':b='clip(val*0.62,0,255)',"
+            'hue=s=0.82[backdrop]',
+          );
+        } else {
+          graph.add('[0:v]null[fitSource]');
+          graph.add(
+            'color=c=black:s=${outputWidth}x${outputHeight}:r=${frameRate.toStringAsFixed(3)}:d=${clip.length.toStringAsFixed(3)}[backdrop]',
+          );
+        }
+        graph.add('[fitSource]$effectPrefix$foregroundTransforms[foreground]');
+        graph.add('[backdrop][foreground]overlay=(W-w)/2:(H-h)/2:shortest=1[base0]');
         var previous = 'base0';
         for (var overlayIndex = 0;
             overlayIndex < photoOverlays.length;
@@ -5492,15 +5500,53 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           final outputLabel = 'base${overlayIndex + 1}';
           final width = (360 * overlay.scale).round().clamp(24, 1800);
           final angle = (overlay.rotation * math.pi / 180).toStringAsFixed(5);
+          final overlapStart = math.max(overlay.start, clip.timelineStart).toDouble();
+          final overlapEnd = math.min(overlay.end, clip.timelineEnd).toDouble();
+          if (overlapEnd <= overlapStart) continue;
+          final localStart = (overlapStart - clip.timelineStart).toStringAsFixed(3);
+          final localEnd = (overlapEnd - clip.timelineStart).toStringAsFixed(3);
           graph.add(
             '[$inputIndex:v]scale=$width:-1,format=rgba,rotate=$angle:c=none,'
                 'colorchannelmixer=aa=${overlay.opacity.toStringAsFixed(3)}[$overlayLabel]',
           );
           graph.add(
             '[$previous][$overlayLabel]overlay=x=(W-w)/2+(${overlay.x.toStringAsFixed(4)})*W:'
-                'y=(H-h)/2+(${overlay.y.toStringAsFixed(4)})*H:shortest=1[$outputLabel]',
+                'y=(H-h)/2+(${overlay.y.toStringAsFixed(4)})*H:shortest=1:'
+                'enable=between(t\\,$localStart\\,$localEnd)[$outputLabel]',
           );
           previous = outputLabel;
+        }
+        for (var textIndex = 0; textIndex < textOverlays.length; textIndex++) {
+          final overlay = textOverlays[textIndex];
+          final overlapStart = math.max(overlay.start, clip.timelineStart).toDouble();
+          final overlapEnd = math.min(overlay.end, clip.timelineEnd).toDouble();
+          if (overlapEnd <= overlapStart) continue;
+          final localStart = (overlapStart - clip.timelineStart).toStringAsFixed(3);
+          final localEnd = (overlapEnd - clip.timelineStart).toStringAsFixed(3);
+          final textFile = File(p.join(
+            temp.path,
+            'text_${i}_${textIndex}.txt',
+          ));
+          await textFile.writeAsString(overlay.text);
+          final safeTextPath = textFile.absolute.path
+              .replaceAll('\\\\', '/')
+              .replaceAll(':', r'\\:')
+              .replaceAll("'", r"\\'");
+          final fontSize = (overlay.fontSize * int.parse(outputHeight) / 1080)
+              .round()
+              .clamp(10, 220);
+          final fontColor = '0x${overlay.color.replaceFirst('#', '')}@${overlay.opacity.toStringAsFixed(3)}';
+          final textOutput = 'textBase${textIndex}_${i}';
+          graph.add(
+            '[$previous]drawtext=fontfile=C\\\\:/Windows/Fonts/${overlay.bold ? 'arialbd' : 'arial'}.ttf:'
+            'textfile=$safeTextPath:reload=0:'
+            'fontcolor=$fontColor:fontsize=$fontSize:'
+            'x=(w-text_w)/2+(${overlay.x.toStringAsFixed(4)})*w:'
+            'y=(h-text_h)/2+(${overlay.y.toStringAsFixed(4)})*h:'
+            'shadowcolor=black@0.8:shadowx=2:shadowy=2:'
+            'enable=between(t\\,$localStart\\,$localEnd)[$textOutput]',
+          );
+          previous = textOutput;
         }
         graph.add('[$previous]setsar=1,format=yuv420p[vout]');
         args.addAll([
