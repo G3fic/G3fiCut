@@ -10,3 +10,6 @@ const Map<String, double> previewAspectRatios = <String, double>{
 
 double aspectRatioForPreset(String preset) =>
     previewAspectRatios[preset] ?? previewAspectRatios['16:9']!;
+
+/// Letterbox color shown around source footage inside the preview/export frame.
+const int previewLetterboxColorValue = 0xFF292C34;
