@@ -3896,6 +3896,10 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                       const SizedBox(height: 5),
                       photoTrackRow(),
                     ],
+                    if (textOverlays.isNotEmpty) ...[
+                      const SizedBox(height: 5),
+                      textTrackRow(),
+                    ],
                   ]),
                   ),
                 ),
@@ -4101,12 +4105,15 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               Positioned.fill(child: CustomPaint(painter: TimelineGridPainter(seconds: timelineSeconds, pixelsPerSecond: zoom))),
               for (var i = 0; i < photoOverlays.length; i++)
                 Positioned(
-                  left: 4, top: 5 + i * 2.0, bottom: 5,
-                  width: math.max(20.0, timelineWidth - 8).toDouble(),
+                  left: photoOverlays[i].start * zoom + 4,
+                  top: 5 + i * 2.0,
+                  bottom: 5,
+                  width: math.max(20.0, (photoOverlays[i].end - photoOverlays[i].start) * zoom - 4).toDouble(),
                   child: GestureDetector(
-                    onTapDown: (d) => seekTimeline(d.localPosition.dx),
+                    onTapDown: (d) => seekTimeline(photoOverlays[i].start * zoom + d.localPosition.dx),
                     onTap: () => setState(() {
                       selectedPhotoOverlay = i;
+                      selectedTextOverlay = -1;
                       selectedAudioClip = false;
                       selectedEffectClipIndex = -1;
                       selectedTransitionIndex = -1;
@@ -4119,6 +4126,65 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                         const Icon(Icons.image_outlined, size: 13, color: Colors.white),
                         const SizedBox(width: 6),
                         Flexible(child: Text(p.basename(photoOverlays[i].path), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9, color: Colors.white))),
+                      ]),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+        ]),
+      );
+
+  Widget textTrackRow() => SizedBox(
+        width: _timelineLabelWidth + timelineWidth,
+        height: 54,
+        child: Row(children: [
+          Container(
+            width: _timelineLabelWidth,
+            height: 54,
+            padding: const EdgeInsets.symmetric(horizontal: 9),
+            decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
+            child: const Row(children: [
+              Icon(Icons.title, size: 17, color: Color(0xFFFFC56B)),
+              SizedBox(width: 7),
+              Expanded(child: Text('Текст', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700))),
+            ]),
+          ),
+          SizedBox(
+            width: timelineWidth,
+            height: 54,
+            child: Stack(children: [
+              Positioned.fill(child: CustomPaint(painter: TimelineGridPainter(seconds: timelineSeconds, pixelsPerSecond: zoom))),
+              for (var i = 0; i < textOverlays.length; i++)
+                Positioned(
+                  left: textOverlays[i].start * zoom + 4,
+                  top: 5 + i * 2.0,
+                  bottom: 5,
+                  width: math.max(24.0, (textOverlays[i].end - textOverlays[i].start) * zoom - 4).toDouble(),
+                  child: GestureDetector(
+                    key: ValueKey('text-timeline-clip-$i'),
+                    onTapDown: (details) => seekTimeline(textOverlays[i].start * zoom + details.localPosition.dx),
+                    onTap: () => setState(() {
+                      selectedTextOverlay = i;
+                      selectedPhotoOverlay = -1;
+                      selectedAudioClip = false;
+                      selectedEffectClipIndex = -1;
+                      selectedTransitionIndex = -1;
+                      inspectorTab = 'text';
+                      _selectedCanvasObject = 'text';
+                    }),
+                    child: Container(
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xAA8A6935),
+                        borderRadius: BorderRadius.circular(5),
+                        border: Border.all(color: selectedTextOverlay == i ? Colors.white : const Color(0xFFFFD38A), width: selectedTextOverlay == i ? 2 : 1),
+                      ),
+                      child: Row(children: [
+                        const Icon(Icons.title, size: 13, color: Colors.white),
+                        const SizedBox(width: 5),
+                        Flexible(child: Text(textOverlays[i].text, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.w700))),
                       ]),
                     ),
                   ),
