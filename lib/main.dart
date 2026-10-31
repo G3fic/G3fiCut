@@ -688,7 +688,20 @@ try {
       if (mounted) {
         setStatus('Не удалось применить обновление: ${e.toString().replaceFirst('Bad state: ', '')}');
       }
-      rethrow;
+      if (archive != null) {
+        try {
+          if (await archive.exists()) await archive.delete();
+        } catch (_) {
+          // Keep the original update error visible in the status bar.
+        }
+      }
+      if (tempDir != null) {
+        try {
+          if (await tempDir.exists()) await tempDir.delete(recursive: true);
+        } catch (_) {
+          // A temporary updater file can be left for Windows cleanup.
+        }
+      }
     } finally {
       client.close(force: true);
     }
