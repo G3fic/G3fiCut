@@ -405,6 +405,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   double _effectResizeEnd = 0;
   TimelineSnapshot? _effectResizeBefore;
   String? _hoveredLibraryPreview;
+  String? _selectedLibraryEffect;
+  String? _selectedLibraryTransition;
   int? _timelinePanPointer;
   Offset? _timelinePanLastGlobal;
   bool _timelinePanMoved = false;
@@ -2707,6 +2709,60 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         ],
       );
 
+  Widget _selectedLibraryItemInspector() {
+    if (_selectedLibraryEffect != null) {
+      final type = _selectedLibraryEffect!;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('ВЫБРАННЫЙ ЭФФЕКТ', style: TextStyle(color: muted, fontSize: 10, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          Text(type, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          _libraryPreviewIndicator('effect:$type', color: accent, icon: Icons.auto_awesome, transition: false),
+          const SizedBox(height: 8),
+          const Text('Предпросмотр карточки — демонстрация. Нажмите кнопку, чтобы добавить эффект к текущему месту курсора.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: busy || videoClips.isEmpty ? null : () async {
+              await addTimelineEffect(type);
+              if (mounted) setState(() => _selectedLibraryEffect = null);
+            },
+            icon: const Icon(Icons.add, size: 16),
+            label: const Text('Добавить на таймлайн'),
+          ),
+          const Divider(),
+        ],
+      );
+    }
+    if (_selectedLibraryTransition != null) {
+      final type = _selectedLibraryTransition!;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('ВЫБРАННЫЙ ПЕРЕХОД', style: TextStyle(color: muted, fontSize: 10, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          Text(type, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          _libraryPreviewIndicator('transition:$type', color: const Color(0xFFFFC56B), icon: Icons.compare_arrows, transition: true),
+          const SizedBox(height: 8),
+          const Text('Переход применяется к ближайшему доступному стыку видеоклипов.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: busy || videoClips.length < 2 ? null : () async {
+              await addTimelineTransition(type);
+              if (mounted) setState(() => _selectedLibraryTransition = null);
+            },
+            icon: const Icon(Icons.add, size: 16),
+            label: const Text('Добавить на стык'),
+          ),
+          const Divider(),
+        ],
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
   Widget _libraryPreviewIndicator(
     String key, {
     required Color color,
@@ -2773,7 +2829,15 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                     }
                   },
                   child: OutlinedButton(
-                    onPressed: busy || videoClips.isEmpty ? null : () => unawaited(addTimelineEffect(type)),
+                    onPressed: busy ? null : () => setState(() {
+                      _selectedLibraryEffect = type;
+                      _selectedLibraryTransition = null;
+                      selectedEffectClipIndex = -1;
+                      selectedTransitionIndex = -1;
+                      selectedPhotoOverlay = -1;
+                      selectedTextOverlay = -1;
+                      selectedAudioClip = false;
+                    }),
                     style: OutlinedButton.styleFrom(
                       alignment: Alignment.centerLeft,
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -2826,7 +2890,15 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                     }
                   },
                   child: OutlinedButton(
-                    onPressed: busy || videoClips.length < 2 ? null : () => unawaited(addTimelineTransition(type)),
+                    onPressed: busy ? null : () => setState(() {
+                      _selectedLibraryTransition = type;
+                      _selectedLibraryEffect = null;
+                      selectedEffectClipIndex = -1;
+                      selectedTransitionIndex = -1;
+                      selectedPhotoOverlay = -1;
+                      selectedTextOverlay = -1;
+                      selectedAudioClip = false;
+                    }),
                     style: OutlinedButton.styleFrom(
                       alignment: Alignment.centerLeft,
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -3642,6 +3714,10 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
         child: SingleChildScrollView(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if ((_selectedLibraryEffect != null || _selectedLibraryTransition != null) &&
+                selectedEffectClipIndex < 0 && selectedTransitionIndex < 0 &&
+                selectedPhotoOverlay < 0 && selectedTextOverlay < 0 && !selectedAudioClip)
+              _selectedLibraryItemInspector(),
             if ((selectedTransitionIndex >= 0 && selectedTransitionIndex < timelineTransitions.length) ||
                 (selectedEffectClipIndex >= 0 && selectedEffectClipIndex < effectClips.length) ||
                 (selectedPhotoOverlay >= 0 && selectedPhotoOverlay < photoOverlays.length) ||
