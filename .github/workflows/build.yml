@@ -214,9 +214,11 @@ jobs:
 
           $font = Join-Path $env:WINDIR 'Fonts/arial.ttf'
           $font = $font -replace '\\', '/'
+          $font = $font -replace ':', '\:'
           $textFile = Join-Path $env:RUNNER_TEMP 'gifcut-drawtext-smoke.txt'
           Set-Content -Path $textFile -Value 'GifCut text overlay' -Encoding utf8
           $normalizedTextFile = $textFile -replace '\\', '/'
+          $normalizedTextFile = $normalizedTextFile -replace ':', '\:'
           $drawTextFilter = "drawtext=fontfile='$font':textfile='$normalizedTextFile':fontsize=12:fontcolor=white"
           & $ffmpeg -hide_banner -loglevel error -f lavfi -i 'color=c=black:s=128x128:d=1' -vf $drawTextFilter -frames:v 1 -f null NUL
           if ($LASTEXITCODE -ne 0) { throw 'FFmpeg drawtext smoke test failed.' }
