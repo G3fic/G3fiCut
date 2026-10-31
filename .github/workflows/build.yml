@@ -91,7 +91,8 @@ jobs:
 
           $runnerResource = Join-Path $PWD 'windows/runner/Runner.rc'
           $resourceSource = Get-Content -Path $runnerResource -Raw
-          $resourceSource = [regex]::Replace($resourceSource, '(?m)(VALUE\s+"FileDescription",\s*)"[^"]*"', ('${1}"GifCut v{0}"' -f $env:GIFCUT_VERSION))
+          $fileDescriptionReplacement = '${1}"GifCut v' + $env:GIFCUT_VERSION + '"'
+          $resourceSource = [regex]::Replace($resourceSource, '(?m)(VALUE\s+"FileDescription",\s*)"[^"]*"', $fileDescriptionReplacement)
           $resourceSource = [regex]::Replace($resourceSource, '(?m)(VALUE\s+"ProductName",\s*)"[^"]*"', '${1}"GifCut"')
           $resourceSource = [regex]::Replace($resourceSource, '(?m)(VALUE\s+"InternalName",\s*)"[^"]*"', '${1}"GifCut"')
           Set-Content -Path $runnerResource -Value $resourceSource -Encoding utf8
