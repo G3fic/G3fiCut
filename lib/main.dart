@@ -5030,13 +5030,17 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           'setsar=1',
         ].join(',');
         final graph = <String>[
-          '[0:v]split=2[fitSource][backdropSource]',
-          '[backdropSource]scale=$outputWidth:$outputHeight:force_original_aspect_ratio=increase,'
-              'crop=$outputWidth:$outputHeight,gblur=sigma=18,'
-              "lutrgb=r='clip(val*0.62,0,255)':g='clip(val*0.62,0,255)':b='clip(val*0.62,0,255)',"
-              'hue=s=0.82[backdrop]',
-          '[fitSource]$effectPrefix$foregroundTransforms[foreground]',
-          '[backdrop][foreground]overlay=(W-w)/2:(H-h)/2:shortest=1[base0]',
+          if (canvasBackgroundBlurEnabled) ...[
+            '[0:v]split=2[fitSource][backdropSource]',
+            '[backdropSource]scale=$outputWidth:$outputHeight:force_original_aspect_ratio=increase,'
+                'crop=$outputWidth:$outputHeight,gblur=sigma=18,'
+                "lutrgb=r='clip(val*0.62,0,255)':g='clip(val*0.62,0,255)':b='clip(val*0.62,0,255)',"
+                'hue=s=0.82[backdrop]',
+            '[fitSource]$effectPrefix$foregroundTransforms[foreground]',
+            '[backdrop][foreground]overlay=(W-w)/2:(H-h)/2:shortest=1[base0]',
+          ] else ...[
+            '[0:v]$effectPrefix$foregroundTransforms[base0]',
+          ],
         ];
         var previous = 'base0';
         for (var overlayIndex = 0;
@@ -5055,6 +5059,36 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           graph.add(
             '[$previous][$overlayLabel]overlay=x=(W-w)/2+(${overlay.x.toStringAsFixed(4)})*W:'
                 'y=(H-h)/2+(${overlay.y.toStringAsFixed(4)})*H:shortest=1[$outputLabel]',
+          );
+          previous = outputLabel;
+        }
+        for (var textIndex = 0; textIndex < textOverlays.length; textIndex++) {
+          final overlay = textOverlays[textIndex];
+          final globalStart = math.max(overlay.start, clip.timelineStart).toDouble();
+          final globalEnd = math.min(overlay.end, clip.timelineEnd).toDouble();
+          if (globalEnd - globalStart < 0.02) continue;
+          final textFilePath = p.join(temp.path, 'overlay_text_$textIndex.txt');
+          await File(textFilePath).writeAsString(overlay.text, encoding: utf8, flush: true);
+          final escapedTextPath = textFilePath
+              .replaceAll('\\', '\\\\')
+              .replaceAll(':', '\\:')
+              .replaceAll("'", "\\'");
+          final fontPath = Platform.isWindows
+              ? p.join(Platform.environment['WINDIR'] ?? r'C:\Windows', 'Fonts', 'arial.ttf')
+              : '';
+          final fontClause = fontPath.isNotEmpty && await File(fontPath).exists()
+              ? "fontfile='${fontPath.replaceAll('\\', '\\\\').replaceAll(':', '\\:')}':"
+              : '';
+          final textColor = Color(overlay.colorValue).value.toRadixString(16).padLeft(8, '0').substring(2);
+          final textStart = (globalStart - clip.timelineStart).toStringAsFixed(3);
+          final textEnd = (globalEnd - clip.timelineStart).toStringAsFixed(3);
+          final outputLabel = 'text$textIndex';
+          graph.add(
+            "[$previous]drawtext=${fontClause}textfile='$escapedTextPath':expansion=none:"
+            "fontcolor=0x$textColor:fontsize=${overlay.fontSize.round()}:"
+            "x='(w-text_w)/2+${overlay.x.toStringAsFixed(4)}*w':"
+            "y='(h-text_h)/2+${overlay.y.toStringAsFixed(4)}*h':"
+            "enable='between(t,$textStart,$textEnd)'[$outputLabel]",
           );
           previous = outputLabel;
         }
@@ -5428,6 +5462,143 @@ class VideoStripPainter extends CustomPainter {
   }
   @override
   bool shouldRepaint(covariant VideoStripPainter old) => false;
+}
+
+class AnimatedPresetThumbnail extends StatefulWidget {
+  const AnimatedPresetThumbnail({
+    super.key,
+    required this.firstFramePath,
+    required this.secondFramePath,
+    required this.type,
+    required this.transition,
+    required this.active,
+    this.colorMatrix,
+    this.height = 76,
+  });
+
+  final String? firstFramePath;
+  final String? secondFramePath;
+  final String type;
+  final bool transition;
+  final bool active;
+  final List<double>? colorMatrix;
+  final double height;
+
+  @override
+  State<AnimatedPresetThumbnail> createState() => _AnimatedPresetThumbnailState();
+}
+
+class _AnimatedPresetThumbnailState extends State<AnimatedPresetThumbnail> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1450),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.active) {
+      _controller.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant AnimatedPresetThumbnail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    } else if (!widget.active && _controller.isAnimating) {
+      _controller.stop();
+      _controller.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Widget _frame(String? path, {BoxFit fit = BoxFit.cover}) {
+    if (path == null || !File(path).existsSync()) {
+      return const ColoredBox(
+        color: Color(0xFF171B24),
+        child: Center(child: Icon(Icons.movie_outlined, color: Color(0xFF84899A), size: 26)),
+      );
+    }
+    return Image.file(
+      File(path),
+      fit: fit,
+      width: double.infinity,
+      height: double.infinity,
+      errorBuilder: (_, __, ___) => const ColoredBox(
+        color: Color(0xFF171B24),
+        child: Center(child: Icon(Icons.broken_image_outlined, color: Color(0xFF84899A), size: 24)),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => ClipRRect(
+        borderRadius: BorderRadius.circular(5),
+        child: SizedBox(
+          height: widget.height,
+          width: double.infinity,
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, _) {
+              final value = Curves.easeInOutCubic.transform(_controller.value);
+              if (!widget.transition) {
+                final preview = _frame(widget.firstFramePath);
+                final matrix = widget.colorMatrix;
+                return Stack(fit: StackFit.expand, children: [
+                  if (matrix == null)
+                    preview
+                  else
+                    ColorFiltered(colorFilter: ColorFilter.matrix(matrix), child: preview),
+                  if (widget.active)
+                    Positioned.fill(child: IgnorePointer(child: DecoratedBox(
+                      decoration: BoxDecoration(color: Colors.white.withValues(alpha: value * 0.035)),
+                    ))),
+                ]);
+              }
+              final first = _frame(widget.firstFramePath);
+              final second = _frame(widget.secondFramePath ?? widget.firstFramePath);
+              final wipe = widget.type.toLowerCase().contains('смах') ||
+                  widget.type.toLowerCase().contains('wipe') ||
+                  widget.type.toLowerCase().contains('выезд');
+              final reverse = widget.type.toLowerCase().contains('вправо') ||
+                  widget.type.toLowerCase().contains('right');
+              final whiteFlash = widget.type.toLowerCase().contains('вспыш') ||
+                  widget.type.toLowerCase().contains('flash');
+              final dissolve = widget.type.toLowerCase().contains('раствор') ||
+                  widget.type.toLowerCase().contains('dissolve');
+              return Stack(fit: StackFit.expand, children: [
+                first,
+                if (widget.active)
+                  Positioned.fill(
+                    child: ClipRect(
+                      child: Align(
+                        alignment: reverse ? Alignment.centerRight : Alignment.centerLeft,
+                        widthFactor: wipe ? value.clamp(0.02, 1.0) : 1,
+                        child: Opacity(
+                          opacity: dissolve ? value : 1,
+                          child: second,
+                        ),
+                      ),
+                    ),
+                  )
+                else if (widget.secondFramePath != null)
+                  Positioned.fill(child: Opacity(opacity: 0.35, child: second)),
+                if (whiteFlash && widget.active)
+                  Positioned.fill(child: ColoredBox(color: Colors.white.withValues(alpha: (1 - (value - 0.5).abs() * 2).clamp(0.0, 0.8)))),
+                if (!wipe && !dissolve && !whiteFlash && widget.active)
+                  Positioned.fill(child: ColoredBox(color: Colors.black.withValues(alpha: (value * 0.55).clamp(0.0, 0.55)))),
+              ]);
+            },
+          ),
+        ),
+      );
 }
 
 class WaveformPainter extends CustomPainter {
