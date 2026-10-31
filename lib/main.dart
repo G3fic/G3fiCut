@@ -122,6 +122,16 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   int selectedPhotoOverlay = -1;
   bool _playheadInGap = false;
   int _activePlaybackClipIndex = -1;
+  Timer? _gapPlaybackTimer;
+  Stopwatch? _gapPlaybackClock;
+  double _gapPlaybackStartSeconds = 0;
+  double _gapPlaybackEndSeconds = 0;
+  int _gapNextClipIndex = -1;
+  bool _gapResumePending = false;
+  bool _suppressPlayerStateEvents = false;
+  double _mediaPanelWidth = 236;
+  double _inspectorPanelWidth = 292;
+  double _timelinePanelHeight = 276;
   double frameRate = 30.0;
   bool snappingEnabled = true;
   double? _timelineSnapAt;
@@ -485,7 +495,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         }
       });
       playingSub = created.stream.playing.listen((v) {
-        if (mounted && !_switchingMedia) setState(() => playing = v);
+        if (mounted && !_switchingMedia && !_playheadInGap && !_suppressPlayerStateEvents) {
+          setState(() => playing = v);
+        }
       });
       return created;
     } catch (_) {
@@ -497,6 +509,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   @override
   void dispose() {
     _updateCheckTimer?.cancel();
+    _stopGapPlayback(clearNext: true);
     WidgetsBinding.instance.removeObserver(this);
     durationSub?.cancel();
     positionSub?.cancel();
@@ -963,20 +976,30 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
   Future<void> togglePlayback() async {
     final activePlayer = player;
-    if (videoPath == null || activePlayer == null) return;
+    if (videoPath == null || activePlayer == null || videoClips.isEmpty) return;
     if (playing) {
-      await activePlayer.pause();
+      if (_playheadInGap) {
+        _stopGapPlayback();
+        _suppressPlayerStateEvents = true;
+        if (mounted) setState(() => playing = false);
+        await activePlayer.pause();
+        _suppressPlayerStateEvents = false;
+      } else {
+        await activePlayer.pause();
+      }
       return;
     }
-    if (videoClips.isEmpty) return;
     if (_playheadInGap || _clipIndexAtTimelineTime(playheadSeconds) < 0) {
-      final nextIndex = videoClips.indexWhere((clip) =>
-          clip.timelineStart >= playheadSeconds - 0.001);
+      final nextIndex = _gapNextClipIndex >= 0
+          ? _gapNextClipIndex
+          : videoClips.indexWhere((clip) => clip.timelineStart > playheadSeconds + 0.001);
       if (nextIndex < 0) {
         await seek(Duration.zero);
-      } else {
-        await seek(Duration(milliseconds: (videoClips[nextIndex].timelineStart * 1000).round()));
+        return;
       }
+      if (mounted) setState(() => playing = true);
+      _startGapPlayback(startSeconds: playheadSeconds, nextClipIndex: nextIndex);
+      return;
     }
     await activePlayer.play();
   }
@@ -999,6 +1022,10 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     if (sourceSeconds >= clip.end - 0.045) {
       if (playing && index + 1 < videoClips.length) {
         final next = videoClips[index + 1];
+        if (next.timelineStart > clip.timelineEnd + 0.001) {
+          _startGapPlayback(startSeconds: clip.timelineEnd, nextClipIndex: index + 1);
+          return;
+        }
         _activePlaybackClipIndex = index + 1;
         _seekingAcrossCut = true;
         setState(() => position = Duration(milliseconds: (next.timelineStart * 1000).round()));
@@ -1019,6 +1046,87 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     }
   }
 
+  void _stopGapPlayback({bool clearNext = false}) {
+    _gapPlaybackTimer?.cancel();
+    _gapPlaybackTimer = null;
+    _gapPlaybackClock?.stop();
+    _gapPlaybackClock = null;
+    _gapResumePending = false;
+    if (clearNext) _gapNextClipIndex = -1;
+  }
+
+  void _startGapPlayback({required double startSeconds, required int nextClipIndex}) {
+    if (nextClipIndex < 0 || nextClipIndex >= videoClips.length) return;
+    final endSeconds = videoClips[nextClipIndex].timelineStart;
+    final safeStart = startSeconds.clamp(0.0, endSeconds).toDouble();
+    if (endSeconds <= safeStart + 0.001) {
+      unawaited(_resumePlaybackAfterGap());
+      return;
+    }
+    _stopGapPlayback();
+    _gapPlaybackStartSeconds = safeStart;
+    _gapPlaybackEndSeconds = endSeconds;
+    _gapNextClipIndex = nextClipIndex;
+    _gapPlaybackClock = Stopwatch()..start();
+    _suppressPlayerStateEvents = true;
+    setState(() {
+      _playheadInGap = true;
+      _activePlaybackClipIndex = -1;
+      position = Duration(milliseconds: (safeStart * 1000).round());
+      playing = true;
+    });
+    unawaited(player?.pause());
+    _gapPlaybackTimer = Timer.periodic(const Duration(milliseconds: 33), (timer) {
+      if (!mounted || !playing || !_playheadInGap) {
+        _stopGapPlayback();
+        return;
+      }
+      final elapsedSeconds = (_gapPlaybackClock?.elapsedMilliseconds ?? 0) / 1000;
+      final nextSeconds = _gapPlaybackStartSeconds + elapsedSeconds;
+      if (nextSeconds >= _gapPlaybackEndSeconds) {
+        if (_gapResumePending) return;
+        _gapResumePending = true;
+        timer.cancel();
+        _gapPlaybackTimer = null;
+        unawaited(_resumePlaybackAfterGap());
+      } else {
+        setState(() => position = Duration(milliseconds: (nextSeconds * 1000).round()));
+      }
+    });
+  }
+
+  Future<void> _resumePlaybackAfterGap() async {
+    final activePlayer = player;
+    final nextIndex = _gapNextClipIndex;
+    _stopGapPlayback();
+    if (!mounted || !playing || activePlayer == null ||
+        nextIndex < 0 || nextIndex >= videoClips.length) {
+      _suppressPlayerStateEvents = false;
+      if (mounted) setState(() => playing = false);
+      return;
+    }
+    final next = videoClips[nextIndex];
+    setState(() {
+      position = Duration(milliseconds: (next.timelineStart * 1000).round());
+      _activePlaybackClipIndex = nextIndex;
+    });
+    _seekingAcrossCut = true;
+    try {
+      await activePlayer.seek(Duration(milliseconds: (next.start * 1000).round()));
+      if (mounted && playing) await activePlayer.play();
+    } catch (error) {
+      if (mounted) {
+        setState(() => playing = false);
+        status = 'Не удалось продолжить видео после разрыва: $error';
+      }
+    } finally {
+      _seekingAcrossCut = false;
+      _gapNextClipIndex = -1;
+      _suppressPlayerStateEvents = false;
+      if (mounted) setState(() => _playheadInGap = !playing);
+    }
+  }
+
   Future<void> seek(Duration target) async {
     final activePlayer = player;
     if (activePlayer == null || videoPath == null) return;
@@ -1027,14 +1135,20 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     final sequenceSeconds = ms / 1000;
     final index = _clipIndexAtTimelineTime(sequenceSeconds);
     if (index < 0) {
+      _stopGapPlayback();
+      _gapNextClipIndex = videoClips.indexWhere((clip) => clip.timelineStart > sequenceSeconds + 0.001);
+      _suppressPlayerStateEvents = true;
       _activePlaybackClipIndex = -1;
       setState(() {
         position = Duration(milliseconds: ms);
         _playheadInGap = true;
+        playing = false;
       });
       await activePlayer.pause();
+      _suppressPlayerStateEvents = false;
       return;
     }
+    _stopGapPlayback(clearNext: true);
     final clip = videoClips[index];
     final sourceSeconds = clip.start + sequenceSeconds - clip.timelineStart;
     _activePlaybackClipIndex = index;
@@ -1320,15 +1434,19 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                   children: [
                     toolRail(),
                     const VerticalDivider(width: 1),
-                    SizedBox(width: MediaQuery.of(context).size.width < 1000 ? 190 : 270, child: mediaPanel()),
-                    const VerticalDivider(width: 1),
+                    SizedBox(width: _mediaPanelWidth, child: mediaPanel()),
+                    _verticalPanelSplitter('media-panel-splitter', (dx) {
+                      _mediaPanelWidth = (_mediaPanelWidth + dx).clamp(170.0, 420.0).toDouble();
+                    }),
                     Expanded(child: previewPanel()),
-                    const VerticalDivider(width: 1),
-                    SizedBox(width: MediaQuery.of(context).size.width < 1000 ? 190 : 270, child: inspectorPanel()),
+                    _verticalPanelSplitter('inspector-panel-splitter', (dx) {
+                      _inspectorPanelWidth = (_inspectorPanelWidth - dx).clamp(220.0, 440.0).toDouble();
+                    }),
+                    SizedBox(width: _inspectorPanelWidth, child: inspectorPanel()),
                   ],
                 ),
               ),
-              const Divider(height: 1),
+              _horizontalTimelineSplitter(),
               timelinePanel(),
               const Divider(height: 1),
               statusBar(),
@@ -1336,6 +1454,28 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           ),
         ),
       ));
+
+  Widget _verticalPanelSplitter(String key, ValueChanged<double> onDrag) => MouseRegion(
+        cursor: SystemMouseCursors.resizeColumn,
+        child: GestureDetector(
+          key: ValueKey(key),
+          behavior: HitTestBehavior.opaque,
+          onHorizontalDragUpdate: (details) => setState(() => onDrag(details.delta.dx)),
+          child: SizedBox(width: 7, child: Center(child: Container(width: 1, color: const Color(0xFF343744)))),
+        ),
+      );
+
+  Widget _horizontalTimelineSplitter() => MouseRegion(
+        cursor: SystemMouseCursors.resizeRow,
+        child: GestureDetector(
+          key: const ValueKey('timeline-panel-splitter'),
+          behavior: HitTestBehavior.opaque,
+          onVerticalDragUpdate: (details) => setState(() {
+            _timelinePanelHeight = (_timelinePanelHeight - details.delta.dy).clamp(160.0, 520.0).toDouble();
+          }),
+          child: SizedBox(height: 8, child: Center(child: Container(height: 1, color: const Color(0xFF343744)))),
+        ),
+      );
 
   Widget topBar() => Container(
         height: 56,
@@ -1410,7 +1550,6 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       );
 
   Widget mediaPanel() => Container(
-        width: 218,
         color: panel,
         padding: const EdgeInsets.fromLTRB(12, 15, 12, 12),
         child: SingleChildScrollView(
@@ -1500,6 +1639,58 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         ),
       );
 
+  Widget _videoResizeHandle({
+    required Size canvasSize,
+    required double x,
+    required double y,
+    required int horizontalDirection,
+    required int verticalDirection,
+    required String id,
+  }) {
+    final scaleX = (videoScaleX * previewZoom).abs().clamp(.2, 5.0).toDouble();
+    final scaleY = (videoScaleY * previewZoom).abs().clamp(.2, 5.0).toDouble();
+    final cursor = horizontalDirection == 0
+        ? SystemMouseCursors.resizeUpDown
+        : verticalDirection == 0
+            ? SystemMouseCursors.resizeLeftRight
+            : SystemMouseCursors.resizeUpLeftDownRight;
+    return Positioned(
+      left: x - 7 / scaleX,
+      top: y - 7 / scaleY,
+      child: MouseRegion(
+        cursor: cursor,
+        child: GestureDetector(
+          key: ValueKey('video-resize-$id'),
+          behavior: HitTestBehavior.opaque,
+          onPanUpdate: (details) {
+            final radians = videoRotation * math.pi / 180;
+            final localDx = (details.delta.dx * math.cos(radians) + details.delta.dy * math.sin(radians)) / math.max(.1, previewZoom);
+            final localDy = (-details.delta.dx * math.sin(radians) + details.delta.dy * math.cos(radians)) / math.max(.1, previewZoom);
+            setState(() {
+              if (horizontalDirection != 0) {
+                videoScaleX = (videoScaleX + localDx * horizontalDirection * 2 / math.max(1, canvasSize.width)).clamp(.2, 4.0).toDouble();
+              }
+              if (verticalDirection != 0) {
+                videoScaleY = (videoScaleY + localDy * verticalDirection * 2 / math.max(1, canvasSize.height)).clamp(.2, 4.0).toDouble();
+              }
+              projectDirty = true;
+            });
+          },
+          child: Container(
+            width: 14 / scaleX,
+            height: 14 / scaleY,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border.all(color: accent, width: 2),
+              borderRadius: BorderRadius.circular(2 / math.min(scaleX, scaleY)),
+              boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 3)],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget previewPanel() => Container(
         color: const Color(0xFF101217),
         child: Column(children: [
@@ -1555,60 +1746,95 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                     if (_showHorizontalSnapGuide)
                                       Positioned(top: bounds.maxHeight / 2 - .5, left: 0, right: 0, child: IgnorePointer(child: Container(height: 1, color: const Color(0xFF35D7FF)))),
                                     Positioned.fill(
-                                      child: GestureDetector(                                        behavior: HitTestBehavior.translucent,
-                                        onPanUpdate: (d) => setState(() {
-                                          var nextX = videoOffsetX + d.delta.dx / math.max(1, bounds.maxWidth);
-                                          var nextY = videoOffsetY + d.delta.dy / math.max(1, bounds.maxHeight);
-                                          _showVerticalSnapGuide = nextX.abs() < 0.014;
-                                          _showHorizontalSnapGuide = nextY.abs() < 0.014;
-                                          if (nextX.abs() < 0.014) nextX *= 0.68;
-                                          if (nextY.abs() < 0.014) nextY *= 0.68;
-                                          if (nextX.abs() < 0.0025) nextX = 0;
-                                          if (nextY.abs() < 0.0025) nextY = 0;
-                                          videoOffsetX = nextX;
-                                          videoOffsetY = nextY;
-                                          projectDirty = true;
-                                        }),
-                                        onPanEnd: (_) => setState(() { _showVerticalSnapGuide = false; _showHorizontalSnapGuide = false; }),
-                                        child: Transform.translate(
-                                          offset: Offset(videoOffsetX * bounds.maxWidth, videoOffsetY * bounds.maxHeight),
-                                          child: Transform.rotate(
-                                            angle: videoRotation * math.pi / 180,
-                                            child: Transform.scale(
-                                              scaleX: videoScaleX * previewZoom,
-                                              scaleY: videoScaleY * previewZoom,
-                                              child: ColorFiltered(
-                                                colorFilter: ColorFilter.matrix(filtersEnabled ? previewColorMatrix : const <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0]),
-                                                child: ColorFiltered(
-                                                  colorFilter: ColorFilter.matrix(effectColorMatrix),
-                                                  child: ImageFiltered(
-                                                    imageFilter: ui.ImageFilter.blur(
-                                                      sigmaX: (videoEffect == 'Мягкое размытие' ? 2.0 : 0.0) + (motionBlurEnabled ? 1.2 : 0.0),
-                                                      sigmaY: (videoEffect == 'Мягкое размытие' ? 2.0 : 0.0) + (motionBlurEnabled ? 1.2 : 0.0),
+                                      child: Transform.translate(
+                                        offset: Offset(videoOffsetX * bounds.maxWidth, videoOffsetY * bounds.maxHeight),
+                                        child: Transform.rotate(
+                                          angle: videoRotation * math.pi / 180,
+                                          child: Transform.scale(
+                                            scaleX: videoScaleX * previewZoom,
+                                            scaleY: videoScaleY * previewZoom,
+                                            child: SizedBox(
+                                              width: bounds.maxWidth,
+                                              height: bounds.maxHeight,
+                                              child: Stack(
+                                                clipBehavior: Clip.none,
+                                                fit: StackFit.expand,
+                                                children: [
+                                                  Positioned.fill(
+                                                    child: MouseRegion(
+                                                      cursor: SystemMouseCursors.move,
+                                                      child: GestureDetector(
+                                                        behavior: HitTestBehavior.opaque,
+                                                        onPanUpdate: (details) => setState(() {
+                                                          videoOffsetX += details.delta.dx / math.max(1, bounds.maxWidth);
+                                                          videoOffsetY += details.delta.dy / math.max(1, bounds.maxHeight);
+                                                          _showVerticalSnapGuide = videoOffsetX.abs() < 0.014;
+                                                          _showHorizontalSnapGuide = videoOffsetY.abs() < 0.014;
+                                                          projectDirty = true;
+                                                        }),
+                                                        onPanEnd: (_) => setState(() {
+                                                          _showVerticalSnapGuide = false;
+                                                          _showHorizontalSnapGuide = false;
+                                                        }),
+                                                        child: ColorFiltered(
+                                                          colorFilter: ColorFilter.matrix(filtersEnabled ? previewColorMatrix : const <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0]),
+                                                          child: ColorFiltered(
+                                                            colorFilter: ColorFilter.matrix(effectColorMatrix),
+                                                            child: ImageFiltered(
+                                                              imageFilter: ui.ImageFilter.blur(
+                                                                sigmaX: (videoEffect == 'Мягкое размытие' ? 2.0 : 0.0) + (motionBlurEnabled ? 1.2 : 0.0),
+                                                                sigmaY: (videoEffect == 'Мягкое размытие' ? 2.0 : 0.0) + (motionBlurEnabled ? 1.2 : 0.0),
+                                                              ),
+                                                              child: Video(controller: videoController!, controls: NoVideoControls, fit: BoxFit.cover),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
                                                     ),
-                                                    child: Video(controller: videoController!, controls: NoVideoControls, fit: BoxFit.cover),
                                                   ),
-                                                ),
+                                                  Positioned.fill(
+                                                    child: IgnorePointer(
+                                                      child: DecoratedBox(
+                                                        decoration: BoxDecoration(border: Border.all(color: accent, width: 1.5)),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  _videoResizeHandle(canvasSize: Size(bounds.maxWidth, bounds.maxHeight), x: 0, y: 0, horizontalDirection: -1, verticalDirection: -1, id: 'top-left'),
+                                                  _videoResizeHandle(canvasSize: Size(bounds.maxWidth, bounds.maxHeight), x: bounds.maxWidth / 2, y: 0, horizontalDirection: 0, verticalDirection: -1, id: 'top'),
+                                                  _videoResizeHandle(canvasSize: Size(bounds.maxWidth, bounds.maxHeight), x: bounds.maxWidth, y: 0, horizontalDirection: 1, verticalDirection: -1, id: 'top-right'),
+                                                  _videoResizeHandle(canvasSize: Size(bounds.maxWidth, bounds.maxHeight), x: 0, y: bounds.maxHeight / 2, horizontalDirection: -1, verticalDirection: 0, id: 'left'),
+                                                  _videoResizeHandle(canvasSize: Size(bounds.maxWidth, bounds.maxHeight), x: bounds.maxWidth, y: bounds.maxHeight / 2, horizontalDirection: 1, verticalDirection: 0, id: 'right'),
+                                                  _videoResizeHandle(canvasSize: Size(bounds.maxWidth, bounds.maxHeight), x: 0, y: bounds.maxHeight, horizontalDirection: -1, verticalDirection: 1, id: 'bottom-left'),
+                                                  _videoResizeHandle(canvasSize: Size(bounds.maxWidth, bounds.maxHeight), x: bounds.maxWidth / 2, y: bounds.maxHeight, horizontalDirection: 0, verticalDirection: 1, id: 'bottom'),
+                                                  _videoResizeHandle(canvasSize: Size(bounds.maxWidth, bounds.maxHeight), x: bounds.maxWidth, y: bounds.maxHeight, horizontalDirection: 1, verticalDirection: 1, id: 'bottom-right'),
+                                                  Positioned(
+                                                    left: bounds.maxWidth / 2 - 17 / math.max(.2, videoScaleX * previewZoom),
+                                                    top: 18 / math.max(.2, videoScaleY * previewZoom),
+                                                    width: 34 / math.max(.2, videoScaleX * previewZoom),
+                                                    height: 34 / math.max(.2, videoScaleY * previewZoom),
+                                                    child: MouseRegion(
+                                                      cursor: SystemMouseCursors.grab,
+                                                      child: GestureDetector(
+                                                        key: const ValueKey('video-rotate-handle'),
+                                                        behavior: HitTestBehavior.opaque,
+                                                        onPanUpdate: (details) => setState(() {
+                                                          videoRotation = (videoRotation + (details.delta.dx - details.delta.dy) * .7) % 360;
+                                                          projectDirty = true;
+                                                        }),
+                                                        child: Container(
+                                                          decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white, width: 1.5), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 4)]),
+                                                          child: const Icon(Icons.rotate_90_degrees_ccw, size: 17, color: Colors.white),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
                                             ),
                                           ),
                                         ),
                                       ),
                                     ),
-                                    if (selectedPhotoOverlay < 0)
-                                      Positioned(
-                                        left: bounds.maxWidth / 2 + videoOffsetX * bounds.maxWidth - 18,
-                                        top: bounds.maxHeight / 2 + videoOffsetY * bounds.maxHeight + videoScaleY * previewZoom * bounds.maxHeight / 2 + 12,
-                                        child: GestureDetector(
-                                          key: const ValueKey('video-rotate-handle'),
-                                          onPanUpdate: (d) => setState(() { videoRotation = (videoRotation + d.delta.dx * 0.7) % 360; projectDirty = true; }),
-                                          child: Container(
-                                            width: 36, height: 30,
-                                            decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white, width: 1.5), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 4)]),
-                                            child: const Icon(Icons.rotate_90_degrees_ccw, size: 19, color: Colors.white),
-                                          ),
-                                        ),
-                                      ),
                                     for (var i = 0; i < photoOverlays.length; i++)
                                       Positioned(
                                         left: bounds.maxWidth / 2 + photoOverlays[i].x * bounds.maxWidth - shortSide * .18 * photoOverlays[i].scale,
@@ -1729,7 +1955,6 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   );
 
   Widget inspectorPanel() => Container(
-        width: 258,
         color: panel,
         padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
         child: SingleChildScrollView(
@@ -1785,38 +2010,6 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               ),
               if (transitionEffect != 'Нет')
                 _adjustmentSlider('Длительность перехода', transitionDuration, 0.2, 1.0, (value) => setState(() { transitionDuration = value; projectDirty = true; })),
-              const Divider(),
-              const Text('ТРАНСФОРМАЦИЯ ВИДЕО', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
-              _adjustmentSlider('Ширина видео', videoScaleX, 0.2, 3, (v) => setState(() { videoScaleX = v; projectDirty = true; })),
-              _adjustmentSlider('Высота видео', videoScaleY, 0.2, 3, (v) => setState(() { videoScaleY = v; projectDirty = true; })),
-              _adjustmentSlider('Поворот видео', videoRotation, -180, 180, (v) => setState(() { videoRotation = v; projectDirty = true; })),
-              const SizedBox(height: 8),
-              Row(children: [
-                const Expanded(child: Text('ФОТО ПОВЕРХ ВИДЕО', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800))),
-                IconButton(tooltip: 'Добавить фото', visualDensity: VisualDensity.compact, onPressed: busy || videoPath == null ? null : importPhotoOverlay, icon: const Icon(Icons.add_photo_alternate_outlined, size: 18)),
-              ]),
-              for (var i = 0; i < photoOverlays.length; i++)
-                ListTile(
-                  dense: true, contentPadding: EdgeInsets.zero, selected: selectedPhotoOverlay == i,
-                  leading: const Icon(Icons.image_outlined, size: 18, color: accent),
-                  title: Text(p.basename(photoOverlays[i].path), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10)),
-                  trailing: IconButton(tooltip: 'Удалить фото', visualDensity: VisualDensity.compact, onPressed: () => setState(() {
-                    photoOverlays.removeAt(i);
-                    if (selectedPhotoOverlay >= photoOverlays.length) selectedPhotoOverlay = photoOverlays.length - 1;
-                    projectDirty = true;
-                  }), icon: const Icon(Icons.delete_outline, size: 16)),
-                  onTap: () => setState(() => selectedPhotoOverlay = i),
-                ),
-              if (selectedPhotoOverlay >= 0 && selectedPhotoOverlay < photoOverlays.length) ...[
-                _adjustmentSlider('Размер фото', photoOverlays[selectedPhotoOverlay].scale, 0.2, 3, (v) => setState(() { photoOverlays[selectedPhotoOverlay].scale = v; projectDirty = true; })),
-                _adjustmentSlider('Поворот фото', photoOverlays[selectedPhotoOverlay].rotation, -180, 180, (v) => setState(() { photoOverlays[selectedPhotoOverlay].rotation = v; projectDirty = true; })),
-                _adjustmentSlider('Прозрачность фото', photoOverlays[selectedPhotoOverlay].opacity, 0.05, 1, (v) => setState(() { photoOverlays[selectedPhotoOverlay].opacity = v; projectDirty = true; })),
-              ],
-              const Divider(),
-              const Text('ТРАНСФОРМАЦИЯ ВИДЕО', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
-              _adjustmentSlider('Ширина видео', videoScaleX, 0.2, 3, (v) => setState(() { videoScaleX = v; projectDirty = true; })),
-              _adjustmentSlider('Высота видео', videoScaleY, 0.2, 3, (v) => setState(() { videoScaleY = v; projectDirty = true; })),
-              _adjustmentSlider('Поворот видео', videoRotation, -180, 180, (v) => setState(() { videoRotation = v; projectDirty = true; })),
               const SizedBox(height: 8),
               Row(children: [
                 const Expanded(child: Text('ФОТО ПОВЕРХ ВИДЕО', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800))),
@@ -1886,7 +2079,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       );
 
   Widget timelinePanel() => Container(
-        height: (MediaQuery.sizeOf(context).height * 0.36).clamp(220.0, 300.0).toDouble(),
+        height: _timelinePanelHeight,
         color: const Color(0xFF12151B),
         child: Column(children: [
           Container(
