@@ -234,6 +234,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   bool snappingEnabled = true;
   double? _timelineSnapAt;
   final ScrollController timelineScrollController = ScrollController();
+  final ScrollController timelineVerticalScrollController = ScrollController();
   int _clipMoveIndex = -1;
   double _clipMoveOriginalStart = 0;
   double _clipMovePointerX = 0;
@@ -638,6 +639,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     positionSub?.cancel();
     playingSub?.cancel();
     timelineScrollController.dispose();
+    timelineVerticalScrollController.dispose();
     final activePlayer = player;
     if (activePlayer != null) unawaited(activePlayer.dispose());
     super.dispose();
@@ -2563,22 +2565,34 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           Expanded(
             child: Listener(
               onPointerSignal: (event) {
-                if (event is! PointerScrollEvent || !timelineScrollController.hasClients) return;
-                final controller = timelineScrollController;
-                if (HardwareKeyboard.instance.isControlPressed) {
+                if (event is! PointerScrollEvent) return;
+                final horizontalController = timelineScrollController;
+                final verticalController = timelineVerticalScrollController;
+                if (HardwareKeyboard.instance.isControlPressed && horizontalController.hasClients) {
                   final pointerX = event.localPosition.dx;
-                  final anchorSeconds = ((controller.offset + pointerX - 140) / zoom)
+                  final anchorSeconds = ((horizontalController.offset + pointerX - 140) / zoom)
                       .clamp(0.0, timelineSeconds).toDouble();
                   setTimelineZoom(event.scrollDelta.dy < 0 ? zoom + 4 : zoom - 4);
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (!controller.hasClients) return;
+                    if (!horizontalController.hasClients) return;
                     final nextOffset = anchorSeconds * zoom + 140 - pointerX;
-                    controller.jumpTo(nextOffset.clamp(0.0, controller.position.maxScrollExtent).toDouble());
+                    horizontalController.jumpTo(nextOffset.clamp(0.0, horizontalController.position.maxScrollExtent).toDouble());
                   });
-                } else {
-                  final delta = event.scrollDelta.dx != 0 ? event.scrollDelta.dx : event.scrollDelta.dy;
-                  controller.jumpTo((controller.offset + delta)
-                      .clamp(0.0, controller.position.maxScrollExtent).toDouble());
+                } else if (event.scrollDelta.dx != 0 && horizontalController.hasClients) {
+                  horizontalController.jumpTo(
+                    (horizontalController.offset + event.scrollDelta.dx)
+                        .clamp(0.0, horizontalController.position.maxScrollExtent).toDouble(),
+                  );
+                } else if (verticalController.hasClients && verticalController.position.maxScrollExtent > 0) {
+                  verticalController.jumpTo(
+                    (verticalController.offset + event.scrollDelta.dy)
+                        .clamp(0.0, verticalController.position.maxScrollExtent).toDouble(),
+                  );
+                } else if (horizontalController.hasClients) {
+                  horizontalController.jumpTo(
+                    (horizontalController.offset + event.scrollDelta.dy)
+                        .clamp(0.0, horizontalController.position.maxScrollExtent).toDouble(),
+                  );
                 }
               },
               child: SingleChildScrollView(
@@ -2587,6 +2601,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               child: SizedBox(
                 width: 140 + timelineWidth,
                 child: SingleChildScrollView(
+                  controller: timelineVerticalScrollController,
+                  primary: false,
                   scrollDirection: Axis.vertical,
                   child: Column(children: [
                     SizedBox(
