@@ -208,7 +208,7 @@ class ProjectDocument {
           effect.start < 0 ||
           effect.end <= effect.start ||
           (videoClips.isNotEmpty && effect.end > videoClips.map((clip) => clip.timelineEnd).reduce((a, b) => a > b ? a : b) + 0.001)) {
-        throw FormatException('Некорректный эффект на таймлайне ' + (i + 1).toString() + '.');
+        throw FormatException('Некорректный эффект на таймлайне ${i + 1}.');
       }
     }
     for (var i = 0; i < transitions.length; i++) {
@@ -219,14 +219,14 @@ class ProjectDocument {
           transition.at < 0 ||
           transition.duration < 0.1 ||
           transition.duration > 5) {
-        throw FormatException('Некорректный переход ' + (i + 1).toString() + '.');
+        throw FormatException('Некорректный переход ${i + 1}.');
       }
       final hasJoin = videoClips.any((left) => videoClips.any((right) =>
           (left.timelineEnd - transition.at).abs() < 0.025 &&
           (right.timelineStart - transition.at).abs() < 0.025 &&
           left.timelineStart != right.timelineStart));
       if (!hasJoin) {
-        throw FormatException('Переход ' + (i + 1).toString() + ' не привязан к стыку двух видеоклипов.');
+        throw FormatException('Переход ${i + 1} не привязан к стыку двух видеоклипов.');
       }
     }
 
@@ -327,7 +327,7 @@ class ProjectDocument {
         if (raw is! List) throw const FormatException('Поле effectClips должно быть массивом.');
         return raw.asMap().entries.map((entry) {
           final value = entry.value;
-          if (value is! Map) throw FormatException('Эффект ' + (entry.key + 1).toString() + ' должен быть объектом.');
+          if (value is! Map) throw FormatException('Эффект ${entry.key + 1} должен быть объектом.');
           final map = <String, dynamic>{};
           for (final field in value.entries) {
             if (field.key is! String) throw const FormatException('Некорректные поля эффекта.');
@@ -346,7 +346,7 @@ class ProjectDocument {
         if (raw is! List) throw const FormatException('Поле transitions должно быть массивом.');
         return raw.asMap().entries.map((entry) {
           final value = entry.value;
-          if (value is! Map) throw FormatException('Переход ' + (entry.key + 1).toString() + ' должен быть объектом.');
+          if (value is! Map) throw FormatException('Переход ${entry.key + 1} должен быть объектом.');
           final map = <String, dynamic>{};
           for (final field in value.entries) {
             if (field.key is! String) throw const FormatException('Некорректные поля перехода.');
