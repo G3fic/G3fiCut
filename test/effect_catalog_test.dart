@@ -26,6 +26,17 @@ void main() {
       expect(builtinEffectTypes.length, greaterThanOrEqualTo(20));
     });
 
+    test('applies timeline enable to every filter without splitting LUT expressions', () {
+      const chain =
+          "lutrgb=r='clip((val-128)*1.65+128,0,255)':g='clip((val-128)*1.65+128,0,255)':b='clip((val-128)*1.65+128,0,255)',hue=s=1.15";
+      const enabled =
+          "lutrgb=r='clip((val-128)*1.65+128,0,255)':g='clip((val-128)*1.65+128,0,255)':b='clip((val-128)*1.65+128,0,255)':enable='between(t,0.2,1.4)',hue=s=1.15:enable='between(t,0.2,1.4)'";
+      expect(
+        applyEnableToFilterChain(chain, 'between(t,0.2,1.4)'),
+        enabled,
+      );
+    });
+
     test('effect export filters do not depend on the unavailable eq filter', () {
       for (final entry in builtinEffectExportFilters.entries) {
         expect(entry.value, isNot(contains('eq=')), reason: entry.key);
