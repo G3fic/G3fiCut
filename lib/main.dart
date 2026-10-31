@@ -1645,8 +1645,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     if (ctrl && key == LogicalKeyboardKey.arrowLeft) { unawaited(_seekToEditPoint(-1)); return KeyEventResult.handled; }
     if (ctrl && key == LogicalKeyboardKey.arrowRight) { unawaited(_seekToEditPoint(1)); return KeyEventResult.handled; }
     if (key == LogicalKeyboardKey.f1) { unawaited(showKeyboardShortcuts()); return KeyEventResult.handled; }
-    if (key == LogicalKeyboardKey.delete && shift) { deleteSelectedClip(ripple: true); return KeyEventResult.handled; }
-    if (key == LogicalKeyboardKey.delete || key == LogicalKeyboardKey.backspace) { deleteSelectedClip(); return KeyEventResult.handled; }
+    if (key == LogicalKeyboardKey.delete && shift) { deleteSelectedTimelineItem(ripple: true); return KeyEventResult.handled; }
+    if (key == LogicalKeyboardKey.delete || key == LogicalKeyboardKey.backspace) { deleteSelectedTimelineItem(); return KeyEventResult.handled; }
     if (key == LogicalKeyboardKey.space) { unawaited(togglePlayback()); return KeyEventResult.handled; }
     if (key == LogicalKeyboardKey.keyJ) { unawaited(_stepFrame(-1)); return KeyEventResult.handled; }
     if (key == LogicalKeyboardKey.keyK) { unawaited(_pauseAndResetShuttle()); return KeyEventResult.handled; }
@@ -2260,7 +2260,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                         width: shortSide * .36 * photoOverlays[i].scale,
                                         height: shortSide * .36 * photoOverlays[i].scale,
                                         child: GestureDetector(
-                                          onTap: () => setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; }),
+                                          onTap: () => setState(() {
+                      selectedPhotoOverlay = i;
+                      selectedAudioClip = false;
+                      selectedEffectClipIndex = -1;
+                      selectedTransitionIndex = -1;
+                      _selectedCanvasObject = 'photo';
+                    }),
                                           onPanStart: (_) {
                                             _photoDragRawOffsets[i] = Offset(photoOverlays[i].x, photoOverlays[i].y);
                                             _photoSnapXActive.remove(i);
@@ -2662,7 +2668,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                     IconButton(
                       tooltip: 'Удалить выбранный клип',
                       visualDensity: VisualDensity.compact,
-                      onPressed: videoClips.isEmpty ? null : deleteSelectedClip,
+                      onPressed: videoClips.isEmpty && effectClips.isEmpty && timelineTransitions.isEmpty && audioPath == null && photoOverlays.isEmpty
+                          ? null
+                          : deleteSelectedTimelineItem,
                       icon: const Icon(Icons.delete_outline_rounded, size: 17),
                     ),
                     const Spacer(),
@@ -2902,7 +2910,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                   width: math.max(20.0, timelineWidth - 8).toDouble(),
                   child: GestureDetector(
                     onTapDown: (d) => seekTimeline(d.localPosition.dx),
-                    onTap: () => setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; }),
+                    onTap: () => setState(() {
+                      selectedPhotoOverlay = i;
+                      selectedAudioClip = false;
+                      selectedEffectClipIndex = -1;
+                      selectedTransitionIndex = -1;
+                      _selectedCanvasObject = 'photo';
+                    }),
                     child: Container(
                       decoration: BoxDecoration(color: const Color(0x443D2C69), borderRadius: BorderRadius.circular(5), border: Border.all(color: selectedPhotoOverlay == i ? Colors.white : const Color(0xFFB18CFF), width: selectedPhotoOverlay == i ? 2 : 1)),
                       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -2960,9 +2974,21 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                   bottom: 7,
                   width: math.max(12.0, (audioClipEnd - audioClipStart) * zoom - 2).toDouble(),
                   child: GestureDetector(
-                    onSecondaryTapDown: (details) => showAudioClipMenu(details.globalPosition),
+                    onTap: () => setState(() {
+                      selectedAudioClip = true;
+                      selectedEffectClipIndex = -1;
+                      selectedTransitionIndex = -1;
+                      selectedPhotoOverlay = -1;
+                      _selectedCanvasObject = 'audio';
+                    }),
+                    onSecondaryTapUp: (details) {
+                      if (!_timelinePanMoved) showAudioClipMenu(details.globalPosition);
+                    },
                     child: DecoratedBox(
-                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: audioGreen, width: 1.5)),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: selectedAudioClip ? Colors.white : audioGreen, width: selectedAudioClip ? 2 : 1.5),
+                      ),
                       child: audioClip(path),
                     ),
                   ),
@@ -3462,6 +3488,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     setState(() {
       _selectedCanvasObject = 'video';
       selectedPhotoOverlay = -1;
+      selectedAudioClip = false;
+      selectedEffectClipIndex = -1;
+      selectedTransitionIndex = -1;
       if (index >= 0) selectedClipIndex = index;
     });
   }
@@ -3471,8 +3500,58 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     setState(() {
       selectedClipIndex = index;
       selectedPhotoOverlay = -1;
+      selectedAudioClip = false;
+      selectedEffectClipIndex = -1;
+      selectedTransitionIndex = -1;
       _selectedCanvasObject = 'video';
     });
+  }
+
+  void deleteSelectedTimelineItem({bool ripple = false}) {
+    if (selectedEffectClipIndex >= 0 && selectedEffectClipIndex < effectClips.length) {
+      final index = selectedEffectClipIndex;
+      _performTimelineEdit(() {
+        effectClips.removeAt(index);
+        selectedEffectClipIndex = -1;
+        _selectedCanvasObject = 'video';
+        status = 'Выбранный эффект удалён.';
+      });
+      return;
+    }
+    if (selectedTransitionIndex >= 0 && selectedTransitionIndex < timelineTransitions.length) {
+      final index = selectedTransitionIndex;
+      _performTimelineEdit(() {
+        timelineTransitions.removeAt(index);
+        selectedTransitionIndex = -1;
+        _selectedCanvasObject = 'video';
+        status = 'Выбранный переход удалён.';
+      });
+      return;
+    }
+    if (selectedPhotoOverlay >= 0 && selectedPhotoOverlay < photoOverlays.length) {
+      setState(() {
+        photoOverlays.removeAt(selectedPhotoOverlay);
+        selectedPhotoOverlay = -1;
+        _selectedCanvasObject = 'video';
+        projectDirty = true;
+        status = 'Выбранное фото удалено.';
+      });
+      return;
+    }
+    if (selectedAudioClip && audioPath != null) {
+      _performTimelineEdit(() {
+        audioPath = null;
+        audioDuration = Duration.zero;
+        audioClipStart = 0;
+        audioClipEnd = 0;
+        audioWaveform = const [];
+        selectedAudioClip = false;
+        _selectedCanvasObject = 'video';
+        status = 'Выбранный аудиоклип удалён.';
+      });
+      return;
+    }
+    deleteSelectedClip(ripple: ripple);
   }
 
   void splitSelectedClip() {
@@ -3557,6 +3636,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     setState(() {
       selectedClipIndex = index;
       selectedPhotoOverlay = -1;
+      selectedAudioClip = false;
+      selectedEffectClipIndex = -1;
+      selectedTransitionIndex = -1;
       _selectedCanvasObject = 'video';
       _timelineSnapAt = null;
     });
