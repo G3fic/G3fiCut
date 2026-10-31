@@ -1,3 +1,5 @@
+import 'effect_catalog.dart';
+
 import 'dart:convert';
 
 /// Source-time range for a single video clip in a saved project.
@@ -38,15 +40,7 @@ class ProjectEffectClip {
     required this.end,
   });
 
-  static const supportedTypes = <String>{
-    'Чёрно-белый',
-    'Сепия',
-    'Негатив',
-    'Тёплый тон',
-    'Холодный тон',
-    'Размытие',
-    'Высокий контраст',
-  };
+  static const supportedTypes = builtinEffectTypes;
 
   final String type;
   final double start;
@@ -79,15 +73,7 @@ class ProjectTransition {
     required this.duration,
   });
 
-  static const supportedTypes = <String>{
-    'Затемнение', 'Белая вспышка', 'Растворение',
-    'Смахивание влево', 'Смахивание вправо',
-    'Смахивание вверх', 'Смахивание вниз',
-    'Сдвиг влево', 'Сдвиг вправо', 'Сдвиг вверх', 'Сдвиг вниз',
-    'Круговое открытие', 'Круговое закрытие', 'Пикселизация',
-    'Диагональное стирание', 'Растворение через чёрный',
-    'Растворение через белый',
-  };
+  static final supportedTypes = builtinTransitionFilters.keys.toSet();
 
   final String type;
   final double at;

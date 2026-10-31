@@ -163,15 +163,7 @@ void main() {
     });
 
     test('accepts and roundtrips all built-in transition types', () {
-      const transitionTypes = [
-        'Затемнение', 'Белая вспышка', 'Растворение',
-        'Смахивание влево', 'Смахивание вправо',
-        'Смахивание вверх', 'Смахивание вниз',
-        'Сдвиг влево', 'Сдвиг вправо', 'Сдвиг вверх', 'Сдвиг вниз',
-        'Круговое открытие', 'Круговое закрытие', 'Пикселизация',
-        'Диагональное стирание', 'Растворение через чёрный',
-        'Растворение через белый',
-      ];
+      final transitionTypes = ProjectTransition.supportedTypes.toList()..sort();
       for (final type in transitionTypes) {
         final project = makeProject(
           videoClips: const [
@@ -181,6 +173,15 @@ void main() {
           transitions: [ProjectTransition(type: type, at: 4, duration: 0.5)],
         );
         expect(ProjectDocument.decode(project.encode()).transitions.single.type, type);
+      }
+    });
+
+    test('accepts and roundtrips every registered timeline effect', () {
+      for (final type in ProjectEffectClip.supportedTypes) {
+        final project = makeProject(
+          effectClips: [ProjectEffectClip(type: type, start: 1, end: 2)],
+        );
+        expect(ProjectDocument.decode(project.encode()).effectClips.single.type, type);
       }
     });
 

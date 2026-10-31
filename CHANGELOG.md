@@ -1,5 +1,13 @@
 # Changelog
 
+## GifCut v0.3.78 — 2026-10-31
+
+- Add a larger library of FFmpeg crossfade transitions, including radial, diagonal, slice, wind, cover, reveal, squeeze and zoom variants.
+- Add cinematic looks, VHS, RGB glitch, film grain, vignette, sharpening and five licensed 3D LUT presets.
+- Bundle the five slaycamera LUTs in Windows releases with CC BY 4.0 attribution.
+- Fill portrait and square canvases with a blurred copy of the video while keeping the full original frame visible; apply the same layout in exports.
+- Use the same center-and-edge snapping system for video and photo layers, including rotation-aware object bounds and visible edge guides.
+
 ## GifCut v0.3.77 — 2026-10-31
 
 - Save the verified Windows installer in the user's Downloads folder and open it through Windows Explorer so elevation prompts are shown correctly.

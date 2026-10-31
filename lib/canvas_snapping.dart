@@ -57,3 +57,84 @@ class CenterAxisSnapper {
     );
   }
 }
+
+/// A canvas guide that an object's edge or center can align with.
+enum CanvasGuide { leading, center, trailing }
+
+class CanvasGuideSnapResult {
+  const CanvasGuideSnapResult({required this.offset, required this.guide});
+
+  /// Normalized object-center offset from the canvas center.
+  final double offset;
+  final CanvasGuide? guide;
+
+  bool get isSnapped => guide != null;
+}
+
+/// Snaps transformed objects to the canvas center and its four edges.
+///
+/// [objectExtent] is the object's rendered bounding-box size on the current
+/// axis, including its scale and rotation. Offsets are normalized to the
+/// canvas extent so this behaves identically for video and photo layers.
+class CanvasGuideSnapper {
+  const CanvasGuideSnapper({
+    this.catchDistance = 14,
+    this.releaseDistance = 24,
+  }) : assert(catchDistance > 0 && releaseDistance >= catchDistance);
+
+  final double catchDistance;
+  final double releaseDistance;
+
+  double _target(CanvasGuide guide, double halfExtent) => switch (guide) {
+        CanvasGuide.leading => -0.5 + halfExtent,
+        CanvasGuide.center => 0,
+        CanvasGuide.trailing => 0.5 - halfExtent,
+      };
+
+  CanvasGuideSnapResult update({
+    required double rawOffset,
+    required double canvasExtent,
+    required double objectExtent,
+    CanvasGuide? previousGuide,
+    bool enabled = true,
+  }) {
+    if (!enabled ||
+        !rawOffset.isFinite ||
+        !canvasExtent.isFinite ||
+        canvasExtent <= 0 ||
+        !objectExtent.isFinite ||
+        objectExtent < 0) {
+      return CanvasGuideSnapResult(offset: rawOffset, guide: null);
+    }
+
+    final halfExtent = objectExtent / (2 * canvasExtent);
+    if (!halfExtent.isFinite) {
+      return CanvasGuideSnapResult(offset: rawOffset, guide: null);
+    }
+
+    if (previousGuide != null) {
+      final target = _target(previousGuide, halfExtent);
+      if ((rawOffset - target).abs() * canvasExtent <= releaseDistance) {
+        return CanvasGuideSnapResult(offset: target, guide: previousGuide);
+      }
+    }
+
+    CanvasGuide? nearestGuide;
+    var nearestTarget = rawOffset;
+    var nearestDistance = double.infinity;
+    for (final guide in CanvasGuide.values) {
+      final target = _target(guide, halfExtent);
+      final distance = (rawOffset - target).abs() * canvasExtent;
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestTarget = target;
+        nearestGuide = guide;
+      }
+    }
+
+    if (nearestDistance <= catchDistance) {
+      return CanvasGuideSnapResult(offset: nearestTarget, guide: nearestGuide);
+    }
+    return CanvasGuideSnapResult(offset: rawOffset, guide: null);
+  }
+}

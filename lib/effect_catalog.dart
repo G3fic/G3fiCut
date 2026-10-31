@@ -1,0 +1,221 @@
+/// Built-in FFmpeg effects and transitions available in GifCut.
+///
+/// Transition names map directly to FFmpeg's xfade transition option names.
+/// Effect filter strings use standard libavfilter filters from the bundled
+/// FFmpeg build.
+const Map<String, String> builtinTransitionFilters = {
+  'Затемнение': 'fadeblack',
+  'Белая вспышка': 'fadewhite',
+  'Растворение': 'dissolve',
+  'Плавное смешивание': 'fade',
+  'Смахивание влево': 'wipeleft',
+  'Смахивание вправо': 'wiperight',
+  'Смахивание вверх': 'wipeup',
+  'Смахивание вниз': 'wipedown',
+  'Сдвиг влево': 'slideleft',
+  'Сдвиг вправо': 'slideright',
+  'Сдвиг вверх': 'slideup',
+  'Сдвиг вниз': 'slidedown',
+  'Круговое открытие': 'circleopen',
+  'Круговое закрытие': 'circleclose',
+  'Пикселизация': 'pixelize',
+  'Диагональное стирание': 'diagtl',
+  'Растворение через чёрный': 'fadeblack',
+  'Растворение через белый': 'fadewhite',
+  'Круговое кадрирование': 'circlecrop',
+  'Прямоугольное кадрирование': 'rectcrop',
+  'Переход по расстоянию': 'distance',
+  'Радиальный переход': 'radial',
+  'Плавное смахивание влево': 'smoothleft',
+  'Плавное смахивание вправо': 'smoothright',
+  'Плавное смахивание вверх': 'smoothup',
+  'Плавное смахивание вниз': 'smoothdown',
+  'Вертикальное раскрытие': 'vertopen',
+  'Вертикальное закрытие': 'vertclose',
+  'Горизонтальное раскрытие': 'horzopen',
+  'Горизонтальное закрытие': 'horzclose',
+  'Диагональ сверху слева': 'diagtl',
+  'Диагональ сверху справа': 'diagtr',
+  'Диагональ снизу слева': 'diagbl',
+  'Диагональ снизу справа': 'diagbr',
+  'Горизонтальные полосы слева': 'hlslice',
+  'Горизонтальные полосы справа': 'hrslice',
+  'Вертикальные полосы сверху': 'vuslice',
+  'Вертикальные полосы снизу': 'vdslice',
+  'Размытие при переходе': 'hblur',
+  'Переход через оттенки серого': 'fadegrays',
+  'Диагональное смахивание сверху слева': 'wipetl',
+  'Диагональное смахивание сверху справа': 'wipetr',
+  'Диагональное смахивание снизу слева': 'wipebl',
+  'Диагональное смахивание снизу справа': 'wipebr',
+  'Сжатие по горизонтали': 'squeezeh',
+  'Сжатие по вертикали': 'squeezev',
+  'Приближение': 'zoomin',
+  'Быстрое растворение': 'fadefast',
+  'Медленное растворение': 'fadeslow',
+  'Ветер слева': 'hlwind',
+  'Ветер справа': 'hrwind',
+  'Ветер сверху': 'vuwind',
+  'Ветер снизу': 'vdwind',
+  'Покрытие слева': 'coverleft',
+  'Покрытие справа': 'coverright',
+  'Покрытие сверху': 'coverup',
+  'Покрытие снизу': 'coverdown',
+  'Появление слева': 'revealleft',
+  'Появление справа': 'revealright',
+  'Появление сверху': 'revealup',
+  'Появление снизу': 'revealdown',
+};
+
+const Set<String> builtinEffectTypes = {
+  'Чёрно-белый',
+  'Сепия',
+  'Негатив',
+  'Тёплый тон',
+  'Холодный тон',
+  'Размытие',
+  'Высокий контраст',
+  'Кинематографичный',
+  'Плёночное зерно',
+  'Старая плёнка',
+  'VHS',
+  'Глитч RGB',
+  'Виньетка',
+  'Резкость',
+  'Пастель',
+  'Холодная ночь',
+  'LUT: Янтарный',
+  'LUT: Выцветшая плёнка',
+  'LUT: Неон',
+  'LUT: Кино',
+  'LUT: Портрет',
+};
+
+const Map<String, String> builtinEffectExportFilters = {
+  'Чёрно-белый': 'hue=s=0',
+  'Сепия': 'colorchannelmixer=.393:.769:.189:0:0:.349:.686:.168:0:0:.272:.534:.131:0:0',
+  'Негатив': 'negate',
+  'Тёплый тон': 'colorbalance=rs=0.12:bs=-0.06',
+  'Холодный тон': 'colorbalance=rs=-0.04:bs=0.12',
+  'Размытие': 'gblur=sigma=5.5',
+  'Высокий контраст': "lutrgb=r='clip((val-128)*1.65+128,0,255)':g='clip((val-128)*1.65+128,0,255)':b='clip((val-128)*1.65+128,0,255)',hue=s=1.15",
+  'Кинематографичный': "lutrgb=r='clip((val-128)*1.12+128,0,255)':g='clip((val-128)*1.12+128,0,255)':b='clip((val-128)*1.12+128,0,255)',hue=s=0.92,colorbalance=rs=0.025:bs=-0.015",
+  'Плёночное зерно': 'noise=alls=12:allf=t+u',
+  'Старая плёнка': 'noise=alls=18:allf=t+u,hue=s=0.72,vignette=angle=PI/5',
+  'VHS': "chromashift=cbh=3:crh=-3,noise=alls=9:allf=t+u,lutrgb=r='clip((val-128)*1.06+128,0,255)':g='clip((val-128)*1.06+128,0,255)':b='clip((val-128)*1.06+128,0,255)',hue=s=0.82",
+  'Глитч RGB': 'rgbashift=rh=5:rv=0:gh=-3:gv=1:bh=2:bv=-1',
+  'Виньетка': 'vignette=angle=PI/4',
+  'Резкость': 'unsharp=5:5:1.1:5:5:0.0',
+  'Пастель': "lutrgb=r='clip((val-128)*0.92+134.375,0,255)':g='clip((val-128)*0.92+134.375,0,255)':b='clip((val-128)*0.92+134.375,0,255)',hue=s=0.72",
+  'Холодная ночь': "colorbalance=rs=-0.08:gs=0.01:bs=0.16,lutrgb=r='clip((val-128)*1.12+128,0,255)':g='clip((val-128)*1.12+128,0,255)':b='clip((val-128)*1.12+128,0,255)',hue=s=0.88",
+};
+
+/// Human-readable global effects; LUT options are resolved from the bundled
+/// .cube files at runtime rather than being approximated during export.
+const List<String> globalVideoEffectOptions = [
+  'Оригинал',
+  'Чёрно-белый',
+  'Сепия',
+  'Холодный',
+  'Тёплый',
+  'Негатив',
+  'Мягкое размытие',
+  'Кинематографичный',
+  'Плёночное зерно',
+  'Старая плёнка',
+  'VHS',
+  'Глитч RGB',
+  'Виньетка',
+  'Резкость',
+  'Пастель',
+  'Холодная ночь',
+  'LUT: Янтарный',
+  'LUT: Выцветшая плёнка',
+  'LUT: Неон',
+  'LUT: Кино',
+  'LUT: Портрет',
+];
+
+const Map<String, String> builtinLutFiles = {
+  'LUT: Янтарный': 'slay-01-amber.cube',
+  'LUT: Выцветшая плёнка': 'slay-02-fade.cube',
+  'LUT: Неон': 'slay-03-neon.cube',
+  'LUT: Кино': 'slay-04-film.cube',
+  'LUT: Портрет': 'slay-05-portrait.cube',
+};
+
+/// Approximate live-preview matrices for the five 3D LUTs. Export uses the
+/// original .cube data through FFmpeg's lut3d filter.
+const Map<String, List<double>> lutPreviewMatrices = {
+  'LUT: Янтарный': [
+    1.08, 0.02, -0.02, 0, 5,
+    0.01, 1.02, -0.01, 0, 1,
+    -0.02, 0.01, 0.91, 0, -2,
+    0, 0, 0, 1, 0,
+  ],
+  'LUT: Выцветшая плёнка': [
+    0.88, 0.08, 0.04, 0, 22,
+    0.06, 0.88, 0.06, 0, 20,
+    0.04, 0.09, 0.87, 0, 18,
+    0, 0, 0, 1, 0,
+  ],
+  'LUT: Неон': [
+    1.18, -0.04, -0.04, 0, -8,
+    -0.03, 1.12, -0.02, 0, -5,
+    -0.03, -0.03, 1.20, 0, -10,
+    0, 0, 0, 1, 0,
+  ],
+  'LUT: Кино': [
+    1.08, 0.01, -0.04, 0, 2,
+    0.01, 0.98, 0.01, 0, 1,
+    -0.03, 0.02, 1.05, 0, -1,
+    0, 0, 0, 1, 0,
+  ],
+  'LUT: Портрет': [
+    1.04, 0.02, 0.01, 0, 3,
+    0.01, 1.00, 0.02, 0, 2,
+    -0.01, 0.01, 0.96, 0, 1,
+    0, 0, 0, 1, 0,
+  ],
+};
+
+String transitionFilterName(String type) =>
+    builtinTransitionFilters[type] ?? 'fadeblack';
+
+
+String applyEnableToFilterChain(String filterChain, String expression) {
+  final segments = <String>[];
+  var segmentStart = 0;
+  var parenthesisDepth = 0;
+  var quote = 0;
+
+  for (var i = 0; i < filterChain.length; i++) {
+    final unit = filterChain.codeUnitAt(i);
+    if (quote != 0) {
+      if (unit == quote &&
+          (i == 0 || filterChain.codeUnitAt(i - 1) != 0x5c)) {
+        quote = 0;
+      }
+      continue;
+    }
+
+    if (unit == 0x22 || unit == 0x27) {
+      quote = unit;
+    } else if (unit == 0x28) {
+      parenthesisDepth++;
+    } else if (unit == 0x29) {
+      if (parenthesisDepth > 0) parenthesisDepth--;
+    } else if (unit == 0x2c && parenthesisDepth == 0) {
+      final segment = filterChain.substring(segmentStart, i).trim();
+      if (segment.isNotEmpty) segments.add(segment);
+      segmentStart = i + 1;
+    }
+  }
+
+  final lastSegment = filterChain.substring(segmentStart).trim();
+  if (lastSegment.isNotEmpty) segments.add(lastSegment);
+
+  return segments
+      .map((segment) => "$segment:enable='$expression'")
+      .join(',');
+}

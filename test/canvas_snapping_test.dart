@@ -97,4 +97,65 @@ void main() {
     });
   });
 
+
+  group('CanvasGuideSnapper', () {
+    const snapper = CanvasGuideSnapper();
+
+    test('snaps a photo center to the canvas center', () {
+      final result = snapper.update(
+        rawOffset: 10 / 800,
+        canvasExtent: 800,
+        objectExtent: 180,
+      );
+      expect(result.offset, 0);
+      expect(result.guide, CanvasGuide.center);
+    });
+
+    test("snaps an object's leading edge to the canvas edge", () {
+      const halfExtent = 90.0;
+      final target = -0.5 + halfExtent / 800;
+      final result = snapper.update(
+        rawOffset: target + 8 / 800,
+        canvasExtent: 800,
+        objectExtent: halfExtent * 2,
+      );
+      expect(result.offset, closeTo(target, 0.000001));
+      expect(result.guide, CanvasGuide.leading);
+    });
+
+    test('snaps the trailing edge of a layer', () {
+      const halfExtent = 90.0;
+      final target = 0.5 - halfExtent / 800;
+      final result = snapper.update(
+        rawOffset: target - 6 / 800,
+        canvasExtent: 800,
+        objectExtent: halfExtent * 2,
+      );
+      expect(result.offset, closeTo(target, 0.000001));
+      expect(result.guide, CanvasGuide.trailing);
+    });
+
+    test('keeps the previous guide through the release distance', () {
+      final result = snapper.update(
+        rawOffset: 18 / 800,
+        canvasExtent: 800,
+        objectExtent: 800,
+        previousGuide: CanvasGuide.center,
+      );
+      expect(result.offset, 0);
+      expect(result.guide, CanvasGuide.center);
+    });
+
+    test('does not snap when the shared snapping toggle is disabled', () {
+      final result = snapper.update(
+        rawOffset: 3 / 800,
+        canvasExtent: 800,
+        objectExtent: 180,
+        enabled: false,
+      );
+      expect(result.offset, 3 / 800);
+      expect(result.guide, isNull);
+    });
+  });
+
 }
