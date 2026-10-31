@@ -76,6 +76,26 @@ jobs:
         shell: pwsh
         run: flutter create --no-pub --platforms=windows --project-name gifcut .
 
+      - name: Set GifCut Windows title and version metadata
+        shell: pwsh
+        run: |
+          $runnerMain = Join-Path $PWD 'windows/runner/main.cpp'
+          $runnerSource = Get-Content -Path $runnerMain -Raw
+          $oldWindowTitle = 'window.Create(L"gifcut"'
+          if (-not $runnerSource.Contains($oldWindowTitle)) {
+            throw 'Could not locate the generated Windows window title.'
+          }
+          $newWindowTitle = 'window.Create(L"GifCut v' + $env:GIFCUT_VERSION + '"'
+          $runnerSource = $runnerSource.Replace($oldWindowTitle, $newWindowTitle)
+          Set-Content -Path $runnerMain -Value $runnerSource -Encoding utf8
+
+          $runnerResource = Join-Path $PWD 'windows/runner/Runner.rc'
+          $resourceSource = Get-Content -Path $runnerResource -Raw
+          $resourceSource = [regex]::Replace($resourceSource, '(?m)(VALUE\s+"FileDescription",\s*)"[^"]*"', ('${1}"GifCut v{0}"' -f $env:GIFCUT_VERSION))
+          $resourceSource = [regex]::Replace($resourceSource, '(?m)(VALUE\s+"ProductName",\s*)"[^"]*"', '${1}"GifCut"')
+          $resourceSource = [regex]::Replace($resourceSource, '(?m)(VALUE\s+"InternalName",\s*)"[^"]*"', '${1}"GifCut"')
+          Set-Content -Path $runnerResource -Value $resourceSource -Encoding utf8
+
       - name: Apply GifCut Windows app icon
         shell: pwsh
         run: |
