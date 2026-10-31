@@ -46,9 +46,11 @@ class ContinuousPointerDrag extends StatefulWidget {
     super.key,
     required this.onDelta,
     required this.child,
+    this.onEnd,
   });
 
   final ValueChanged<Offset> onDelta;
+  final VoidCallback? onEnd;
   final Widget child;
 
   @override
@@ -78,6 +80,7 @@ class _ContinuousPointerDragState extends State<ContinuousPointerDrag> {
     if (event.pointer != _activePointer) return;
     _activePointer = null;
     _lastGlobalPosition = null;
+    widget.onEnd?.call();
   }
 
   @override
@@ -1852,6 +1855,10 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                                           _showVerticalSnapGuide = videoOffsetX.abs() < 0.014;
                                                           _showHorizontalSnapGuide = videoOffsetY.abs() < 0.014;
                                                           projectDirty = true;
+                                                        }),
+                                                        onEnd: () => setState(() {
+                                                          _showVerticalSnapGuide = false;
+                                                          _showHorizontalSnapGuide = false;
                                                         }),
                                                         child: IgnorePointer(
                                                           child: ColorFiltered(
