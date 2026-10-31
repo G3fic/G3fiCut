@@ -28,3 +28,19 @@ Map<String, dynamic>? findReleaseInstallerAsset(
   }
   return null;
 }
+
+/// Finds the portable Windows application archive used by GifCut's in-app
+/// updater. The archive contains the complete runner/Release directory.
+Map<String, dynamic>? findReleaseAppArchiveAsset(
+  List<dynamic> assets,
+  String version,
+) {
+  if (!isNumericSemanticVersion(version)) return null;
+  final expectedName = 'GifCut-$version-win-x64.zip';
+  for (final asset in assets) {
+    if (asset is Map<String, dynamic> && asset['name'] == expectedName) {
+      return asset;
+    }
+  }
+  return null;
+}

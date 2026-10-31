@@ -171,7 +171,7 @@ class ExportTimelineSegment {
 }
 
 class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.72');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.74');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -249,15 +249,6 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   static const _timelineEffectTypes = ProjectEffectClip.supportedTypes;
   static const _timelineTransitionTypes = ProjectTransition.supportedTypes;
 
-  double get previewAspectRatio => const {
-    '16:9': 16 / 9,
-    '9:16': 9 / 16,
-    '1:1': 1.0,
-    '4:3': 4 / 3,
-    '4:5': 4 / 5,
-    '3:2': 3 / 2,
-  }[aspectRatioPreset] ?? 16 / 9;
-
   String get _exportEffectFilter => const {
     'Оригинал': 'null',
     'Чёрно-белый': 'hue=s=0',
@@ -333,10 +324,21 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   final List<TimelineTransition> timelineTransitions = [];
   int selectedEffectClipIndex = -1;
   int selectedTransitionIndex = -1;
+  bool selectedAudioClip = false;
   int _effectClipMoveIndex = -1;
   double _effectClipMoveStart = 0;
   double _effectClipMovePointerX = 0;
   TimelineSnapshot? _effectClipMoveBefore;
+  int _effectResizeIndex = -1;
+  bool _effectResizeLeft = false;
+  double _effectResizePointerX = 0;
+  double _effectResizeStart = 0;
+  double _effectResizeEnd = 0;
+  TimelineSnapshot? _effectResizeBefore;
+  String? _hoveredLibraryPreview;
+  int? _timelinePanPointer;
+  Offset? _timelinePanLastGlobal;
+  bool _timelinePanMoved = false;
   double audioClipStart = 0;
   double audioClipEnd = 0;
   List<double> audioWaveform = const [];
@@ -470,7 +472,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       }
       final latestVersion = latestTag.replaceFirst(RegExp(r'^[vV]'), '');
       if (!isNumericSemanticVersion(latestVersion)) {
-        throw FormatException('Некорректный номер версии GitHub Release: $latestTag. Ожидается формат 0.3.72.');
+        throw FormatException('Некорректный номер версии GitHub Release: $latestTag. Ожидается формат MAJOR.MINOR.PATCH, например 0.3.74.');
       }
       if (!isVersionNewer(latestVersion, appVersion)) {
         if (showNoUpdateMessage && mounted) setStatus('Установлена последняя версия GifCut $appVersion.');
@@ -479,27 +481,27 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
       final assets = decoded['assets'];
       if (assets is! List) throw const FormatException('В релизе не найден список файлов.');
-      final installerAsset = findReleaseInstallerAsset(assets, latestVersion);
-      if (installerAsset == null) {
+      final archiveAsset = findReleaseAppArchiveAsset(assets, latestVersion);
+      if (archiveAsset == null) {
         throw StateError(
-          'В релизе $latestTag не найден установщик GifCut. '
-          'Проверены имена GifCut-Setup, G3fiCut-Setup и ClipForge-Setup.',
+          'В релизе $latestTag не найден архив приложения '
+          'GifCut-$latestVersion-win-x64.zip. Сначала опубликуйте ZIP-файл приложения.',
         );
       }
 
-      final rawUrl = installerAsset['browser_download_url'] as String?;
+      final rawUrl = archiveAsset['browser_download_url'] as String?;
       final downloadUri = rawUrl == null ? null : Uri.tryParse(rawUrl);
       if (downloadUri == null ||
           downloadUri.scheme != 'https' ||
           downloadUri.host != 'github.com' ||
           !(downloadUri.path.startsWith('/G3fic/G3fiCut/releases/download/') ||
             downloadUri.path.startsWith('/G3fic/GifCut/releases/download/'))) {
-        throw const FormatException('Ссылка на установщик не принадлежит официальным GitHub Releases GifCut.');
+        throw const FormatException('Ссылка на архив приложения не принадлежит официальным GitHub Releases GifCut.');
       }
 
-      final digest = installerAsset['digest'] as String?;
+      final digest = archiveAsset['digest'] as String?;
       if (digest == null || !digest.startsWith('sha256:')) {
-        throw StateError('GitHub не предоставил SHA-256 установщика. Обновление не будет запущено без проверки целостности.');
+        throw StateError('GitHub не предоставил SHA-256 архива приложения. Обновление отменено без проверки целостности.');
       }
       if (mounted) setStatus('Доступно обновление $latestVersion.');
       if (!mounted) return;
@@ -509,8 +511,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           title: const Text('Доступно обновление GifCut'),
           content: Text(
             'Установлена версия $appVersion. Доступна версия $latestVersion.\n\n'
-            'GifCut скачает установщик из GitHub, проверит файл и запустит установку. '
-            'Windows может запросить разрешение администратора.',
+            'GifCut скачает файлы обновления, проверит SHA-256 и заменит файлы приложения. '
+            'Программа автоматически закроется и запустится снова — окно Windows Setup открываться не будет. '
+            'Запрос администратора появится только при необходимости записи в защищённую папку Windows.',
           ),
           actions: [
             TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Позже')),
@@ -519,7 +522,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         ),
       );
       if (shouldUpdate == true && mounted) {
-        await _downloadAndRunInstaller(downloadUri, latestVersion, digest);
+        await _downloadAndApplyArchive(downloadUri, latestVersion, digest);
       }
     } catch (e) {
       if (mounted) {
@@ -531,52 +534,174 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _downloadAndRunInstaller(Uri uri, String version, String? expectedDigest) async {
+  Future<void> _downloadAndApplyArchive(
+    Uri uri,
+    String version,
+    String expectedDigest,
+  ) async {
+    if (!Platform.isWindows) {
+      setStatus('Автообновление файлов приложения поддерживается в Windows.');
+      return;
+    }
+
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 20)
       ..userAgent = 'GifCut/$appVersion';
-    File? installer;
+    Directory? tempDir;
+    File? archive;
     try {
-      if (mounted) setStatus('Скачиваю обновление v$version…');
-      final tempDir = await Directory.systemTemp.createTemp('g3ficut-update-');
-      installer = File(p.join(tempDir.path, 'G3fiCut-Setup-$version.exe'));
+      if (mounted) setStatus('Подготавливаю обновление GifCut $version…');
+      tempDir = await Directory.systemTemp.createTemp('gifcut-update-');
+      archive = File(p.join(tempDir.path, 'GifCut-$version-win-x64.zip'));
+
       final request = await client.getUrl(uri).timeout(const Duration(seconds: 25));
-      final response = await request.close().timeout(const Duration(seconds: 40));
+      final response = await request.close().timeout(const Duration(seconds: 60));
       if (response.statusCode != HttpStatus.ok) {
-        throw HttpException('Не удалось скачать установщик (HTTP ${response.statusCode}).');
-      }
-      await response.pipe(installer.openWrite()).timeout(const Duration(minutes: 10));
-      if (await installer.length() < 1024 * 1024) {
-        throw StateError('Скачанный установщик слишком мал или повреждён.');
+        throw HttpException('Не удалось скачать архив обновления (HTTP ${response.statusCode}).');
       }
 
-      if (expectedDigest != null && expectedDigest.startsWith('sha256:')) {
-        if (mounted) setStatus('Проверяю целостность обновления…');
-        final actual = await crypto.sha256.bind(installer.openRead()).first.timeout(const Duration(minutes: 2));
-        final expected = expectedDigest.substring('sha256:'.length).toLowerCase();
-        if (actual.toString().toLowerCase() != expected) {
-          throw StateError('Контрольная сумма установщика не совпала. Установка отменена.');
+      final sink = archive.openWrite();
+      var received = 0;
+      var nextProgressMark = 1024 * 1024;
+      try {
+        await for (final chunk in response) {
+          sink.add(chunk);
+          received += chunk.length;
+          if (received >= nextProgressMark) {
+            nextProgressMark = received + 1024 * 1024;
+            final total = response.contentLength;
+            final progress = total > 0
+                ? ' ${(received * 100 / total).clamp(0, 100).round()}%'
+                : '';
+            if (mounted) setStatus('Скачиваю обновление $version$progress…');
+          }
         }
+        await sink.flush();
+      } finally {
+        await sink.close();
       }
 
-      if (mounted) setStatus('Запускаю установщик v$version…');
+      if (await archive.length() < 1024 * 1024) {
+        throw StateError('Архив обновления слишком мал или повреждён.');
+      }
+
+      if (mounted) setStatus('Проверяю SHA-256 обновления…');
+      final actual = await crypto.sha256
+          .bind(archive.openRead())
+          .first
+          .timeout(const Duration(minutes: 3));
+      final expected = expectedDigest.substring('sha256:'.length).toLowerCase();
+      if (actual.toString().toLowerCase() != expected) {
+        throw StateError('Контрольная сумма архива не совпала. Установка отменена.');
+      }
+
+      final executablePath = Platform.resolvedExecutable;
+      final targetDirectory = p.dirname(executablePath);
+      final updaterScript = File(p.join(tempDir.path, 'apply-gifcut-update.ps1'));
+      const script = r'''
+param(
+  [int]$ProcessId,
+  [string]$ArchivePath,
+  [string]$TargetDirectory,
+  [string]$ExecutablePath
+)
+$ErrorActionPreference = 'Stop'
+
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = [Security.Principal.WindowsPrincipal]::new($identity)
+$isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+$canWrite = $false
+try {
+  $probe = Join-Path $TargetDirectory ('.gifcut-write-test-' + [guid]::NewGuid().ToString('N'))
+  [System.IO.File]::WriteAllText($probe, 'test')
+  Remove-Item -LiteralPath $probe -Force
+  $canWrite = $true
+} catch {
+  $canWrite = $false
+}
+
+if (-not $isAdmin -and -not $canWrite) {
+  $elevationArgs = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -ProcessId {1} -ArchivePath "{2}" -TargetDirectory "{3}" -ExecutablePath "{4}"' -f $PSCommandPath, $ProcessId, $ArchivePath, $TargetDirectory, $ExecutablePath
+  try {
+    Start-Process -FilePath 'powershell.exe' -Verb RunAs -WindowStyle Hidden -ArgumentList $elevationArgs
+    exit 0
+  } catch {
+    # If the user cancels UAC, restore the previous working application session.
+    Start-Process -FilePath $ExecutablePath -WorkingDirectory $TargetDirectory
+    Remove-Item -LiteralPath $ArchivePath -Force -ErrorAction SilentlyContinue
+    exit 1
+  }
+}
+
+Wait-Process -Id $ProcessId -ErrorAction SilentlyContinue
+$stage = Join-Path $env:TEMP ('GifCutStage-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $stage -Force | Out-Null
+try {
+  Expand-Archive -LiteralPath $ArchivePath -DestinationPath $stage -Force
+  Copy-Item -Path (Join-Path $stage '*') -Destination $TargetDirectory -Recurse -Force
+  Start-Process -FilePath $ExecutablePath -WorkingDirectory $TargetDirectory
+} catch {
+  try {
+    Add-Type -AssemblyName System.Windows.Forms
+    [System.Windows.Forms.MessageBox]::Show(
+      ('Не удалось применить обновление GifCut: ' + $_.Exception.Message),
+      'GifCut updater'
+    ) | Out-Null
+  } catch {
+    Write-Error $_
+  }
+  throw
+} finally {
+  Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $ArchivePath -Force -ErrorAction SilentlyContinue
+}
+''';
+      await updaterScript.writeAsString(script, flush: true);
+
+      if (mounted) {
+        setStatus('Обновляю файлы GifCut $version. Приложение сейчас перезапустится…');
+      }
       await Process.start(
-        installer.path,
-        ['/SILENT', '/CLOSEAPPLICATIONS', '/NORESTART'],
+        'powershell.exe',
+        [
+          '-WindowStyle',
+          'Hidden',
+          '-NoProfile',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          updaterScript.path,
+          '-ProcessId',
+          pid.toString(),
+          '-ArchivePath',
+          archive.path,
+          '-TargetDirectory',
+          targetDirectory,
+          '-ExecutablePath',
+          executablePath,
+        ],
         mode: ProcessStartMode.detached,
       );
+
       final activePlayer = player;
       if (activePlayer != null) await activePlayer.dispose();
       exit(0);
     } catch (e) {
       if (mounted) {
-        setStatus('Не удалось установить обновление: ${e.toString().replaceFirst('Bad state: ', '')}');
+        setStatus('Не удалось применить обновление: ${e.toString().replaceFirst('Bad state: ', '')}');
       }
-      if (installer != null) {
+      if (archive != null) {
         try {
-          if (await installer.exists()) await installer.delete();
+          if (await archive.exists()) await archive.delete();
         } catch (_) {
-          // Keep the original installer error as the visible status.
+          // Keep the original update error visible in the status bar.
+        }
+      }
+      if (tempDir != null) {
+        try {
+          if (await tempDir.exists()) await tempDir.delete(recursive: true);
+        } catch (_) {
+          // A temporary updater file can be left for Windows cleanup.
         }
       }
     } finally {
@@ -1135,9 +1260,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     _selectVideoAtPlayhead();
   }
 
-  double _softAngleSnap(double degrees) =>
-      const AngleSnapper(stepDegrees: 15, catchDistance: 3)
-          .snap(degrees, enabled: snappingEnabled);
+  double _softAngleSnap(double degrees) {
+    if (!snappingEnabled) return degrees;
+    final rightAngle = const AngleSnapper(stepDegrees: 90, catchDistance: 5)
+        .snap(degrees);
+    if (rightAngle != degrees) return rightAngle;
+    return const AngleSnapper(stepDegrees: 15, catchDistance: 3).snap(degrees);
+  }
 
   Future<void> extractAudio() async {
     final video = videoPath;
@@ -1630,8 +1759,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     if (ctrl && key == LogicalKeyboardKey.arrowLeft) { unawaited(_seekToEditPoint(-1)); return KeyEventResult.handled; }
     if (ctrl && key == LogicalKeyboardKey.arrowRight) { unawaited(_seekToEditPoint(1)); return KeyEventResult.handled; }
     if (key == LogicalKeyboardKey.f1) { unawaited(showKeyboardShortcuts()); return KeyEventResult.handled; }
-    if (key == LogicalKeyboardKey.delete && shift) { deleteSelectedClip(ripple: true); return KeyEventResult.handled; }
-    if (key == LogicalKeyboardKey.delete || key == LogicalKeyboardKey.backspace) { deleteSelectedClip(); return KeyEventResult.handled; }
+    if (key == LogicalKeyboardKey.delete && shift) { deleteSelectedTimelineItem(ripple: true); return KeyEventResult.handled; }
+    if (key == LogicalKeyboardKey.delete || key == LogicalKeyboardKey.backspace) { deleteSelectedTimelineItem(); return KeyEventResult.handled; }
     if (key == LogicalKeyboardKey.space) { unawaited(togglePlayback()); return KeyEventResult.handled; }
     if (key == LogicalKeyboardKey.keyJ) { unawaited(_stepFrame(-1)); return KeyEventResult.handled; }
     if (key == LogicalKeyboardKey.keyK) { unawaited(_pauseAndResetShuttle()); return KeyEventResult.handled; }
@@ -1728,21 +1857,6 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           const SizedBox(width: 10),
           Flexible(child: Text((projectFilePath == null ? 'Новый проект' : p.basenameWithoutExtension(projectFilePath!)) + (projectDirty ? ' •' : ''), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Color(0xFFD3D3DF)))),
           const Spacer(),
-          IconButton(
-            tooltip: checkingForUpdates ? 'Проверка обновлений…' : 'Проверить обновления',
-            visualDensity: VisualDensity.compact,
-            onPressed: checkingForUpdates ? null : () => unawaited(checkForUpdates(showNoUpdateMessage: true)),
-            icon: checkingForUpdates
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.system_update_alt, size: 18, color: muted),
-          ),
-          IconButton(
-            key: const ValueKey('keyboard-shortcuts'),
-            tooltip: 'Горячие клавиши',
-            visualDensity: VisualDensity.compact,
-            onPressed: showKeyboardShortcuts,
-            icon: const Icon(Icons.keyboard_outlined, size: 18),
-          ),
           const Icon(Icons.desktop_windows_outlined, size: 16, color: muted),
           const SizedBox(width: 8),
           const Text('DESKTOP BETA', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w700)),
@@ -1770,17 +1884,18 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             const Divider(height: 14),
             _railAction(Icons.ios_share, 'Экспорт', exportEditedVideo, disabled: videoClips.isEmpty || busy, color: accent),
             _railAction(Icons.system_update_alt, 'Обновления', () => unawaited(checkForUpdates(showNoUpdateMessage: true)), disabled: checkingForUpdates),
-            _railAction(Icons.keyboard_outlined, 'Горячие клавиши', showKeyboardShortcuts),
+            _railAction(Icons.keyboard_outlined, 'Горячие клавиши', showKeyboardShortcuts, key: const ValueKey('keyboard-shortcuts')),
           ]),
         ),
       );
 
-  Widget _railAction(IconData icon, String tooltip, VoidCallback action, {bool disabled = false, Color color = muted}) =>
+  Widget _railAction(IconData icon, String tooltip, VoidCallback action, {bool disabled = false, Color color = muted, Key? key}) =>
       Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Tooltip(
           message: tooltip,
           child: IconButton(
+            key: key,
             visualDensity: VisualDensity.compact,
             onPressed: disabled ? null : action,
             icon: Icon(icon, size: 20, color: disabled ? muted.withValues(alpha: .35) : color),
@@ -1909,6 +2024,54 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         ),
       );
 
+  Widget _libraryPreviewIndicator(
+    String key, {
+    required Color color,
+    required IconData icon,
+    required bool transition,
+  }) {
+    final hovering = _hoveredLibraryPreview == key;
+    return AnimatedContainer(
+      key: ValueKey('hover-preview-$key'),
+      duration: const Duration(milliseconds: 220),
+      width: 58,
+      height: 27,
+      decoration: BoxDecoration(
+        color: hovering ? color.withValues(alpha: 0.22) : const Color(0xFF151720),
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(
+          color: hovering ? color.withValues(alpha: 0.9) : const Color(0xFF3A3D4A),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(children: [
+        Positioned.fill(
+          child: Row(children: [
+            Expanded(child: ColoredBox(color: color.withValues(alpha: hovering ? 0.32 : 0.12))),
+            Expanded(child: ColoredBox(color: Colors.white.withValues(alpha: hovering && transition ? 0.24 : 0.04))),
+          ]),
+        ),
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOutCubic,
+          left: hovering ? 34 : 3,
+          top: 2,
+          bottom: 2,
+          width: 18,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: transition
+                  ? Colors.white.withValues(alpha: hovering ? 0.94 : 0.45)
+                  : color.withValues(alpha: hovering ? 0.96 : 0.5),
+              borderRadius: BorderRadius.circular(3),
+            ),
+            child: Icon(icon, size: 12, color: hovering ? Colors.black87 : Colors.white),
+          ),
+        ),
+      ]),
+    );
+  }
+
   Widget _effectsLibraryPanel() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1919,11 +2082,48 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               padding: const EdgeInsets.only(bottom: 6),
               child: SizedBox(
                 width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: busy || videoClips.isEmpty ? null : () => unawaited(addTimelineEffect(type)),
-                  icon: const Icon(Icons.add, size: 14),
-                  label: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 9)),
+                child: MouseRegion(
+                  onEnter: (_) => setState(() => _hoveredLibraryPreview = 'effect:$type'),
+                  onExit: (_) {
+                    if (_hoveredLibraryPreview == 'effect:$type') {
+                      setState(() => _hoveredLibraryPreview = null);
+                    }
+                  },
+                  child: OutlinedButton(
+                    onPressed: busy || videoClips.isEmpty ? null : () => unawaited(addTimelineEffect(type)),
+                    style: OutlinedButton.styleFrom(
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    ),
+                    child: Row(children: [
+                      const Icon(Icons.add, size: 14),
+                      const SizedBox(width: 5),
+                      Expanded(child: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      const SizedBox(width: 4),
+                      _libraryPreviewIndicator(
+                        'effect:$type',
+                        color: const {
+                          'Чёрно-белый': Color(0xFFB8C0CC),
+                          'Сепия': Color(0xFFC18B52),
+                          'Негатив': Color(0xFFCE8BFF),
+                          'Тёплый тон': Color(0xFFFFA65A),
+                          'Холодный тон': Color(0xFF63C7FF),
+                          'Размытие': Color(0xFF79D9CF),
+                          'Высокий контраст': Color(0xFF9F8BFF),
+                        }[type] ?? const Color(0xFFB18CFF),
+                        icon: const {
+                          'Чёрно-белый': Icons.tonality,
+                          'Сепия': Icons.filter_vintage,
+                          'Негатив': Icons.invert_colors,
+                          'Тёплый тон': Icons.wb_sunny_outlined,
+                          'Холодный тон': Icons.ac_unit,
+                          'Размытие': Icons.blur_on,
+                          'Высокий контраст': Icons.contrast,
+                        }[type] ?? Icons.auto_awesome,
+                        transition: false,
+                      ),
+                    ]),
+                  ),
                 ),
               ),
             ),
@@ -1935,17 +2135,50 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               padding: const EdgeInsets.only(bottom: 6),
               child: SizedBox(
                 width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: busy || videoClips.length < 2 ? null : () => unawaited(addTimelineTransition(type)),
-                  icon: const Icon(Icons.add, size: 14),
-                  label: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 9)),
+                child: MouseRegion(
+                  onEnter: (_) => setState(() => _hoveredLibraryPreview = 'transition:$type'),
+                  onExit: (_) {
+                    if (_hoveredLibraryPreview == 'transition:$type') {
+                      setState(() => _hoveredLibraryPreview = null);
+                    }
+                  },
+                  child: OutlinedButton(
+                    onPressed: busy || videoClips.length < 2 ? null : () => unawaited(addTimelineTransition(type)),
+                    style: OutlinedButton.styleFrom(
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    ),
+                    child: Row(children: [
+                      const Icon(Icons.add, size: 14),
+                      const SizedBox(width: 5),
+                      Expanded(child: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      const SizedBox(width: 4),
+                      _libraryPreviewIndicator(
+                        'transition:$type',
+                        color: const {
+                          'Затемнение': Color(0xFF8A8D98),
+                          'Белая вспышка': Color(0xFFFFFFFF),
+                          'Растворение': Color(0xFFB79BFF),
+                          'Смахивание влево': Color(0xFF72C8FF),
+                          'Смахивание вправо': Color(0xFF72E0BA),
+                        }[type] ?? const Color(0xFFFFC56B),
+                        icon: const {
+                          'Затемнение': Icons.brightness_3,
+                          'Белая вспышка': Icons.flash_on,
+                          'Растворение': Icons.blur_circular,
+                          'Смахивание влево': Icons.swipe_left,
+                          'Смахивание вправо': Icons.swipe_right,
+                        }[type] ?? Icons.compare_arrows,
+                        transition: true,
+                      ),
+                    ]),
+                  ),
                 ),
               ),
             ),
           const SizedBox(height: 8),
           const Text(
-            'Выберите эффект или переход, чтобы добавить его к текущему монтажу. Дорожки появятся на таймлайне после первого добавления.',
+            'Наведите курсор на карточку, чтобы увидеть анимированный образец. Добавляйте эффекты на свободные участки таймлайна.',
             style: TextStyle(color: muted, fontSize: 10, height: 1.45),
           ),
         ],
@@ -2126,8 +2359,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                           Text('Можно продолжить извлечение аудио.', style: TextStyle(color: Color(0xFF8A8D9D), fontSize: 11)),
                         ])
                       : Center(
-                          child: AspectRatio(
-                            aspectRatio: previewAspectRatio,
+                          child: SizedBox.expand(
                             child: LayoutBuilder(builder: (context, bounds) {
                               final shortSide = math.min(bounds.maxWidth, bounds.maxHeight);
                               return ClipRRect(
@@ -2260,7 +2492,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                         width: shortSide * .36 * photoOverlays[i].scale,
                                         height: shortSide * .36 * photoOverlays[i].scale,
                                         child: GestureDetector(
-                                          onTap: () => setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; }),
+                                          onTap: () => setState(() {
+                      selectedPhotoOverlay = i;
+                      selectedAudioClip = false;
+                      selectedEffectClipIndex = -1;
+                      selectedTransitionIndex = -1;
+                      _selectedCanvasObject = 'photo';
+                    }),
                                           onPanStart: (_) {
                                             _photoDragRawOffsets[i] = Offset(photoOverlays[i].x, photoOverlays[i].y);
                                             _photoSnapXActive.remove(i);
@@ -2510,10 +2748,21 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                   title: Text(p.basename(photoOverlays[i].path), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10)),
                   trailing: IconButton(tooltip: 'Удалить фото', visualDensity: VisualDensity.compact, onPressed: () => setState(() {
                     photoOverlays.removeAt(i);
-                    if (selectedPhotoOverlay >= photoOverlays.length) selectedPhotoOverlay = photoOverlays.length - 1;
+                    if (selectedPhotoOverlay == i) {
+                      selectedPhotoOverlay = -1;
+                      _selectedCanvasObject = 'video';
+                    } else if (selectedPhotoOverlay > i) {
+                      selectedPhotoOverlay--;
+                    }
                     projectDirty = true;
                   }), icon: const Icon(Icons.delete_outline, size: 16)),
-                  onTap: () => setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; }),
+                  onTap: () => setState(() {
+                    selectedPhotoOverlay = i;
+                    selectedAudioClip = false;
+                    selectedEffectClipIndex = -1;
+                    selectedTransitionIndex = -1;
+                    _selectedCanvasObject = 'photo';
+                  }),
                 ),
               if (selectedPhotoOverlay >= 0 && selectedPhotoOverlay < photoOverlays.length) ...[
                 _adjustmentSlider('Размер фото', photoOverlays[selectedPhotoOverlay].scale, 0.2, 3, (v) => setState(() { photoOverlays[selectedPhotoOverlay].scale = v; projectDirty = true; })),
@@ -2561,6 +2810,48 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           Flexible(child: Text(value, textAlign: TextAlign.right, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600))),
         ]),
       );
+
+  void _handleTimelinePointerDown(PointerDownEvent event) {
+    if ((event.buttons & kSecondaryMouseButton) == 0) return;
+    _timelinePanPointer = event.pointer;
+    _timelinePanLastGlobal = event.position;
+    _timelinePanMoved = false;
+  }
+
+  void _handleTimelinePointerMove(PointerMoveEvent event) {
+    if (event.pointer != _timelinePanPointer) return;
+    final previous = _timelinePanLastGlobal;
+    _timelinePanLastGlobal = event.position;
+    if (previous == null) return;
+    final delta = event.position - previous;
+    if (delta.distanceSquared < 0.25) return;
+    if (delta.distance > 3) _timelinePanMoved = true;
+
+    final horizontal = timelineScrollController;
+    final vertical = timelineVerticalScrollController;
+    if (horizontal.hasClients && delta.dx != 0) {
+      horizontal.jumpTo(
+        (horizontal.offset - delta.dx)
+            .clamp(0.0, horizontal.position.maxScrollExtent)
+            .toDouble(),
+      );
+    }
+    if (vertical.hasClients && delta.dy != 0) {
+      vertical.jumpTo(
+        (vertical.offset - delta.dy)
+            .clamp(0.0, vertical.position.maxScrollExtent)
+            .toDouble(),
+      );
+    }
+  }
+
+  void _handleTimelinePointerEnd(PointerEvent event) {
+    if (event.pointer != _timelinePanPointer) return;
+    _timelinePanPointer = null;
+    _timelinePanLastGlobal = null;
+    // Keep _timelinePanMoved until the secondary-tap recognizer has decided
+    // whether this was a context click or an intentional right-button pan.
+  }
 
   Widget timelinePanel() => Container(
         height: _timelinePanelHeight,
@@ -2618,9 +2909,11 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                       icon: const Icon(Icons.content_cut_rounded, size: 17),
                     ),
                     IconButton(
-                      tooltip: 'Удалить выбранный клип',
+                      tooltip: 'Удалить выбранный элемент',
                       visualDensity: VisualDensity.compact,
-                      onPressed: videoClips.isEmpty ? null : deleteSelectedClip,
+                      onPressed: videoClips.isEmpty && effectClips.isEmpty && timelineTransitions.isEmpty && audioPath == null && photoOverlays.isEmpty
+                          ? null
+                          : deleteSelectedTimelineItem,
                       icon: const Icon(Icons.delete_outline_rounded, size: 17),
                     ),
                     const Spacer(),
@@ -2647,6 +2940,11 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           ),
           Expanded(
             child: Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: _handleTimelinePointerDown,
+              onPointerMove: _handleTimelinePointerMove,
+              onPointerUp: _handleTimelinePointerEnd,
+              onPointerCancel: _handleTimelinePointerEnd,
               onPointerSignal: (event) {
                 if (event is! PointerScrollEvent) return;
                 final horizontalController = timelineScrollController;
@@ -2661,33 +2959,30 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                     final nextOffset = anchorSeconds * zoom + 140 - pointerX;
                     horizontalController.jumpTo(nextOffset.clamp(0.0, horizontalController.position.maxScrollExtent).toDouble());
                   });
-                } else if (event.scrollDelta.dx != 0 && horizontalController.hasClients) {
-                  horizontalController.jumpTo(
-                    (horizontalController.offset + event.scrollDelta.dx)
-                        .clamp(0.0, horizontalController.position.maxScrollExtent).toDouble(),
-                  );
-                } else if (verticalController.hasClients && verticalController.position.maxScrollExtent > 0) {
+                } else if (verticalController.hasClients &&
+                    verticalController.position.maxScrollExtent > 0) {
                   verticalController.jumpTo(
                     (verticalController.offset + event.scrollDelta.dy)
                         .clamp(0.0, verticalController.position.maxScrollExtent).toDouble(),
-                  );
-                } else if (horizontalController.hasClients) {
-                  horizontalController.jumpTo(
-                    (horizontalController.offset + event.scrollDelta.dy)
-                        .clamp(0.0, horizontalController.position.maxScrollExtent).toDouble(),
                   );
                 }
               },
               child: SingleChildScrollView(
               controller: timelineScrollController,
+              physics: const NeverScrollableScrollPhysics(),
               scrollDirection: Axis.horizontal,
               child: SizedBox(
                 width: 140 + timelineWidth,
                 child: SingleChildScrollView(
                   controller: timelineVerticalScrollController,
                   primary: false,
+                  physics: const NeverScrollableScrollPhysics(),
                   scrollDirection: Axis.vertical,
-                  child: Column(children: [
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                     SizedBox(
                       height: 32,
                       child: Row(children: [
@@ -2711,6 +3006,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                       photoTrackRow(),
                     ],
                   ]),
+                  ),
                 ),
               ),
               ),
@@ -2747,32 +3043,92 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               for (var i = 0; i < effectClips.length; i++)
                 Positioned(
                   left: effectClips[i].start * zoom + 3,
-                  top: 5, bottom: 5,
-                  width: math.max(28.0, effectClips[i].duration * zoom - 2).toDouble(),
-                  child: GestureDetector(
-                    onTap: () => setState(() { selectedEffectClipIndex = i; selectedTransitionIndex = -1; }),
-                    onSecondaryTapDown: (details) => showEffectClipMenu(details.globalPosition, i),
-                    onPanStart: (_) => _startEffectClipMove(i),
-                    onPanUpdate: _updateEffectClipMove,
-                    onPanEnd: (_) => _finishEffectClipMove(),
-                    child: Container(
-                      alignment: Alignment.centerLeft,
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      decoration: BoxDecoration(
-                        color: const Color(0xAA7651B8),
-                        borderRadius: BorderRadius.circular(5),
-                        border: Border.all(
-                          color: selectedEffectClipIndex == i ? Colors.white : const Color(0xFFD2B9FF),
-                          width: selectedEffectClipIndex == i ? 2 : 1,
+                  top: 5,
+                  bottom: 5,
+                  width: math.max(34.0, effectClips[i].duration * zoom - 2).toDouble(),
+                  child: Stack(children: [
+                    Positioned.fill(
+                      child: GestureDetector(
+                        onTap: () => setState(() {
+                          selectedEffectClipIndex = i;
+                          selectedTransitionIndex = -1;
+                          selectedAudioClip = false;
+                          selectedPhotoOverlay = -1;
+                          _selectedCanvasObject = 'timeline-effect';
+                        }),
+                        onSecondaryTapUp: (details) {
+                          if (!_timelinePanMoved) showEffectClipMenu(details.globalPosition, i);
+                        },
+                        onPanStart: (_) => _startEffectClipMove(i),
+                        onPanUpdate: _updateEffectClipMove,
+                        onPanEnd: (_) => _finishEffectClipMove(),
+                        onPanCancel: _finishEffectClipMove,
+                        child: Container(
+                          alignment: Alignment.centerLeft,
+                          padding: const EdgeInsets.symmetric(horizontal: 11),
+                          decoration: BoxDecoration(
+                            color: const Color(0xAA7651B8),
+                            borderRadius: BorderRadius.circular(5),
+                            border: Border.all(
+                              color: selectedEffectClipIndex == i ? Colors.white : const Color(0xFFD2B9FF),
+                              width: selectedEffectClipIndex == i ? 2 : 1,
+                            ),
+                          ),
+                          child: Row(children: [
+                            const Icon(Icons.auto_awesome, size: 11, color: Colors.white),
+                            const SizedBox(width: 4),
+                            Flexible(child: Text(effectClips[i].type, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.w700))),
+                          ]),
                         ),
                       ),
-                      child: Row(children: [
-                        const Icon(Icons.auto_awesome, size: 11, color: Colors.white),
-                        const SizedBox(width: 4),
-                        Flexible(child: Text(effectClips[i].type, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.w700))),
-                      ]),
                     ),
-                  ),
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: 10,
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.resizeLeftRight,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onHorizontalDragStart: (_) => _startEffectResize(i, fromLeft: true),
+                          onHorizontalDragUpdate: _updateEffectResize,
+                          onHorizontalDragEnd: (_) => _finishEffectResize(),
+                          onHorizontalDragCancel: _finishEffectResize,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: selectedEffectClipIndex == i ? Colors.white : const Color(0x88FFFFFF),
+                              borderRadius: const BorderRadius.horizontal(left: Radius.circular(5)),
+                            ),
+                            child: const Center(child: SizedBox(width: 2, height: 15, child: ColoredBox(color: Color(0xFF7651B8)))),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: 10,
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.resizeLeftRight,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onHorizontalDragStart: (_) => _startEffectResize(i, fromLeft: false),
+                          onHorizontalDragUpdate: _updateEffectResize,
+                          onHorizontalDragEnd: (_) => _finishEffectResize(),
+                          onHorizontalDragCancel: _finishEffectResize,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: selectedEffectClipIndex == i ? Colors.white : const Color(0x88FFFFFF),
+                              borderRadius: const BorderRadius.horizontal(right: Radius.circular(5)),
+                            ),
+                            child: const Center(child: SizedBox(width: 2, height: 15, child: ColoredBox(color: Color(0xFF7651B8)))),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ]),
                 ),
             ]),
           ),
@@ -2809,8 +3165,16 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                   left: (timelineTransitions[i].at * zoom - 24).clamp(0.0, math.max(0.0, timelineWidth - 48)).toDouble(),
                   top: 3, bottom: 3, width: 48,
                   child: GestureDetector(
-                    onTap: () => setState(() { selectedTransitionIndex = i; selectedEffectClipIndex = -1; }),
-                    onSecondaryTapDown: (details) => showTimelineTransitionMenu(details.globalPosition, i),
+                    onTap: () => setState(() {
+                      selectedTransitionIndex = i;
+                      selectedEffectClipIndex = -1;
+                      selectedAudioClip = false;
+                      selectedPhotoOverlay = -1;
+                      _selectedCanvasObject = 'timeline-transition';
+                    }),
+                    onSecondaryTapUp: (details) {
+                      if (!_timelinePanMoved) showTimelineTransitionMenu(details.globalPosition, i);
+                    },
                     child: Container(
                       decoration: BoxDecoration(
                         color: const Color(0xCC9A7138),
@@ -2848,7 +3212,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                   width: math.max(20.0, timelineWidth - 8).toDouble(),
                   child: GestureDetector(
                     onTapDown: (d) => seekTimeline(d.localPosition.dx),
-                    onTap: () => setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; }),
+                    onTap: () => setState(() {
+                      selectedPhotoOverlay = i;
+                      selectedAudioClip = false;
+                      selectedEffectClipIndex = -1;
+                      selectedTransitionIndex = -1;
+                      _selectedCanvasObject = 'photo';
+                    }),
                     child: Container(
                       decoration: BoxDecoration(color: const Color(0x443D2C69), borderRadius: BorderRadius.circular(5), border: Border.all(color: selectedPhotoOverlay == i ? Colors.white : const Color(0xFFB18CFF), width: selectedPhotoOverlay == i ? 2 : 1)),
                       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -2906,9 +3276,21 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                   bottom: 7,
                   width: math.max(12.0, (audioClipEnd - audioClipStart) * zoom - 2).toDouble(),
                   child: GestureDetector(
-                    onSecondaryTapDown: (details) => showAudioClipMenu(details.globalPosition),
+                    onTap: () => setState(() {
+                      selectedAudioClip = true;
+                      selectedEffectClipIndex = -1;
+                      selectedTransitionIndex = -1;
+                      selectedPhotoOverlay = -1;
+                      _selectedCanvasObject = 'audio';
+                    }),
+                    onSecondaryTapUp: (details) {
+                      if (!_timelinePanMoved) showAudioClipMenu(details.globalPosition);
+                    },
                     child: DecoratedBox(
-                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: audioGreen, width: 1.5)),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: selectedAudioClip ? Colors.white : audioGreen, width: selectedAudioClip ? 2 : 1.5),
+                      ),
                       child: audioClip(path),
                     ),
                   ),
@@ -2923,7 +3305,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                     child: GestureDetector(
                       onTapDown: (d) => seekTimeline(videoClips[i].timelineStart * zoom + d.localPosition.dx),
                       onTap: () => _selectVideoClip(i),
-                      onSecondaryTapDown: (details) => showClipMenu(details.globalPosition, i),
+                      onSecondaryTapUp: (details) {
+                        if (!_timelinePanMoved) showClipMenu(details.globalPosition, i);
+                      },
                       onHorizontalDragStart: (_) => _startClipMove(i),
                       onHorizontalDragUpdate: _updateClipMove,
                       onHorizontalDragEnd: (_) => _finishClipMove(),
@@ -2995,6 +3379,39 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                             ),
                           ],
                         ],
+                      ),
+                    ),
+                  ),
+              if (!audio)
+                for (var i = 0; i < timelineTransitions.length; i++)
+                  Positioned(
+                    left: (timelineTransitions[i].at - timelineTransitions[i].duration / 2) * zoom + 4,
+                    top: 9,
+                    bottom: 9,
+                    width: math.max(16.0, timelineTransitions[i].duration * zoom - 1).toDouble(),
+                    child: GestureDetector(
+                      onTap: () => setState(() {
+                        selectedTransitionIndex = i;
+                        selectedEffectClipIndex = -1;
+                        selectedAudioClip = false;
+                        selectedPhotoOverlay = -1;
+                        _selectedCanvasObject = 'timeline-transition';
+                      }),
+                      onSecondaryTapUp: (details) {
+                        if (!_timelinePanMoved) showTimelineTransitionMenu(details.globalPosition, i);
+                      },
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: const Color(0x66FFFFFF),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: selectedTransitionIndex == i ? Colors.white : const Color(0xCCFFFFFF),
+                            width: selectedTransitionIndex == i ? 2 : 1,
+                          ),
+                        ),
+                        child: const Center(
+                          child: Icon(Icons.compare_arrows, size: 12, color: Colors.white),
+                        ),
                       ),
                     ),
                   ),
@@ -3120,6 +3537,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
   Future<void> showAudioClipMenu(Offset position) async {
     if (audioPath == null || audioClipEnd <= audioClipStart) return;
+    setState(() {
+      selectedAudioClip = true;
+      selectedEffectClipIndex = -1;
+      selectedTransitionIndex = -1;
+      selectedPhotoOverlay = -1;
+      _selectedCanvasObject = 'audio';
+    });
     final action = await showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx + 1, position.dy + 1),
@@ -3152,6 +3576,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           audioWaveform = const [];
           audioClipStart = 0;
           audioClipEnd = 0;
+          selectedAudioClip = false;
+          _selectedCanvasObject = 'video';
           status = 'Звуковой клип удалён. Видеоклипы не изменены.';
           break;
       }
@@ -3206,13 +3632,29 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       ),
     );
     if (!mounted || type == null) return;
-    final start = playheadSeconds.clamp(0.0, math.max(0.0, timelineSeconds - 0.25)).toDouble();
-    final end = math.min(timelineSeconds, start + 2.0).toDouble();
+    final length = math.min(2.0, timelineSeconds).toDouble();
+    if (length < 0.25) {
+      setStatus('Недостаточно места на таймлайне для эффекта.');
+      return;
+    }
+    final start = TimelineEditing.findAvailableEffectStart(
+      effects: effectClips.map((item) => TimelineEffectRange(item.type, item.start, item.end)).toList(),
+      preferred: playheadSeconds,
+      length: length,
+      timelineEnd: timelineSeconds,
+    );
+    if (start == null) {
+      setStatus('На таймлайне нет свободного участка для нового эффекта. Переместите или растяните существующий эффект.');
+      return;
+    }
     _performTimelineEdit(() {
-      effectClips.add(TimelineEffectClip(type: type, start: start, end: end));
+      effectClips.add(TimelineEffectClip(type: type, start: start, end: start + length));
       selectedEffectClipIndex = effectClips.length - 1;
       selectedTransitionIndex = -1;
-      status = 'Эффект «$type» добавлен на дорожку эффектов.';
+      selectedAudioClip = false;
+      selectedPhotoOverlay = -1;
+      _selectedCanvasObject = 'timeline-effect';
+      status = 'Эффект «$type» добавлен на свободный участок таймлайна.';
     });
   }
 
@@ -3264,6 +3706,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         selectedTransitionIndex = timelineTransitions.length - 1;
       }
       selectedEffectClipIndex = -1;
+      selectedAudioClip = false;
+      selectedPhotoOverlay = -1;
+      _selectedCanvasObject = 'timeline-transition';
       status = 'Переход «$type» добавлен между видеоклипами.';
     });
   }
@@ -3282,7 +3727,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
   Future<void> showEffectClipMenu(Offset position, int index) async {
     if (index < 0 || index >= effectClips.length) return;
-    setState(() { selectedEffectClipIndex = index; selectedTransitionIndex = -1; });
+    setState(() {
+      selectedEffectClipIndex = index;
+      selectedTransitionIndex = -1;
+      selectedAudioClip = false;
+      selectedPhotoOverlay = -1;
+      _selectedCanvasObject = 'timeline-effect';
+    });
     final action = await showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx + 1, position.dy + 1),
@@ -3300,19 +3751,37 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         effectClips.removeAt(index);
         selectedEffectClipIndex = -1;
         status = 'Эффект удалён с таймлайна.';
-      } else if (action == 'longer') {
-        effect.end = math.min(timelineSeconds, effect.end + 1).toDouble();
-        status = 'Длительность эффекта увеличена.';
       } else {
-        effect.end = math.max(effect.start + 0.25, effect.end - 1).toDouble();
-        status = 'Длительность эффекта уменьшена.';
+        final ranges = effectClips
+            .map((item) => TimelineEffectRange(item.type, item.start, item.end))
+            .toList();
+        final requested = action == 'longer' ? effect.end + 1 : effect.end - 1;
+        final resized = TimelineEditing.resizeEffectEdge(
+          effects: ranges,
+          index: index,
+          requestedTime: requested,
+          timelineEnd: timelineSeconds,
+          resizeStart: false,
+        );
+        effect
+          ..start = resized.start
+          ..end = resized.end;
+        status = action == 'longer'
+            ? 'Длительность эффекта увеличена без перекрытия соседних эффектов.'
+            : 'Длительность эффекта уменьшена.';
       }
     });
   }
 
   Future<void> showTimelineTransitionMenu(Offset position, int index) async {
     if (index < 0 || index >= timelineTransitions.length) return;
-    setState(() { selectedTransitionIndex = index; selectedEffectClipIndex = -1; });
+    setState(() {
+      selectedTransitionIndex = index;
+      selectedEffectClipIndex = -1;
+      selectedAudioClip = false;
+      selectedPhotoOverlay = -1;
+      _selectedCanvasObject = 'timeline-transition';
+    });
     final action = await showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx + 1, position.dy + 1),
@@ -3357,22 +3826,91 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   }
 
   void _startEffectClipMove(int index) {
-    if (index < 0 || index >= effectClips.length) return;
+    if (_timelinePanPointer != null || index < 0 || index >= effectClips.length) return;
     _effectClipMoveBefore = _captureTimelineSnapshot();
     _effectClipMoveIndex = index;
     _effectClipMoveStart = effectClips[index].start;
     _effectClipMovePointerX = 0;
-    setState(() { selectedEffectClipIndex = index; selectedTransitionIndex = -1; });
+    setState(() {
+      selectedEffectClipIndex = index;
+      selectedTransitionIndex = -1;
+      selectedAudioClip = false;
+      selectedPhotoOverlay = -1;
+      _selectedCanvasObject = 'timeline-effect';
+    });
   }
 
   void _updateEffectClipMove(DragUpdateDetails details) {
-    if (_effectClipMoveIndex < 0 || _effectClipMoveIndex >= effectClips.length) return;
+    if (_timelinePanPointer != null || _effectClipMoveIndex < 0 || _effectClipMoveIndex >= effectClips.length) return;
     _effectClipMovePointerX += details.delta.dx;
     final effect = effectClips[_effectClipMoveIndex];
     final length = effect.duration;
-    final maxStart = math.max(0.0, timelineSeconds - length).toDouble();
-    final nextStart = (_effectClipMoveStart + _effectClipMovePointerX / zoom).clamp(0.0, maxStart).toDouble();
-    setState(() { effect.start = nextStart; effect.end = nextStart + length; projectDirty = true; });
+    final desiredStart = _effectClipMoveStart + _effectClipMovePointerX / zoom;
+    final nextStart = TimelineEditing.findAvailableEffectStart(
+      effects: effectClips.map((item) => TimelineEffectRange(item.type, item.start, item.end)).toList(),
+      preferred: desiredStart,
+      length: length,
+      timelineEnd: timelineSeconds,
+      ignoreIndex: _effectClipMoveIndex,
+    );
+    if (nextStart == null) return;
+    setState(() {
+      effect.start = nextStart;
+      effect.end = nextStart + length;
+      projectDirty = true;
+    });
+  }
+
+  void _startEffectResize(int index, {required bool fromLeft}) {
+    if (_timelinePanPointer != null || index < 0 || index >= effectClips.length) return;
+    final effect = effectClips[index];
+    _effectResizeBefore = _captureTimelineSnapshot();
+    _effectResizeIndex = index;
+    _effectResizeLeft = fromLeft;
+    _effectResizePointerX = 0;
+    _effectResizeStart = effect.start;
+    _effectResizeEnd = effect.end;
+    setState(() {
+      selectedEffectClipIndex = index;
+      selectedTransitionIndex = -1;
+      selectedAudioClip = false;
+      selectedPhotoOverlay = -1;
+      _selectedCanvasObject = 'timeline-effect';
+    });
+  }
+
+  void _updateEffectResize(DragUpdateDetails details) {
+    if (_timelinePanPointer != null) return;
+    final index = _effectResizeIndex;
+    if (index < 0 || index >= effectClips.length) return;
+    _effectResizePointerX += details.delta.dx;
+    final requested = (_effectResizeLeft ? _effectResizeStart : _effectResizeEnd) +
+        _effectResizePointerX / zoom;
+    final ranges = effectClips
+        .map((item) => TimelineEffectRange(item.type, item.start, item.end))
+        .toList();
+    final resized = TimelineEditing.resizeEffectEdge(
+      effects: ranges,
+      index: index,
+      requestedTime: requested,
+      timelineEnd: timelineSeconds,
+      resizeStart: _effectResizeLeft,
+    );
+    setState(() {
+      effectClips[index]
+        ..start = resized.start
+        ..end = resized.end;
+      projectDirty = true;
+    });
+  }
+
+  void _finishEffectResize() {
+    final before = _effectResizeBefore;
+    if (before != null) {
+      _timelineHistory.record(before: before, after: _captureTimelineSnapshot());
+    }
+    _effectResizeBefore = null;
+    _effectResizeIndex = -1;
   }
 
   void _finishEffectClipMove() {
@@ -3408,6 +3946,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     setState(() {
       _selectedCanvasObject = 'video';
       selectedPhotoOverlay = -1;
+      selectedAudioClip = false;
+      selectedEffectClipIndex = -1;
+      selectedTransitionIndex = -1;
       if (index >= 0) selectedClipIndex = index;
     });
   }
@@ -3417,8 +3958,58 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     setState(() {
       selectedClipIndex = index;
       selectedPhotoOverlay = -1;
+      selectedAudioClip = false;
+      selectedEffectClipIndex = -1;
+      selectedTransitionIndex = -1;
       _selectedCanvasObject = 'video';
     });
+  }
+
+  void deleteSelectedTimelineItem({bool ripple = false}) {
+    if (selectedEffectClipIndex >= 0 && selectedEffectClipIndex < effectClips.length) {
+      final index = selectedEffectClipIndex;
+      _performTimelineEdit(() {
+        effectClips.removeAt(index);
+        selectedEffectClipIndex = -1;
+        _selectedCanvasObject = 'video';
+        status = 'Выбранный эффект удалён.';
+      });
+      return;
+    }
+    if (selectedTransitionIndex >= 0 && selectedTransitionIndex < timelineTransitions.length) {
+      final index = selectedTransitionIndex;
+      _performTimelineEdit(() {
+        timelineTransitions.removeAt(index);
+        selectedTransitionIndex = -1;
+        _selectedCanvasObject = 'video';
+        status = 'Выбранный переход удалён.';
+      });
+      return;
+    }
+    if (selectedPhotoOverlay >= 0 && selectedPhotoOverlay < photoOverlays.length) {
+      setState(() {
+        photoOverlays.removeAt(selectedPhotoOverlay);
+        selectedPhotoOverlay = -1;
+        _selectedCanvasObject = 'video';
+        projectDirty = true;
+        status = 'Выбранное фото удалено.';
+      });
+      return;
+    }
+    if (selectedAudioClip && audioPath != null) {
+      _performTimelineEdit(() {
+        audioPath = null;
+        audioDuration = Duration.zero;
+        audioClipStart = 0;
+        audioClipEnd = 0;
+        audioWaveform = const [];
+        selectedAudioClip = false;
+        _selectedCanvasObject = 'video';
+        status = 'Выбранный аудиоклип удалён.';
+      });
+      return;
+    }
+    deleteSelectedClip(ripple: ripple);
   }
 
   void splitSelectedClip() {
@@ -3495,7 +4086,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   }
 
   void _startClipMove(int index) {
-    if (index < 0 || index >= videoClips.length) return;
+    if (_timelinePanPointer != null || index < 0 || index >= videoClips.length) return;
     _clipMoveBefore = _captureTimelineSnapshot();
     _clipMoveIndex = index;
     _clipMoveOriginalStart = videoClips[index].timelineStart;
@@ -3503,12 +4094,16 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     setState(() {
       selectedClipIndex = index;
       selectedPhotoOverlay = -1;
+      selectedAudioClip = false;
+      selectedEffectClipIndex = -1;
+      selectedTransitionIndex = -1;
       _selectedCanvasObject = 'video';
       _timelineSnapAt = null;
     });
   }
 
   void _updateClipMove(DragUpdateDetails details) {
+    if (_timelinePanPointer != null) return;
     final before = _clipMoveBefore;
     if (before == null || _clipMoveIndex < 0 ||
         _clipMoveIndex >= videoClips.length ||

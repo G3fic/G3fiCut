@@ -182,6 +182,15 @@ void main() {
     expect(find.text('СТАНДАРТНЫЕ ПЕРЕХОДЫ'), findsOneWidget);
     expect(find.text('Чёрно-белый'), findsOneWidget);
     expect(find.text('Растворение'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('hover-preview-effect:Чёрно-белый')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('hover-preview-transition:Растворение')),
+      findsOneWidget,
+    );
+    expect(find.byTooltip('Проверить обновления'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

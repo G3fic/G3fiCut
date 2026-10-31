@@ -1,5 +1,22 @@
 # Changelog
 
+## GifCut v0.3.74 — 2026-10-31
+
+- Fix the effect-placement regression test: the timeline correctly chooses the nearest available two-second gap, rather than incorrectly expecting no slot.
+- Keep the numeric application version and Windows release build metadata in sync.
+
+## GifCut v0.3.73 — 2026-10-31
+
+- Place transition markers directly across video cuts and show them as translucent overlays on the video timeline.
+- Allow effect blocks to be moved and resized from either edge without overlapping other effects.
+- Pan the timeline only while holding the right mouse button; ordinary left-button dragging remains reserved for editing timeline items.
+- Route Delete and Backspace to the currently selected timeline item instead of always deleting a video clip.
+- Add animated hover previews to every built-in effect and transition.
+- Keep the preview canvas fixed while changing the export aspect-ratio preset.
+- Snap video rotation to 90-degree orientations when close to a right angle.
+- Apply updates from a verified portable ZIP archive and restart GifCut without opening the Windows Setup wizard.
+- Simplify the top bar by removing the update-check and keyboard-shortcut buttons.
+
 ## GifCut v0.3.72 — 2026-10-31
 
 - Preserve the source video's aspect ratio when changing the preview frame, including during export.
