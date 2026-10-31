@@ -237,6 +237,11 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   final List<TextOverlay> textOverlays = [];
   int selectedPhotoOverlay = -1;
   int selectedTextOverlay = -1;
+  int _overlayLaneMoveIndex = -1;
+  bool _overlayLaneMoveIsText = false;
+  double _overlayLaneMoveStart = 0;
+  double _overlayLaneMoveDuration = 0;
+  double _overlayLaneMovePointerX = 0;
   bool _isExternalDragOver = false;
   bool _playheadInGap = false;
   int _activePlaybackClipIndex = -1;
@@ -4190,6 +4195,56 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           ),
         ]),
       );
+  void _startOverlayLaneMove(int index, {required bool text}) {
+    final count = text ? textOverlays.length : photoOverlays.length;
+    if (index < 0 || index >= count || _timelinePanPointer != null) return;
+    final itemStart = text ? textOverlays[index].start : photoOverlays[index].start;
+    final itemEnd = text ? textOverlays[index].end : photoOverlays[index].end;
+    _overlayLaneMoveIndex = index;
+    _overlayLaneMoveIsText = text;
+    _overlayLaneMoveStart = itemStart;
+    _overlayLaneMoveDuration = itemEnd - itemStart;
+    _overlayLaneMovePointerX = 0;
+    setState(() {
+      selectedPhotoOverlay = text ? -1 : index;
+      selectedTextOverlay = text ? index : -1;
+      selectedAudioClip = false;
+      selectedEffectClipIndex = -1;
+      selectedTransitionIndex = -1;
+      _selectedCanvasObject = text ? 'text' : 'photo';
+    });
+  }
+
+  void _updateOverlayLaneMove(DragUpdateDetails details) {
+    if (_overlayLaneMoveIndex < 0 || _timelinePanPointer != null) return;
+    _overlayLaneMovePointerX += details.delta.dx;
+    final maxStart = math.max(0.0, timelineSeconds - _overlayLaneMoveDuration).toDouble();
+    final nextStart = (_overlayLaneMoveStart + _overlayLaneMovePointerX / zoom)
+        .clamp(0.0, maxStart).toDouble();
+    setState(() {
+      if (_overlayLaneMoveIsText) {
+        textOverlays[_overlayLaneMoveIndex]
+          ..start = nextStart
+          ..end = nextStart + _overlayLaneMoveDuration;
+      } else {
+        photoOverlays[_overlayLaneMoveIndex]
+          ..start = nextStart
+          ..end = nextStart + _overlayLaneMoveDuration;
+      }
+      projectDirty = true;
+    });
+  }
+
+  void _finishOverlayLaneMove() {
+    if (_overlayLaneMoveIndex < 0) return;
+    setState(() {
+      status = 'Клип слоя перемещён по таймлайну.';
+      projectDirty = true;
+    });
+    _overlayLaneMoveIndex = -1;
+    _overlayLaneMovePointerX = 0;
+  }
+
   Widget photoTrackRow() => SizedBox(
         width: _timelineLabelWidth + timelineWidth,
         height: 54,
@@ -4215,6 +4270,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                   width: math.max(20.0, (photoOverlays[i].end - photoOverlays[i].start) * zoom - 4).toDouble(),
                   child: GestureDetector(
                     onTapDown: (d) => seekTimeline(photoOverlays[i].start * zoom + d.localPosition.dx),
+                    onHorizontalDragStart: (_) => _startOverlayLaneMove(i, text: false),
+                    onHorizontalDragUpdate: _updateOverlayLaneMove,
+                    onHorizontalDragEnd: (_) => _finishOverlayLaneMove(),
                     onTap: () => setState(() {
                       selectedPhotoOverlay = i;
                       selectedTextOverlay = -1;
@@ -4268,6 +4326,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                   child: GestureDetector(
                     key: ValueKey('text-timeline-clip-$i'),
                     onTapDown: (details) => seekTimeline(textOverlays[i].start * zoom + details.localPosition.dx),
+                    onHorizontalDragStart: (_) => _startOverlayLaneMove(i, text: true),
+                    onHorizontalDragUpdate: _updateOverlayLaneMove,
+                    onHorizontalDragEnd: (_) => _finishOverlayLaneMove(),
                     onTap: () => setState(() {
                       selectedTextOverlay = i;
                       selectedPhotoOverlay = -1;
