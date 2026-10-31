@@ -90,6 +90,51 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('video canvas pointer drag continues across multiple moving frames', (tester) async {
+    var offset = Offset.zero;
+    final deltas = <Offset>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (context, setState) => Center(
+            child: Transform.translate(
+              offset: offset,
+              child: ContinuousPointerDrag(
+                key: const ValueKey('continuous-pointer-drag-test'),
+                onDelta: (delta) {
+                  deltas.add(delta);
+                  setState(() => offset += delta);
+                },
+                child: const SizedBox(
+                  width: 100,
+                  height: 100,
+                  child: ColoredBox(color: Colors.blue),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final gesture = await tester.startGesture(tester.getCenter(
+      find.byKey(const ValueKey('continuous-pointer-drag-test')),
+    ));
+    await gesture.moveBy(const Offset(8, 6));
+    await tester.pump();
+    await gesture.moveBy(const Offset(10, 7));
+    await tester.pump();
+    await gesture.moveBy(const Offset(12, 8));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    expect(deltas, const [Offset(8, 6), Offset(10, 7), Offset(12, 8)]);
+    expect(offset, const Offset(30, 21));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('workspace panes can be resized with their splitters', (tester) async {
     await tester.pumpWidget(const G3fiCutApp());
     await tester.pump();

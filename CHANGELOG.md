@@ -1,5 +1,12 @@
 # Changelog
 
+## G3fiCut v0.3.68 — 2026-10-31
+
+- Replace the video canvas pan recognizer with pointer-level drag tracking so media_kit gestures cannot cancel movement mid-drag.
+- Ignore pointer input inside the rendered video texture while retaining drag input on the canvas surface.
+- Add a regression widget test that sends several pointer moves while the draggable preview is moving underneath the pointer.
+
+
 ## G3fiCut v0.3.67 — 2026-10-31
 
 - Restore direct on-canvas video transform controls with eight visible resize handles and a dedicated rotation handle.

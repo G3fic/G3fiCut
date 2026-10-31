@@ -1,8 +1,8 @@
 name: g3ficut
 description: A Windows-first video editor with timeline-based audio extraction.
 publish_to: "none"
-version: 0.3.67+75
-# Release G3fiCut v0.3.67
+version: 0.3.68+76
+# Release G3fiCut v0.3.68
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
