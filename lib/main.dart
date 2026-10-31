@@ -501,7 +501,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       if (digest == null || !digest.startsWith('sha256:')) {
         throw StateError('GitHub не предоставил SHA-256 установщика. Обновление не будет запущено без проверки целостности.');
       }
-      if (mounted) setStatus('Доступно обновление v$latestVersion.');
+      if (mounted) setStatus('Доступно обновление $latestVersion.');
       if (!mounted) return;
       final shouldUpdate = await showDialog<bool>(
         context: context,
