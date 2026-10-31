@@ -229,7 +229,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   bool _suppressPlayerStateEvents = false;
   double _mediaPanelWidth = 188;
   double _inspectorPanelWidth = 220;
-  double _timelinePanelHeight = 276;
+  double _timelinePanelHeight = 252;
   final Map<String, Offset> _resizeHandleLastGlobal = {};
   double frameRate = 30.0;
   bool snappingEnabled = true;
@@ -1812,12 +1812,12 @@ try {
                       final maxWidth = (screenWidth - 64 - 1 - 14 - _inspectorPanelWidth - 220).clamp(150.0, 420.0).toDouble();
                       _mediaPanelWidth = (_mediaPanelWidth + dx).clamp(150.0, maxWidth).toDouble();
                     }),
+                    SizedBox(width: _inspectorPanelWidth, child: inspectorPanel()),
                     _verticalPanelSplitter('inspector-panel-splitter', (dx) {
                       final screenWidth = MediaQuery.sizeOf(context).width;
                       final maxWidth = (screenWidth - 64 - 1 - 14 - _mediaPanelWidth - 220).clamp(190.0, 440.0).toDouble();
                       _inspectorPanelWidth = (_inspectorPanelWidth - dx).clamp(190.0, maxWidth).toDouble();
                     }),
-                    SizedBox(width: _inspectorPanelWidth, child: inspectorPanel()),
                     Expanded(child: previewPanel()),
                   ],
                 ),
