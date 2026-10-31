@@ -1,5 +1,14 @@
 # Changelog
 
+## GifCut v0.3.80 — 2026-11-01
+
+- Replace the old left tool rail with CapCut-style Media, Audio, Text, Stickers, Effects, Transitions, Captions and Filters categories.
+- Add a media bin that imports multiple video, image and audio files and accepts Windows Explorer drag-and-drop; selected media can be sent to the editing timeline.
+- Add editable timed text overlays, a dedicated text lane, right-side text settings, project persistence and FFmpeg export rendering.
+- Replace effect/transition quick-apply controls with named thumbnail cards, animated source-frame previews, right-side duration settings and an explicit Add to timeline action.
+- Keep the preview and export canvas black by default; blurred duplicate-video backgrounds are generated only when the dedicated option is enabled.
+- Bump the app and Windows installer version to 0.3.80 and upgrade the project document schema to v4.
+
 ## GifCut v0.3.79 — 2026-11-01
 
 - Make the preview canvas black by default instead of filling unused canvas space with a continuously blurred duplicate of the video.
