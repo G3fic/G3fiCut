@@ -2131,7 +2131,7 @@ try {
                           imagePath: videoThumbnails.isNotEmpty ? videoThumbnails.first : null,
                           selected: _selectedCanvasObject == 'video',
                           onTap: () => setState(() {
-                            if (videoClips.isNotEmpty) selectedClipIndex = selectedClipIndex.clamp(0, videoClips.length - 1);
+                            if (videoClips.isNotEmpty) selectedClipIndex = selectedClipIndex.clamp(0, videoClips.length - 1).toInt();
                             selectedPhotoOverlay = -1;
                             selectedAudioClip = false;
                             selectedEffectClipIndex = -1;
