@@ -1275,8 +1275,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     try {
       final ffmpeg = await findFfmpeg();
       final result = await Process.run(ffmpeg, ['-hide_banner', '-i', path]);
-      final output = '${result.stdout}\\n${result.stderr}';
-      final match = RegExp(r'Duration:\\s*(\\d+):(\\d+):(\\d+(?:\\.\\d+)?)').firstMatch(output);
+      final output = '${result.stdout}\n${result.stderr}';
+      final match = RegExp(r'Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)').firstMatch(output);
       if (match == null) return Duration.zero;
       final hours = int.parse(match.group(1)!);
       final minutes = int.parse(match.group(2)!);
@@ -1373,11 +1373,11 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
   Future<void> _importSubtitleFile(String path) async {
     final source = await File(path).readAsString();
-    final blocks = source.replaceAll('\\r', '').split(RegExp(r'\\n\\s*\\n'));
+    final blocks = source.replaceAll('\r', '').split(RegExp(r'\n\s*\n'));
     final parsed = <TextOverlay>[];
-    final timing = RegExp(r'(\\d{1,2}:\\d{2}(?::\\d{2})?[,.]\\d{3})\\s*-->\\s*(\\d{1,2}:\\d{2}(?::\\d{2})?[,.]\\d{3})');
+    final timing = RegExp(r'(\d{1,2}:\d{2}(?::\d{2})?[,.]\d{3})\s*-->\s*(\d{1,2}:\d{2}(?::\d{2})?[,.]\d{3})');
     for (final block in blocks) {
-      final lines = block.split('\\n').map((line) => line.trim()).where((line) => line.isNotEmpty).toList();
+      final lines = block.split('\n').map((line) => line.trim()).where((line) => line.isNotEmpty).toList();
       if (lines.isEmpty) continue;
       final timingIndex = lines.indexWhere((line) => timing.hasMatch(line));
       if (timingIndex < 0) continue;
