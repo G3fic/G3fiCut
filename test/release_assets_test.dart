@@ -52,7 +52,6 @@ void main() {
       );
     });
   });
-}
 
   group('findReleaseAppArchiveAsset', () {
     test('finds the versioned portable Windows archive', () {
