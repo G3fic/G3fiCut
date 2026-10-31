@@ -194,7 +194,6 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   double _mediaPanelWidth = 188;
   double _inspectorPanelWidth = 220;
   double _timelinePanelHeight = 276;
-  Offset? _videoRotateLastGlobal;
   final Map<String, Offset> _resizeHandleLastGlobal = {};
   double frameRate = 30.0;
   bool snappingEnabled = true;
@@ -1939,7 +1938,6 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                                           if (delta < -180) delta += 360;
                                                           setState(() { videoRotation = (_videoRotateStartRotation + delta) % 360; projectDirty = true; });
                                                         },
-                                                        onPanEnd: (_) => _videoRotateLastGlobal = null,
                                                         child: Container(
                                                           decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white, width: 1.5), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 4)]),
                                                           child: const Icon(Icons.rotate_90_degrees_ccw, size: 17, color: Colors.white),
