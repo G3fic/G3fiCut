@@ -2957,20 +2957,11 @@ try {
                     final nextOffset = anchorSeconds * zoom + 140 - pointerX;
                     horizontalController.jumpTo(nextOffset.clamp(0.0, horizontalController.position.maxScrollExtent).toDouble());
                   });
-                } else if (event.scrollDelta.dx != 0 && horizontalController.hasClients) {
-                  horizontalController.jumpTo(
-                    (horizontalController.offset + event.scrollDelta.dx)
-                        .clamp(0.0, horizontalController.position.maxScrollExtent).toDouble(),
-                  );
-                } else if (verticalController.hasClients && verticalController.position.maxScrollExtent > 0) {
+                } else if (verticalController.hasClients &&
+                    verticalController.position.maxScrollExtent > 0) {
                   verticalController.jumpTo(
                     (verticalController.offset + event.scrollDelta.dy)
                         .clamp(0.0, verticalController.position.maxScrollExtent).toDouble(),
-                  );
-                } else if (horizontalController.hasClients) {
-                  horizontalController.jumpTo(
-                    (horizontalController.offset + event.scrollDelta.dy)
-                        .clamp(0.0, horizontalController.position.maxScrollExtent).toDouble(),
                   );
                 }
               },
