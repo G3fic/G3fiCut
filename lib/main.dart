@@ -1317,6 +1317,25 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     });
   }
 
+  void _insertTextOverlay(String value) {
+    final text = value.trim();
+    if (text.isEmpty || !mounted) return;
+    final start = position.inMilliseconds / 1000;
+    final end = math.max(start + 3, timelineSeconds).toDouble();
+    setState(() {
+      textOverlays.add(TextOverlay(text: text, start: start, end: end));
+      selectedTextOverlay = textOverlays.length - 1;
+      selectedPhotoOverlay = -1;
+      selectedAudioClip = false;
+      selectedEffectClipIndex = -1;
+      selectedTransitionIndex = -1;
+      inspectorTab = 'text';
+      _selectedCanvasObject = 'text';
+      projectDirty = true;
+      status = 'Текстовый слой добавлен. Перемещайте его в окне предпросмотра.';
+    });
+  }
+
   Future<void> addTextOverlay({String initialText = 'Ваш текст'}) async {
     if (busy) return;
     final controller = TextEditingController(text: initialText);
@@ -1341,22 +1360,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       ),
     );
     controller.dispose();
-    final text = value?.trim() ?? '';
-    if (text.isEmpty || !mounted) return;
-    final start = position.inMilliseconds / 1000;
-    final end = math.max(start + 3, timelineSeconds).toDouble();
-    setState(() {
-      textOverlays.add(TextOverlay(text: text, start: start, end: end));
-      selectedTextOverlay = textOverlays.length - 1;
-      selectedPhotoOverlay = -1;
-      selectedAudioClip = false;
-      selectedEffectClipIndex = -1;
-      selectedTransitionIndex = -1;
-      inspectorTab = 'text';
-      _selectedCanvasObject = 'text';
-      projectDirty = true;
-      status = 'Текстовый слой добавлен. Перемещайте его в окне предпросмотра.';
-    });
+    if (value == null || !mounted) return;
+    _insertTextOverlay(value);
   }
 
   double _parseSubtitleTime(String value) {
@@ -2617,7 +2622,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               for (final sticker in const ['⭐', '❤️', '🔥', '✨', '🎉', '👍', '💡', '🎬'])
                 InkWell(
                   key: ValueKey('sticker-$sticker'),
-                  onTap: busy ? null : () => unawaited(addTextOverlay(initialText: sticker)),
+                  onTap: busy ? null : () => _insertTextOverlay(sticker),
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
                     width: 48,
