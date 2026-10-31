@@ -1925,14 +1925,14 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                                         onPanStart: (details) {
                                                           final box = _previewCanvasKey.currentContext?.findRenderObject() as RenderBox?;
                                                           if (box == null) return;
-                                                          final center = box.localToGlobal(box.size.center(Offset.zero));
+                                                          final center = box.localToGlobal(Offset(box.size.width / 2 + videoOffsetX * box.size.width, box.size.height / 2 + videoOffsetY * box.size.height));
                                                           _videoRotateStartAngle = math.atan2(details.globalPosition.dy - center.dy, details.globalPosition.dx - center.dx);
                                                           _videoRotateStartRotation = videoRotation;
                                                         },
                                                         onPanUpdate: (details) {
                                                           final box = _previewCanvasKey.currentContext?.findRenderObject() as RenderBox?;
                                                           if (box == null) return;
-                                                          final center = box.localToGlobal(box.size.center(Offset.zero));
+                                                          final center = box.localToGlobal(Offset(box.size.width / 2 + videoOffsetX * box.size.width, box.size.height / 2 + videoOffsetY * box.size.height));
                                                           final angle = math.atan2(details.globalPosition.dy - center.dy, details.globalPosition.dx - center.dx);
                                                           var delta = (angle - _videoRotateStartAngle) * 180 / math.pi;
                                                           if (delta > 180) delta -= 360;
