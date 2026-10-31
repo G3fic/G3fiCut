@@ -1,4 +1,4 @@
-# G3fiCut Development Roadmap
+# GifCut Development Roadmap
 
 This roadmap tracks real editing capabilities, not decorative controls. A feature is considered done only when its edit state, preview/export behavior, persistence (where applicable), and tests agree.
 
