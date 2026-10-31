@@ -2181,7 +2181,26 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   }
 
   @override
-  Widget build(BuildContext context) => Focus(
+  Widget build(BuildContext context) => DropRegion(
+        formats: Formats.standardFormats,
+        hitTestBehavior: HitTestBehavior.opaque,
+        onDropOver: (event) => event.session.items.any((item) => item.canProvide(Formats.fileUri))
+            ? DropOperation.copy
+            : DropOperation.none,
+        onDropEnter: (_) {
+          if (mounted) setState(() => _isExternalDragOver = true);
+        },
+        onDropLeave: (_) {
+          if (mounted) setState(() => _isExternalDragOver = false);
+        },
+        onPerformDrop: (event) async {
+          if (mounted) setState(() => _isExternalDragOver = false);
+          await _handleExternalDrop(event);
+        },
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Focus(
         autofocus: true,        onKeyEvent: _handleKeyEvent,
         child: Scaffold(
         body: SafeArea(
@@ -2217,7 +2236,40 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             ],
           ),
         ),
-      ));
+            ),
+            if (_isExternalDragOver)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Container(
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.12),
+                      border: Border.all(color: accent, width: 3),
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF17191F),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: accent, width: 1.5),
+                      ),
+                      child: const Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.file_download_outlined, size: 44, color: accent),
+                          SizedBox(height: 10),
+                          Text('Перетащите файлы в проект', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                          SizedBox(height: 5),
+                          Text('Видео · фото · аудио · SRT / VTT', style: TextStyle(fontSize: 12, color: muted)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
 
   Widget _verticalPanelSplitter(String key, ValueChanged<double> onDrag) => MouseRegion(
         cursor: SystemMouseCursors.resizeColumn,
