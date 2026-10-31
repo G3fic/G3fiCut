@@ -7,6 +7,7 @@ void main() {
     test('every supported transition maps to a non-empty FFmpeg xfade name', () {
       expect(ProjectTransition.supportedTypes, builtinTransitionFilters.keys.toSet());
       expect(builtinTransitionFilters.length, greaterThanOrEqualTo(58));
+      expect(builtinTransitionFilters.values.toSet(), hasLength(58));
       for (final entry in builtinTransitionFilters.entries) {
         expect(entry.key, isNotEmpty);
         expect(entry.value, isNotEmpty);
