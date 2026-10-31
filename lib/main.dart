@@ -104,7 +104,7 @@ class GifCutApp extends StatelessWidget {
   const GifCutApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'GifCut',
+        title: 'GifCut v0.3.79',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           useMaterial3: true,
@@ -172,7 +172,7 @@ class ExportTimelineSegment {
 }
 
 class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.78');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.79');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -202,6 +202,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   double saturation = 1.0;
   bool filtersEnabled = true;
   bool motionBlurEnabled = false;
+  bool canvasBackgroundBlurEnabled = false;
   double previewZoom = 1.0;
   double videoScaleX = 1.0, videoScaleY = 1.0, videoRotation = 0, videoOffsetX = 0, videoOffsetY = 0;
   final List<PhotoOverlay> photoOverlays = [];
@@ -2347,6 +2348,29 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
   String _transitionFilterName(String type) => transitionFilterName(type);
 
+  Widget _canvasBackgroundControl() => Tooltip(
+        message: canvasBackgroundBlurEnabled
+            ? 'Отключить размытие фона предпросмотра'
+            : 'Включить размытие фона предпросмотра',
+        child: IconButton(
+          key: const ValueKey('canvas-background-blur-toggle'),
+          visualDensity: VisualDensity.compact,
+          constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+          padding: EdgeInsets.zero,
+          iconSize: 16,
+          onPressed: () => setState(() {
+            canvasBackgroundBlurEnabled = !canvasBackgroundBlurEnabled;
+            status = canvasBackgroundBlurEnabled
+                ? 'Размытие фона предпросмотра включено.'
+                : 'Чёрный фон предпросмотра.';
+          }),
+          icon: Icon(
+            canvasBackgroundBlurEnabled ? Icons.blur_on : Icons.blur_off,
+            color: canvasBackgroundBlurEnabled ? accent : muted,
+          ),
+        ),
+      );
+
   Widget previewPanel() => Container(
         color: const Color(0xFF101217),
         child: Column(children: [
@@ -2356,6 +2380,10 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             decoration: const BoxDecoration(color: Color(0xFF171820), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
             child: LayoutBuilder(builder: (context, constraints) => Row(children: [
               const Text('ПРЕДПРОСМОТР', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
+              if (constraints.maxWidth > 260) ...[
+                const SizedBox(width: 6),
+                _canvasBackgroundControl(),
+              ],
               if (constraints.maxWidth > 300) ...[
                 const SizedBox(width: 8),
                 Expanded(child: Text(videoPath == null ? 'Нет клипа' : p.basename(videoPath!), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.end, style: const TextStyle(color: Color(0xFFB8B8C6), fontSize: 11))),
@@ -2399,8 +2427,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                 child: ClipRect(
                                   child: Stack(key: _previewCanvasKey, fit: StackFit.expand, children: [
                                     const ColoredBox(color: Colors.black),
-                                    if (videoController != null)
+                                    if (canvasBackgroundBlurEnabled && videoController != null)
                                       Positioned.fill(
+                                        key: const ValueKey('canvas-blurred-background'),
                                         child: IgnorePointer(child: _buildPreviewBackdrop()),
                                       ),
                                     if (_showVerticalSnapGuide && _verticalSnapGuidePosition != null)
