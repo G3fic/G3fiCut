@@ -2065,6 +2065,7 @@ try {
                             child: Tooltip(
                               message: 'Добавить фото',
                               child: OutlinedButton.icon(
+                                key: const ValueKey('media-import-photo'),
                                 onPressed: busy ? null : importPhotoOverlay,
                                 icon: const Icon(Icons.add_photo_alternate_outlined, size: 16),
                                 label: Text(
