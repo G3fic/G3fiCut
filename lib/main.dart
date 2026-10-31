@@ -2957,10 +2957,37 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         ? selectedTransitionIndex : -1;
   }
 
+  void _reconcileTimelineAnnotations() {
+    if (videoClips.isEmpty) {
+      effectClips.clear();
+      timelineTransitions.clear();
+      selectedEffectClipIndex = -1;
+      selectedTransitionIndex = -1;
+      return;
+    }
+
+    final end = _timelineEndSeconds;
+    effectClips.removeWhere((effect) => effect.start >= end - 0.001);
+    for (final effect in effectClips) {
+      if (effect.end > end) effect.end = end;
+    }
+    effectClips.removeWhere((effect) => effect.end <= effect.start + 0.05);
+
+    timelineTransitions.removeWhere((transition) {
+      final maximum = _maxTransitionDurationAt(transition.at);
+      if (maximum < 0.1) return true;
+      if (transition.duration > maximum) transition.duration = maximum;
+      return false;
+    });
+    if (selectedEffectClipIndex >= effectClips.length) selectedEffectClipIndex = -1;
+    if (selectedTransitionIndex >= timelineTransitions.length) selectedTransitionIndex = -1;
+  }
+
   void _performTimelineEdit(VoidCallback update) {
     final before = _captureTimelineSnapshot();
     setState(() {
       update();
+      _reconcileTimelineAnnotations();
       projectDirty = true;
     });
     _timelineHistory.record(before: before, after: _captureTimelineSnapshot());
@@ -3424,6 +3451,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     );
     setState(() {
       _replaceClipRanges(next);
+      _reconcileTimelineAnnotations();
       selectedClipIndex = selected;
       _activePlaybackClipIndex = selected;
       _timelineSnapAt = null;
