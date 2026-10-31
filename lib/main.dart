@@ -1838,7 +1838,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                                       child: GestureDetector(
                                                         key: const ValueKey('video-rotate-handle'),
                                                         behavior: HitTestBehavior.opaque,
-                                                        onPanStart: (details) => _videoRotateLastGlobal = details.globalPosition;
+                                                        onPanStart: (details) => _videoRotateLastGlobal = details.globalPosition,
                                                         onPanUpdate: (details) => setState(() {
                                                           final previous = _videoRotateLastGlobal ?? details.globalPosition;
                                                           final screenDelta = details.globalPosition - previous;
