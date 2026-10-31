@@ -12,6 +12,10 @@ void main() {
       expect(aspectRatioForPreset('3:2'), 3 / 2);
     });
 
+    test('uses the dark-gray letterbox color', () {
+      expect(previewLetterboxColorValue, 0xFF292C34);
+    });
+
     test('falls back to landscape when a preset is unknown', () {
       expect(aspectRatioForPreset('unknown'), 16 / 9);
     });
