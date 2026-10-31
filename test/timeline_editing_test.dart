@@ -124,7 +124,7 @@ void main() {
           length: 2,
           timelineEnd: 8,
         ),
-        isNull,
+        4,
       );
     });
 
