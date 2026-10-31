@@ -5008,6 +5008,16 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       });
       return;
     }
+    if (selectedTextOverlay >= 0 && selectedTextOverlay < textOverlays.length) {
+      setState(() {
+        textOverlays.removeAt(selectedTextOverlay);
+        selectedTextOverlay = -1;
+        _selectedCanvasObject = 'video';
+        projectDirty = true;
+        status = 'Выбранный текстовый клип удалён.';
+      });
+      return;
+    }
     if (selectedAudioClip && audioPath != null) {
       _performTimelineEdit(() {
         audioPath = null;
