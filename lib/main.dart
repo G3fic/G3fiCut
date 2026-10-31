@@ -2233,7 +2233,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           child: FilledButton.icon(key: const ValueKey('add-selected-media-to-timeline'), onPressed: busy ? null : () => unawaited(_addMediaAssetToTimeline(selectedLibraryPath!)), icon: const Icon(Icons.add, size: 16), label: const Text('Добавить на таймлайн', style: TextStyle(fontSize: 10))),
         ),
       if (videoPath != null && !audioOnly)
-        Padding(padding: const EdgeInsets.only(top: 7), child: Text('Текущий исходник: \${p.basename(videoPath!)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: muted, fontSize: 9))),
+        Padding(padding: const EdgeInsets.only(top: 7), child: Text('Текущий исходник: ${p.basename(videoPath!)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: muted, fontSize: 9))),
     ]);
   }
 
@@ -2256,7 +2256,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     return SizedBox(
       width: width,
       child: InkWell(
-        key: ValueKey('media-asset-\${p.basename(path)}'),
+        key: ValueKey('media-asset-${p.basename(path)}'),
         onTap: () => setState(() => selectedLibraryPath = path),
         onDoubleTap: () => unawaited(_addMediaAssetToTimeline(path)),
         borderRadius: BorderRadius.circular(7),
@@ -2296,7 +2296,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                 selected: selectedTextOverlay == i,
                 leading: const Icon(Icons.title_rounded, color: accent, size: 18),
                 title: Text(textOverlays[i].text, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10)),
-                subtitle: Text('\${textOverlays[i].start.toStringAsFixed(1)}–\${textOverlays[i].end.toStringAsFixed(1)} с', style: const TextStyle(fontSize: 9, color: muted)),
+                subtitle: Text('${textOverlays[i].start.toStringAsFixed(1)}–${textOverlays[i].end.toStringAsFixed(1)} с', style: const TextStyle(fontSize: 9, color: muted)),
                 onTap: () => setState(() { selectedTextOverlay = i; selectedLibraryPath = null; selectedEffectClipIndex = -1; selectedTransitionIndex = -1; }),
               ),
           ])),
@@ -2352,12 +2352,17 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   }
 
   Widget _presetCard(String type, {required bool transition, required double width}) {
-    final key = '\${transition ? 'transition' : 'effect'}:$type';
+    final key = '${transition ? 'transition' : 'effect'}:$type';
     final selected = selectedLibraryPreset == type && selectedLibraryPresetKind == (transition ? 'transition' : 'effect');
     final paths = videoThumbnails;
     return SizedBox(
       width: width,
-      child: InkWell(
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hoveredLibraryPreview = key),
+        onExit: (_) {
+          if (_hoveredLibraryPreview == key) setState(() => _hoveredLibraryPreview = null);
+        },
+        child: InkWell(
         key: ValueKey('preset-card-$key'),
         borderRadius: BorderRadius.circular(7),
         onTap: () => setState(() {
@@ -2386,6 +2391,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             const SizedBox(height: 5),
             Text(type, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 9, color: selected ? Colors.white : const Color(0xFFD9DBE5), fontWeight: FontWeight.w700)),
           ]),
+        ),
         ),
       ),
     );
@@ -2889,6 +2895,35 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                           ),
                                         ),
                                       ),
+                                    for (var textIndex = 0; textIndex < textOverlays.length; textIndex++)
+                                      if (playheadSeconds >= textOverlays[textIndex].start && playheadSeconds <= textOverlays[textIndex].end)
+                                        Positioned.fill(
+                                          child: Align(
+                                            alignment: Alignment(textOverlays[textIndex].x.clamp(-1.0, 1.0) * 2, textOverlays[textIndex].y.clamp(-1.0, 1.0) * 2),
+                                            child: GestureDetector(
+                                              key: ValueKey('preview-text-overlay-$textIndex'),
+                                              onTap: () => setState(() {
+                                                selectedTextOverlay = textIndex;
+                                                selectedPhotoOverlay = -1;
+                                                selectedEffectClipIndex = -1;
+                                                selectedTransitionIndex = -1;
+                                                selectedAudioClip = false;
+                                                selectedLibraryPreset = '';
+                                                _selectedCanvasObject = 'text';
+                                              }),
+                                              child: DecoratedBox(
+                                                decoration: BoxDecoration(
+                                                  border: selectedTextOverlay == textIndex ? Border.all(color: accent, width: 1.5) : null,
+                                                  color: selectedTextOverlay == textIndex ? const Color(0x33000000) : Colors.transparent,
+                                                ),
+                                                child: Padding(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                  child: Text(textOverlays[textIndex].text, textAlign: TextAlign.center, style: TextStyle(color: Color(textOverlays[textIndex].colorValue), fontSize: textOverlays[textIndex].fontSize * previewZoom, fontWeight: FontWeight.w800, shadows: const [Shadow(color: Colors.black87, blurRadius: 5, offset: Offset(1, 2))])),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                     if (previewTransitionOverlay.opacity > 0)
                                       Positioned.fill(child: IgnorePointer(child: ColoredBox(color: previewTransitionOverlay.color.withValues(alpha: previewTransitionOverlay.opacity)))),
                                     if (_playheadInGap)
@@ -2975,7 +3010,79 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     ),
   );
 
+  Widget _libraryPresetInspector() {
+    final transition = selectedLibraryPresetKind == 'transition';
+    final type = selectedLibraryPreset;
+    final duration = transition ? transitionDuration : libraryPresetDuration;
+    final frames = videoThumbnails;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(transition ? 'НАСТРОЙКИ ПЕРЕХОДА' : 'НАСТРОЙКИ ЭФФЕКТА', style: const TextStyle(color: muted, fontSize: 10, letterSpacing: 0.8, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 10),
+      AnimatedPresetThumbnail(
+        firstFramePath: frames.isNotEmpty ? frames.first : null,
+        secondFramePath: frames.length > 1 ? frames.last : null,
+        type: type,
+        transition: transition,
+        active: true,
+        colorMatrix: transition ? null : _timelineEffectColorMatrix(type),
+        height: 112,
+      ),
+      const SizedBox(height: 10),
+      Text(type, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 7),
+      _adjustmentSlider('Длительность', duration, transition ? 0.1 : 0.25, transition ? 2.0 : math.max(0.5, math.min(10.0, timelineSeconds)), (value) => setState(() {
+        if (transition) {
+          transitionDuration = value;
+        } else {
+          libraryPresetDuration = value;
+        }
+      })),
+      if (transition)
+        const Text('Переход будет установлен на ближайший стык двух соседних видеоклипов без разрыва.', style: TextStyle(color: muted, fontSize: 10, height: 1.4))
+      else
+        const Text('Эффект займёт свободный участок дорожки эффектов рядом с текущей позицией курсора.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
+      const SizedBox(height: 12),
+      SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          key: const ValueKey('apply-library-preset'),
+          onPressed: busy || (transition ? videoClips.length < 2 : videoClips.isEmpty) ? null : () => unawaited(transition ? addTimelineTransition(type) : addTimelineEffect(type)),
+          icon: const Icon(Icons.add, size: 17),
+          label: const Text('Добавить на таймлайн'),
+        ),
+      ),
+      if (transition && videoClips.length < 2)
+        const Padding(padding: EdgeInsets.only(top: 7), child: Text('Сначала добавьте второй клип и поставьте его вплотную к первому.', style: TextStyle(color: Color(0xFFE5AF70), fontSize: 9))),
+    ]);
+  }
+
+  Widget _textOverlaySettings() {
+    if (selectedTextOverlay < 0 || selectedTextOverlay >= textOverlays.length) return const SizedBox.shrink();
+    final overlay = textOverlays[selectedTextOverlay];
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('НАСТРОЙКИ ТЕКСТА', style: TextStyle(color: muted, fontSize: 10, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 8),
+      TextFormField(
+        key: ValueKey('text-overlay-editor-$selectedTextOverlay'),
+        initialValue: overlay.text,
+        maxLines: 3,
+        maxLength: 200,
+        decoration: const InputDecoration(labelText: 'Текст', isDense: true, border: OutlineInputBorder()),
+        onChanged: (value) => setState(() { overlay.text = value; projectDirty = true; }),
+      ),
+      _adjustmentSlider('Размер шрифта', overlay.fontSize, 8, 160, (value) => setState(() { overlay.fontSize = value; projectDirty = true; })),
+      _adjustmentSlider('Положение по X', overlay.x, -1, 1, (value) => setState(() { overlay.x = value; projectDirty = true; })),
+      _adjustmentSlider('Положение по Y', overlay.y, -1, 1, (value) => setState(() { overlay.y = value; projectDirty = true; })),
+      property('Начало', '${overlay.start.toStringAsFixed(2)} с'),
+      property('Конец', '${overlay.end.toStringAsFixed(2)} с'),
+      TextButton.icon(onPressed: deleteSelectedTimelineItem, icon: const Icon(Icons.delete_outline), label: const Text('Удалить текст')),
+      const Divider(),
+    ]);
+  }
+
   Widget _selectedItemSettings() {
+    if (selectedLibraryPreset.isNotEmpty) return _libraryPresetInspector();
+    if (selectedTextOverlay >= 0 && selectedTextOverlay < textOverlays.length) return _textOverlaySettings();
     if (selectedTransitionIndex >= 0 && selectedTransitionIndex < timelineTransitions.length) {
       final t = timelineTransitions[selectedTransitionIndex];
       final maxDuration = math.max(0.1, _maxTransitionDurationAt(t.at)).toDouble();
@@ -3055,11 +3162,29 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
         child: SingleChildScrollView(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            if ((selectedTransitionIndex >= 0 && selectedTransitionIndex < timelineTransitions.length) ||
+            if (selectedLibraryPreset.isNotEmpty ||
+                (selectedTextOverlay >= 0 && selectedTextOverlay < textOverlays.length) ||
+                (selectedTransitionIndex >= 0 && selectedTransitionIndex < timelineTransitions.length) ||
                 (selectedEffectClipIndex >= 0 && selectedEffectClipIndex < effectClips.length) ||
                 (selectedPhotoOverlay >= 0 && selectedPhotoOverlay < photoOverlays.length) || selectedAudioClip ||
                 (videoClips.isNotEmpty && _selectedCanvasObject == 'video' && selectedClipIndex < videoClips.length))
               _selectedItemSettings(),
+            const SizedBox(height: 5),
+            Material(
+              color: panel,
+              child: SwitchListTile(
+                key: const ValueKey('canvas-background-blur-settings-toggle'),
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Размытый фон холста', style: TextStyle(fontSize: 11)),
+                subtitle: const Text('Чёрный фон выключен по умолчанию', style: TextStyle(fontSize: 9, color: muted)),
+                value: canvasBackgroundBlurEnabled,
+                onChanged: (value) => setState(() {
+                  canvasBackgroundBlurEnabled = value;
+                  status = value ? 'Размытие фона холста включено.' : 'Фон холста чёрный.';
+                }),
+              ),
+            ),
             Row(children: [
               inspectorTabButton('video', 'Видео', Icons.movie_outlined),
               inspectorTabButton('audio', 'Аудио', Icons.graphic_eq),
@@ -3286,7 +3411,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                     IconButton(
                       tooltip: 'Удалить выбранный элемент',
                       visualDensity: VisualDensity.compact,
-                      onPressed: videoClips.isEmpty && effectClips.isEmpty && timelineTransitions.isEmpty && audioPath == null && photoOverlays.isEmpty
+                      onPressed: videoClips.isEmpty && effectClips.isEmpty && timelineTransitions.isEmpty && audioPath == null && photoOverlays.isEmpty && textOverlays.isEmpty
                           ? null
                           : deleteSelectedTimelineItem,
                       icon: const Icon(Icons.delete_outline_rounded, size: 17),
@@ -3380,12 +3505,69 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                       const SizedBox(height: 5),
                       photoTrackRow(),
                     ],
+                    if (textOverlays.isNotEmpty) ...[
+                      const SizedBox(height: 5),
+                      textTrackRow(),
+                    ],
                   ]),
                   ),
                 ),
               ),
               ),
             ),
+          ),
+        ]),
+      );
+
+  Widget textTrackRow() => SizedBox(
+        width: _timelineLabelWidth + timelineWidth,
+        height: 48,
+        child: Row(children: [
+          Container(
+            width: _timelineLabelWidth,
+            height: 48,
+            padding: const EdgeInsets.symmetric(horizontal: 9),
+            color: const Color(0xFF191A22),
+            child: const Row(children: [
+              Icon(Icons.title_rounded, size: 16, color: Color(0xFFFFC46B)),
+              SizedBox(width: 6),
+              Expanded(child: Text('Текст', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700))),
+            ]),
+          ),
+          SizedBox(
+            width: timelineWidth,
+            height: 48,
+            child: Stack(clipBehavior: Clip.hardEdge, children: [
+              Positioned.fill(child: CustomPaint(painter: TimelineGridPainter(seconds: timelineSeconds, pixelsPerSecond: zoom))),
+              for (var i = 0; i < textOverlays.length; i++)
+                Positioned(
+                  left: textOverlays[i].start * zoom + 3,
+                  top: 5,
+                  bottom: 5,
+                  width: math.max(28.0, (textOverlays[i].end - textOverlays[i].start) * zoom - 2).toDouble(),
+                  child: GestureDetector(
+                    onTap: () => setState(() {
+                      selectedTextOverlay = i;
+                      selectedPhotoOverlay = -1;
+                      selectedEffectClipIndex = -1;
+                      selectedTransitionIndex = -1;
+                      selectedAudioClip = false;
+                      selectedLibraryPreset = '';
+                      _selectedCanvasObject = 'text';
+                    }),
+                    child: Container(
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(horizontal: 7),
+                      decoration: BoxDecoration(
+                        color: selectedTextOverlay == i ? const Color(0xFF9B6DFF) : const Color(0xFF80602C),
+                        borderRadius: BorderRadius.circular(5),
+                        border: Border.all(color: selectedTextOverlay == i ? Colors.white70 : const Color(0xFFFFC46B)),
+                      ),
+                      child: Text(textOverlays[i].text, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                ),
+            ]),
           ),
         ]),
       );
@@ -4010,7 +4192,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       ),
     );
     if (!mounted || type == null) return;
-    final length = math.min(2.0, timelineSeconds).toDouble();
+    final length = math.min(libraryPresetDuration, timelineSeconds).toDouble();
     if (length < 0.25) {
       setStatus('Недостаточно места на таймлайне для эффекта.');
       return;
@@ -4031,6 +4213,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       selectedTransitionIndex = -1;
       selectedAudioClip = false;
       selectedPhotoOverlay = -1;
+      selectedTextOverlay = -1;
+      selectedLibraryPreset = '';
+      selectedLibraryPresetKind = '';
       _selectedCanvasObject = 'timeline-effect';
       status = 'Эффект «$type» добавлен на свободный участок таймлайна.';
     });
@@ -4072,7 +4257,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       setStatus('Эти клипы слишком короткие для перехода. Увеличьте их длину.');
       return;
     }
-    final length = math.min(0.6, limit).toDouble();
+    final length = math.min(transitionDuration, limit).toDouble();
     _performTimelineEdit(() {
       final existing = timelineTransitions.indexWhere((item) => (item.at - join.at).abs() <= 0.025);
       final transition = TimelineTransition(type: type, at: join.at, duration: length);
@@ -4086,6 +4271,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       selectedEffectClipIndex = -1;
       selectedAudioClip = false;
       selectedPhotoOverlay = -1;
+      selectedTextOverlay = -1;
+      selectedLibraryPreset = '';
+      selectedLibraryPresetKind = '';
       _selectedCanvasObject = 'timeline-transition';
       status = 'Переход «$type» добавлен между видеоклипами.';
     });
@@ -4345,6 +4533,17 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   }
 
   void deleteSelectedTimelineItem({bool ripple = false}) {
+    if (selectedTextOverlay >= 0 && selectedTextOverlay < textOverlays.length) {
+      final index = selectedTextOverlay;
+      setState(() {
+        textOverlays.removeAt(index);
+        selectedTextOverlay = -1;
+        _selectedCanvasObject = 'video';
+        projectDirty = true;
+        status = 'Выбранный текст удалён.';
+      });
+      return;
+    }
     if (selectedEffectClipIndex >= 0 && selectedEffectClipIndex < effectClips.length) {
       final index = selectedEffectClipIndex;
       _performTimelineEdit(() {
