@@ -367,7 +367,7 @@ class ProjectDocument {
 
       return ProjectDocument(
         format: format,
-        schemaVersion: schemaVersion == 1 ? currentSchemaVersion : schemaVersion,
+        schemaVersion: schemaVersion < currentSchemaVersion ? currentSchemaVersion : schemaVersion,
         appVersion: appVersion,
         videoPath: videoPath,
         videoDurationMs: videoDurationMs,
