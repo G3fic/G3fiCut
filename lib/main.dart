@@ -20,6 +20,7 @@ import 'timeline_history.dart';
 import 'timeline_editing.dart';
 import 'project_document.dart';
 import 'canvas_snapping.dart';
+import 'release_assets.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -468,6 +469,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         throw const FormatException('В ответе GitHub не найдена версия релиза.');
       }
       final latestVersion = latestTag.replaceFirst(RegExp(r'^[vV]'), '');
+      if (!isNumericSemanticVersion(latestVersion)) {
+        throw FormatException('Некорректный номер версии GitHub Release: $latestTag. Ожидается формат 0.3.72.');
+      }
       if (!isVersionNewer(latestVersion, appVersion)) {
         if (showNoUpdateMessage && mounted) setStatus('Установлена последняя версия GifCut $appVersion.');
         return;
@@ -475,15 +479,12 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
       final assets = decoded['assets'];
       if (assets is! List) throw const FormatException('В релизе не найден список файлов.');
-      Map<String, dynamic>? installerAsset;
-      final expectedName = 'GifCut-Setup-$latestVersion.exe';
-      for (final item in assets) {
-        if (item is Map<String, dynamic> && item['name'] == expectedName) {
-          installerAsset = item;
-          break;
-        }      }
+      final installerAsset = findReleaseInstallerAsset(assets, latestVersion);
       if (installerAsset == null) {
-        throw StateError('В релизе $latestTag нет установщика $expectedName.');
+        throw StateError(
+          'В релизе $latestTag не найден установщик GifCut. '
+          'Проверены имена GifCut-Setup, G3fiCut-Setup и ClipForge-Setup.',
+        );
       }
 
       final rawUrl = installerAsset['browser_download_url'] as String?;
@@ -3495,7 +3496,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     final before = _clipMoveBefore;
     if (before == null || _clipMoveIndex < 0 ||
         _clipMoveIndex >= videoClips.length ||
-        _clipMoveIndex >= before.videoClips.length) return;
+        _clipMoveIndex >= before.videoClips.length) {
+      return;
+    }
     _clipMovePointerX += details.delta.dx;
     var candidate = math.max(0.0, _clipMoveOriginalStart + _clipMovePointerX / zoom).toDouble();
     double? snapTo;
