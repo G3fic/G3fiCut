@@ -160,7 +160,7 @@ void main() {
     await tester.pumpWidget(const GifCutApp());
     await tester.pump();
 
-    expect(find.byType(SwitchListTile), findsNWidgets(2));
+    expect(find.byType(SwitchListTile), findsNWidgets(3));
     expect(
       tester.takeException(),
       isNull,
@@ -168,29 +168,29 @@ void main() {
     );
   });
 
-  testWidgets('media and effects libraries are available in adjacent tabs', (tester) async {
+  testWidgets('CapCut-style media categories and effect cards open the right inspector', (tester) async {
     await tester.pumpWidget(const GifCutApp());
     await tester.pump();
 
-    expect(find.byKey(const ValueKey('media-library-media')), findsOneWidget);
-    final effectsTab = find.byKey(const ValueKey('media-library-effects'));
-    expect(effectsTab, findsOneWidget);
-    await tester.tap(effectsTab);
-    await tester.pump();
+    for (final category in const ['media', 'audio', 'text', 'stickers', 'effects', 'transitions', 'captions', 'filters']) {
+      expect(find.byKey(ValueKey('library-category-$category')), findsOneWidget);
+    }
 
-    expect(find.text('СТАНДАРТНЫЕ ЭФФЕКТЫ'), findsOneWidget);
-    expect(find.text('СТАНДАРТНЫЕ ПЕРЕХОДЫ'), findsOneWidget);
-    expect(find.text('Чёрно-белый'), findsOneWidget);
-    expect(find.text('Растворение'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('hover-preview-effect:Чёрно-белый')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('hover-preview-transition:Растворение')),
-      findsOneWidget,
-    );
-    expect(find.byTooltip('Проверить обновления'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('library-category-effects')));
+    await tester.pump();
+    expect(find.text('ЭФФЕКТЫ ДЛЯ ВИДЕО'), findsOneWidget);
+    final effectCard = find.byKey(const ValueKey('preset-card-effect:Чёрно-белый'));
+    expect(effectCard, findsOneWidget);
+    await tester.tap(effectCard);
+    await tester.pump();
+    expect(find.text('НАСТРОЙКИ ЭФФЕКТА'), findsOneWidget);
+    expect(find.byKey(const ValueKey('apply-library-preset')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byKey(const ValueKey('library-category-transitions')));
+    await tester.pump();
+    expect(find.text('ПЕРЕХОДЫ МЕЖДУ КЛИПАМИ'), findsOneWidget);
+    expect(find.byKey(const ValueKey('preset-card-transition:Растворение')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -207,6 +207,14 @@ void main() {
     await tester.pump();
 
     expect(find.byTooltip('Отключить размытие фона предпросмотра'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('application title exposes the 0.3.80 version', (tester) async {
+    await tester.pumpWidget(const GifCutApp());
+    await tester.pump();
+
+    expect(find.text('v0.3.80'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
