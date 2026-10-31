@@ -1653,6 +1653,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   }) {
     final scaleX = (videoScaleX * previewZoom).abs().clamp(.2, 5.0).toDouble();
     final scaleY = (videoScaleY * previewZoom).abs().clamp(.2, 5.0).toDouble();
+    Offset? lastGlobalPosition;
     final cursor = horizontalDirection == 0
         ? SystemMouseCursors.resizeUpDown
         : verticalDirection == 0
@@ -1666,10 +1667,14 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         child: GestureDetector(
           key: ValueKey('video-resize-$id'),
           behavior: HitTestBehavior.opaque,
+          onPanStart: (details) => lastGlobalPosition = details.globalPosition,
           onPanUpdate: (details) {
+            final previous = lastGlobalPosition ?? details.globalPosition;
+            final screenDelta = details.globalPosition - previous;
+            lastGlobalPosition = details.globalPosition;
             final radians = videoRotation * math.pi / 180;
-            final localDx = (details.delta.dx * math.cos(radians) + details.delta.dy * math.sin(radians)) / math.max(.1, previewZoom);
-            final localDy = (-details.delta.dx * math.sin(radians) + details.delta.dy * math.cos(radians)) / math.max(.1, previewZoom);
+            final localDx = (screenDelta.dx * math.cos(radians) + screenDelta.dy * math.sin(radians)) / math.max(.1, previewZoom);
+            final localDy = (-screenDelta.dx * math.sin(radians) + screenDelta.dy * math.cos(radians)) / math.max(.1, previewZoom);
             setState(() {
               if (horizontalDirection != 0) {
                 videoScaleX = (videoScaleX + localDx * horizontalDirection * 2 / math.max(1, canvasSize.width)).clamp(.2, 4.0).toDouble();
@@ -1680,6 +1685,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               projectDirty = true;
             });
           },
+          onPanEnd: (_) => lastGlobalPosition = null,
           child: Container(
             width: 14 / scaleX,
             height: 14 / scaleY,
@@ -1742,6 +1748,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                             aspectRatio: previewAspectRatio,
                             child: LayoutBuilder(builder: (context, bounds) {
                               final shortSide = math.min(bounds.maxWidth, bounds.maxHeight);
+                              Offset? lastVideoMoveGlobal;
+                              Offset? lastRotateGlobal;
                               return ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
                                 child: ClipRect(
@@ -1771,17 +1779,24 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                                       cursor: SystemMouseCursors.move,
                                                       child: GestureDetector(
                                                         behavior: HitTestBehavior.opaque,
+                                                        onPanStart: (details) => lastVideoMoveGlobal = details.globalPosition,
                                                         onPanUpdate: (details) => setState(() {
-                                                          videoOffsetX += details.delta.dx / math.max(1, bounds.maxWidth);
-                                                          videoOffsetY += details.delta.dy / math.max(1, bounds.maxHeight);
+                                                          final previous = lastVideoMoveGlobal ?? details.globalPosition;
+                                                          final screenDelta = details.globalPosition - previous;
+                                                          lastVideoMoveGlobal = details.globalPosition;
+                                                          videoOffsetX += screenDelta.dx / math.max(1, bounds.maxWidth);
+                                                          videoOffsetY += screenDelta.dy / math.max(1, bounds.maxHeight);
                                                           _showVerticalSnapGuide = videoOffsetX.abs() < 0.014;
                                                           _showHorizontalSnapGuide = videoOffsetY.abs() < 0.014;
                                                           projectDirty = true;
                                                         }),
-                                                        onPanEnd: (_) => setState(() {
-                                                          _showVerticalSnapGuide = false;
-                                                          _showHorizontalSnapGuide = false;
-                                                        }),
+                                                        onPanEnd: (_) {
+                                                          lastVideoMoveGlobal = null;
+                                                          setState(() {
+                                                            _showVerticalSnapGuide = false;
+                                                            _showHorizontalSnapGuide = false;
+                                                          });
+                                                        },
                                                         child: ColorFiltered(
                                                           colorFilter: ColorFilter.matrix(filtersEnabled ? previewColorMatrix : const <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0]),
                                                           child: ColorFiltered(
@@ -1823,10 +1838,15 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                                       child: GestureDetector(
                                                         key: const ValueKey('video-rotate-handle'),
                                                         behavior: HitTestBehavior.opaque,
+                                                        onPanStart: (details) => lastRotateGlobal = details.globalPosition,
                                                         onPanUpdate: (details) => setState(() {
-                                                          videoRotation = (videoRotation + (details.delta.dx - details.delta.dy) * .7) % 360;
+                                                          final previous = lastRotateGlobal ?? details.globalPosition;
+                                                          final screenDelta = details.globalPosition - previous;
+                                                          lastRotateGlobal = details.globalPosition;
+                                                          videoRotation = (videoRotation + (screenDelta.dx - screenDelta.dy) * .7) % 360;
                                                           projectDirty = true;
                                                         }),
+                                                        onPanEnd: (_) => lastRotateGlobal = null,
                                                         child: Container(
                                                           decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white, width: 1.5), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 4)]),
                                                           child: const Icon(Icons.rotate_90_degrees_ccw, size: 17, color: Colors.white),
