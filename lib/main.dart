@@ -2364,7 +2364,7 @@ try {
               width: double.infinity,
               color: const Color(0xFF303238),
               alignment: Alignment.center,
-              padding: const EdgeInsets.all(18),
+              padding: const EdgeInsets.all(6),
               child: videoPath == null
                   ? SingleChildScrollView(
                       child: ConstrainedBox(
