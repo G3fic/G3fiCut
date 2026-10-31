@@ -952,17 +952,56 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
   Future<List<double>> _readWaveform(String path, {int buckets = 1800}) async {
     final bytes = await File(path).readAsBytes();
-    if (bytes.length < 44 || String.fromCharCodes(bytes.sublist(0, 4)) != 'RIFF') return const [];
-    final dataOffset = 12 + 8;
-    final channels = ByteData.sublistView(bytes).getUint16(22, Endian.little);
-    final bitsPerSample = ByteData.sublistView(bytes).getUint16(34, Endian.little);
-    final dataSize = ByteData.sublistView(bytes).getUint32(40, Endian.little);
-    if (bitsPerSample != 16 || channels < 1) return const [];
-    final sampleCount = math.min((bytes.length - dataOffset) ~/ 2, dataSize ~/ 2);
-    if (sampleCount <= 0) return const [];
-    final frames = sampleCount ~/ channels;
-    final count = math.min(buckets, frames);
+    if (bytes.length < 44 ||
+        String.fromCharCodes(bytes.sublist(0, 4)) != 'RIFF' ||
+        String.fromCharCodes(bytes.sublist(8, 12)) != 'WAVE') {
+      return const [];
+    }
+
     final data = ByteData.sublistView(bytes);
+    var channels = 0;
+    var bitsPerSample = 0;
+    var audioFormat = 0;
+    var dataOffset = -1;
+    var dataSize = 0;
+    var offset = 12;
+
+    // WAV files can contain optional chunks before audio data. Find the
+    // format and data chunks rather than assuming a fixed 44-byte header.
+    while (offset + 8 <= bytes.length) {
+      final chunkId = String.fromCharCodes(bytes.sublist(offset, offset + 4));
+      final chunkSize = data.getUint32(offset + 4, Endian.little);
+      final chunkStart = offset + 8;
+      final availableSize = math.max(
+        0,
+        math.min(chunkSize, bytes.length - chunkStart),
+      ).toInt();
+
+      if (chunkId == 'fmt ' && availableSize >= 16) {
+        audioFormat = data.getUint16(chunkStart, Endian.little);
+        channels = data.getUint16(chunkStart + 2, Endian.little);
+        bitsPerSample = data.getUint16(chunkStart + 14, Endian.little);
+      } else if (chunkId == 'data') {
+        dataOffset = chunkStart;
+        dataSize = availableSize;
+      }
+
+      if (dataOffset >= 0 && channels > 0 && bitsPerSample > 0) break;
+      final nextOffset = chunkStart + chunkSize + (chunkSize.isOdd ? 1 : 0);
+      if (nextOffset <= offset || nextOffset > bytes.length) break;
+      offset = nextOffset;
+    }
+
+    if (audioFormat != 1 || bitsPerSample != 16 || channels < 1 || dataOffset < 0) {
+      return const [];
+    }
+
+    final bytesPerSample = bitsPerSample ~/ 8;
+    final frameSize = channels * bytesPerSample;
+    final frames = dataSize ~/ frameSize;
+    if (frames <= 0) return const [];
+
+    final count = math.min(buckets, frames);
     final result = <double>[];
     for (var bucket = 0; bucket < count; bucket++) {
       final first = (bucket * frames / count).floor();
@@ -970,8 +1009,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       var peak = 0.0;
       for (var frame = first; frame < last; frame++) {
         for (var channel = 0; channel < channels; channel++) {
-          final index = dataOffset + (frame * channels + channel) * 2;
-          if (index + 1 >= bytes.length) break;
+          final index = dataOffset + frame * frameSize + channel * bytesPerSample;
+          if (index + 1 >= dataOffset + dataSize) break;
           final sample = data.getInt16(index, Endian.little).abs() / 32768.0;
           if (sample > peak) peak = sample;
         }
