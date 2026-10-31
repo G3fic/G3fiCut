@@ -4603,7 +4603,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               'crop=$outputWidth:$outputHeight,boxblur=26:12,'
               'eq=brightness=-0.30:saturation=0.82[backdrop]',
           '[fitSource]scale=$outputWidth:$outputHeight:force_original_aspect_ratio=decrease,'
-              'pad=$outputWidth:$outputHeight:(ow-iw)/2:(oh-ih)/2:color=0x00000000,'
+              'format=rgba,pad=$outputWidth:$outputHeight:(ow-iw)/2:(oh-ih)/2:color=black@0,'
               'setsar=1,$foregroundChain[foreground]',
           '[backdrop][foreground]overlay=(W-w)/2:(H-h)/2:shortest=1[base0]',
         ];
