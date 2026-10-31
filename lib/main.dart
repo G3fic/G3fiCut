@@ -4366,10 +4366,10 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     final filters = <String>[];
     if (filtersEnabled) {
       final gain = contrast;
-      final offset = brightness + (1 - gain) / 2;
-      filters.add(
-        'colorchannelmixer=rr=${gain.toStringAsFixed(3)}:gg=${gain.toStringAsFixed(3)}:bb=${gain.toStringAsFixed(3)}:ro=${offset.toStringAsFixed(3)}:go=${offset.toStringAsFixed(3)}:bo=${offset.toStringAsFixed(3)}',
-      );
+      final offset = brightness * 255;
+      final expression =
+          "clip((val-128)*${gain.toStringAsFixed(3)}+128+${offset.toStringAsFixed(2)},0,255)";
+      filters.add("lutrgb=r='$expression':g='$expression':b='$expression'");
       if ((saturation - 1).abs() > 0.001) {
         filters.add('hue=s=${saturation.toStringAsFixed(3)}');
       }
@@ -4609,7 +4609,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           '[0:v]split=2[fitSource][backdropSource]',
           '[backdropSource]scale=$outputWidth:$outputHeight:force_original_aspect_ratio=increase,'
               'crop=$outputWidth:$outputHeight,gblur=sigma=18,'
-              'colorchannelmixer=rr=0.62:gg=0.62:bb=0.62,hue=s=0.82[backdrop]',
+              "lutrgb=r='clip(val*0.62,0,255)':g='clip(val*0.62,0,255)':b='clip(val*0.62,0,255)',"
+              'hue=s=0.82[backdrop]',
           '[fitSource]$effectPrefix$foregroundTransforms[foreground]',
           '[backdrop][foreground]overlay=(W-w)/2:(H-h)/2:shortest=1[base0]',
         ];
