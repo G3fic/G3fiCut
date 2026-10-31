@@ -490,27 +490,27 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
       final assets = decoded['assets'];
       if (assets is! List) throw const FormatException('В релизе не найден список файлов.');
-      final installerAsset = findReleaseInstallerAsset(assets, latestVersion);
-      if (installerAsset == null) {
+      final archiveAsset = findReleaseAppArchiveAsset(assets, latestVersion);
+      if (archiveAsset == null) {
         throw StateError(
-          'В релизе $latestTag не найден установщик GifCut. '
-          'Проверены имена GifCut-Setup, G3fiCut-Setup и ClipForge-Setup.',
+          'В релизе $latestTag не найден архив приложения '
+          'GifCut-$latestVersion-win-x64.zip. Сначала опубликуйте ZIP-файл приложения.',
         );
       }
 
-      final rawUrl = installerAsset['browser_download_url'] as String?;
+      final rawUrl = archiveAsset['browser_download_url'] as String?;
       final downloadUri = rawUrl == null ? null : Uri.tryParse(rawUrl);
       if (downloadUri == null ||
           downloadUri.scheme != 'https' ||
           downloadUri.host != 'github.com' ||
           !(downloadUri.path.startsWith('/G3fic/G3fiCut/releases/download/') ||
             downloadUri.path.startsWith('/G3fic/GifCut/releases/download/'))) {
-        throw const FormatException('Ссылка на установщик не принадлежит официальным GitHub Releases GifCut.');
+        throw const FormatException('Ссылка на архив приложения не принадлежит официальным GitHub Releases GifCut.');
       }
 
-      final digest = installerAsset['digest'] as String?;
+      final digest = archiveAsset['digest'] as String?;
       if (digest == null || !digest.startsWith('sha256:')) {
-        throw StateError('GitHub не предоставил SHA-256 установщика. Обновление не будет запущено без проверки целостности.');
+        throw StateError('GitHub не предоставил SHA-256 архива приложения. Обновление отменено без проверки целостности.');
       }
       if (mounted) setStatus('Доступно обновление $latestVersion.');
       if (!mounted) return;
@@ -520,8 +520,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           title: const Text('Доступно обновление GifCut'),
           content: Text(
             'Установлена версия $appVersion. Доступна версия $latestVersion.\n\n'
-            'GifCut скачает установщик из GitHub, проверит файл и запустит установку. '
-            'Windows может запросить разрешение администратора.',
+            'GifCut скачает файлы обновления, проверит SHA-256 и заменит файлы приложения. '
+            'Программа автоматически закроется и запустится снова — окно Windows Setup открываться не будет. '
+            'Запрос администратора появится только при необходимости записи в защищённую папку Windows.',
           ),
           actions: [
             TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Позже')),
@@ -530,7 +531,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         ),
       );
       if (shouldUpdate == true && mounted) {
-        await _downloadAndRunInstaller(downloadUri, latestVersion, digest);
+        await _downloadAndApplyArchive(downloadUri, latestVersion, digest);
       }
     } catch (e) {
       if (mounted) {
@@ -542,54 +543,154 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _downloadAndRunInstaller(Uri uri, String version, String? expectedDigest) async {
+  Future<void> _downloadAndApplyArchive(
+    Uri uri,
+    String version,
+    String expectedDigest,
+  ) async {
+    if (!Platform.isWindows) {
+      setStatus('Автообновление файлов приложения поддерживается в Windows.');
+      return;
+    }
+
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 20)
       ..userAgent = 'GifCut/$appVersion';
-    File? installer;
+    Directory? tempDir;
+    File? archive;
     try {
-      if (mounted) setStatus('Скачиваю обновление v$version…');
-      final tempDir = await Directory.systemTemp.createTemp('g3ficut-update-');
-      installer = File(p.join(tempDir.path, 'G3fiCut-Setup-$version.exe'));
+      if (mounted) setStatus('Подготавливаю обновление GifCut $version…');
+      tempDir = await Directory.systemTemp.createTemp('gifcut-update-');
+      archive = File(p.join(tempDir.path, 'GifCut-$version-win-x64.zip'));
+
       final request = await client.getUrl(uri).timeout(const Duration(seconds: 25));
-      final response = await request.close().timeout(const Duration(seconds: 40));
+      final response = await request.close().timeout(const Duration(seconds: 60));
       if (response.statusCode != HttpStatus.ok) {
-        throw HttpException('Не удалось скачать установщик (HTTP ${response.statusCode}).');
-      }
-      await response.pipe(installer.openWrite()).timeout(const Duration(minutes: 10));
-      if (await installer.length() < 1024 * 1024) {
-        throw StateError('Скачанный установщик слишком мал или повреждён.');
+        throw HttpException('Не удалось скачать архив обновления (HTTP ${response.statusCode}).');
       }
 
-      if (expectedDigest != null && expectedDigest.startsWith('sha256:')) {
-        if (mounted) setStatus('Проверяю целостность обновления…');
-        final actual = await crypto.sha256.bind(installer.openRead()).first.timeout(const Duration(minutes: 2));
-        final expected = expectedDigest.substring('sha256:'.length).toLowerCase();
-        if (actual.toString().toLowerCase() != expected) {
-          throw StateError('Контрольная сумма установщика не совпала. Установка отменена.');
+      final sink = archive.openWrite();
+      var received = 0;
+      var nextProgressMark = 1024 * 1024;
+      try {
+        await for (final chunk in response) {
+          sink.add(chunk);
+          received += chunk.length;
+          if (received >= nextProgressMark) {
+            nextProgressMark = received + 1024 * 1024;
+            final total = response.contentLength;
+            final progress = total > 0
+                ? ' ${(received * 100 / total).clamp(0, 100).round()}%'
+                : '';
+            if (mounted) setStatus('Скачиваю обновление $version$progress…');
+          }
         }
+        await sink.flush();
+      } finally {
+        await sink.close();
       }
 
-      if (mounted) setStatus('Запускаю установщик v$version…');
+      if (await archive.length() < 1024 * 1024) {
+        throw StateError('Архив обновления слишком мал или повреждён.');
+      }
+
+      if (mounted) setStatus('Проверяю SHA-256 обновления…');
+      final actual = await crypto.sha256
+          .bind(archive.openRead())
+          .first
+          .timeout(const Duration(minutes: 3));
+      final expected = expectedDigest.substring('sha256:'.length).toLowerCase();
+      if (actual.toString().toLowerCase() != expected) {
+        throw StateError('Контрольная сумма архива не совпала. Установка отменена.');
+      }
+
+      final executablePath = Platform.resolvedExecutable;
+      final targetDirectory = p.dirname(executablePath);
+      final updaterScript = File(p.join(tempDir.path, 'apply-gifcut-update.ps1'));
+      const script = r'''
+param(
+  [int]$ProcessId,
+  [string]$ArchivePath,
+  [string]$TargetDirectory,
+  [string]$ExecutablePath
+)
+$ErrorActionPreference = 'Stop'
+
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = [Security.Principal.WindowsPrincipal]::new($identity)
+$isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+$canWrite = $false
+try {
+  $probe = Join-Path $TargetDirectory ('.gifcut-write-test-' + [guid]::NewGuid().ToString('N'))
+  [System.IO.File]::WriteAllText($probe, 'test')
+  Remove-Item -LiteralPath $probe -Force
+  $canWrite = $true
+} catch {
+  $canWrite = $false
+}
+
+if (-not $isAdmin -and -not $canWrite) {
+  $elevationArgs = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -ProcessId {1} -ArchivePath "{2}" -TargetDirectory "{3}" -ExecutablePath "{4}"' -f $PSCommandPath, $ProcessId, $ArchivePath, $TargetDirectory, $ExecutablePath
+  Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $elevationArgs
+  exit 0
+}
+
+Wait-Process -Id $ProcessId -ErrorAction SilentlyContinue
+$stage = Join-Path $env:TEMP ('GifCutStage-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $stage -Force | Out-Null
+try {
+  Expand-Archive -LiteralPath $ArchivePath -DestinationPath $stage -Force
+  Copy-Item -Path (Join-Path $stage '*') -Destination $TargetDirectory -Recurse -Force
+  Start-Process -FilePath $ExecutablePath -WorkingDirectory $TargetDirectory
+} catch {
+  try {
+    Add-Type -AssemblyName System.Windows.Forms
+    [System.Windows.Forms.MessageBox]::Show(
+      ('Не удалось применить обновление GifCut: ' + $_.Exception.Message),
+      'GifCut updater'
+    ) | Out-Null
+  } catch {
+    Write-Error $_
+  }
+  throw
+} finally {
+  Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $ArchivePath -Force -ErrorAction SilentlyContinue
+}
+''';
+      await updaterScript.writeAsString(script, flush: true);
+
+      if (mounted) {
+        setStatus('Обновляю файлы GifCut $version. Приложение сейчас перезапустится…');
+      }
       await Process.start(
-        installer.path,
-        ['/SILENT', '/CLOSEAPPLICATIONS', '/NORESTART'],
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          updaterScript.path,
+          '-ProcessId',
+          pid.toString(),
+          '-ArchivePath',
+          archive.path,
+          '-TargetDirectory',
+          targetDirectory,
+          '-ExecutablePath',
+          executablePath,
+        ],
         mode: ProcessStartMode.detached,
       );
+
       final activePlayer = player;
       if (activePlayer != null) await activePlayer.dispose();
       exit(0);
     } catch (e) {
       if (mounted) {
-        setStatus('Не удалось установить обновление: ${e.toString().replaceFirst('Bad state: ', '')}');
+        setStatus('Не удалось применить обновление: ${e.toString().replaceFirst('Bad state: ', '')}');
       }
-      if (installer != null) {
-        try {
-          if (await installer.exists()) await installer.delete();
-        } catch (_) {
-          // Keep the original installer error as the visible status.
-        }
-      }
+      rethrow;
     } finally {
       client.close(force: true);
     }
