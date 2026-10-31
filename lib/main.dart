@@ -2927,6 +2927,11 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     );
   }
 
+  Color _overlayColor(String hex) {
+    final value = int.tryParse(hex.replaceFirst('#', ''), radix: 16) ?? 0xFFFFFF;
+    return Color(0xFF000000 | value);
+  }
+
   Widget _buildPreviewBackdrop() => ClipRect(
         child: ImageFiltered(
           imageFilter: ui.ImageFilter.blur(sigmaX: 26, sigmaY: 26),
@@ -3212,6 +3217,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                       ),
                                     ),
                                     for (var i = 0; i < photoOverlays.length; i++)
+                                      if (playheadSeconds >= photoOverlays[i].start &&
+                                          playheadSeconds < photoOverlays[i].end)
                                       Positioned(
                                         left: bounds.maxWidth / 2 + photoOverlays[i].x * bounds.maxWidth - shortSide * .18 * photoOverlays[i].scale,
                                         top: bounds.maxHeight / 2 + photoOverlays[i].y * bounds.maxHeight - shortSide * .18 * photoOverlays[i].scale,
@@ -3344,6 +3351,60 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                           ),
                                         ),
                                       ),
+                                    for (var i = 0; i < textOverlays.length; i++)
+                                      if (playheadSeconds >= textOverlays[i].start &&
+                                          playheadSeconds < textOverlays[i].end)
+                                        Positioned(
+                                          left: bounds.maxWidth * 0.1 + textOverlays[i].x * bounds.maxWidth,
+                                          top: bounds.maxHeight * 0.5 + textOverlays[i].y * bounds.maxHeight,
+                                          width: bounds.maxWidth * 0.8,
+                                          child: GestureDetector(
+                                            key: ValueKey('text-overlay-canvas-$i'),
+                                            onTap: () => setState(() {
+                                              selectedTextOverlay = i;
+                                              selectedPhotoOverlay = -1;
+                                              selectedAudioClip = false;
+                                              selectedEffectClipIndex = -1;
+                                              selectedTransitionIndex = -1;
+                                              inspectorTab = 'text';
+                                              _selectedCanvasObject = 'text';
+                                            }),
+                                            onPanStart: (_) => setState(() {
+                                              selectedTextOverlay = i;
+                                              selectedPhotoOverlay = -1;
+                                              selectedAudioClip = false;
+                                              inspectorTab = 'text';
+                                              _selectedCanvasObject = 'text';
+                                            }),
+                                            onPanUpdate: (details) => setState(() {
+                                              textOverlays[i]
+                                                ..x += details.delta.dx / math.max(1, bounds.maxWidth)
+                                                ..y += details.delta.dy / math.max(1, bounds.maxHeight);
+                                              projectDirty = true;
+                                            }),
+                                            child: Opacity(
+                                              opacity: textOverlays[i].opacity,
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                                decoration: BoxDecoration(
+                                                  border: selectedTextOverlay == i
+                                                      ? Border.all(color: accent, width: 1.5)
+                                                      : null,
+                                                ),
+                                                child: Text(
+                                                  textOverlays[i].text,
+                                                  textAlign: TextAlign.center,
+                                                  style: TextStyle(
+                                                    color: _overlayColor(textOverlays[i].color),
+                                                    fontSize: (textOverlays[i].fontSize * bounds.maxHeight / 1080).clamp(10.0, 80.0),
+                                                    fontWeight: textOverlays[i].bold ? FontWeight.w800 : FontWeight.w400,
+                                                    shadows: const [Shadow(color: Colors.black87, blurRadius: 5, offset: Offset(1, 2))],
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                     if (previewTransitionOverlay.opacity > 0)
                                       Positioned.fill(child: IgnorePointer(child: ColoredBox(color: previewTransitionOverlay.color.withValues(alpha: previewTransitionOverlay.opacity)))),
                                     if (_playheadInGap)
