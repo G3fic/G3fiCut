@@ -908,16 +908,22 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
   Future<void> _handleMediaDrop(PerformDropEvent event) async {
     final paths = <String>[];
+    final reads = <Future<void>>[];
     for (final item in event.session.items) {
       final reader = item.dataReader;
       if (reader == null || !reader.canProvide(Formats.fileUri)) continue;
-      try {
-        final uri = await reader.readValue(Formats.fileUri);
-        if (uri != null && uri.scheme == 'file') paths.add(uri.toFilePath());
-      } catch (_) {
-        // Ignore non-file URL payloads; supported files are still imported.
-      }
+      final completer = Completer<void>();
+      reads.add(completer.future);
+      reader.getValue<Uri>(
+        Formats.fileUri,
+        (uri) {
+          if (uri != null && uri.scheme == 'file') paths.add(uri.toFilePath());
+          completer.complete();
+        },
+        onError: (_) => completer.complete(),
+      );
     }
+    await Future.wait(reads);
     if (mounted) setState(() => _isLibraryDragOver = false);
     await _importMediaPaths(paths);
   }
