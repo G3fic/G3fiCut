@@ -2879,6 +2879,195 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
   double get playheadSeconds =>
       (position.inMilliseconds / 1000).clamp(0.0, timelineSeconds).toDouble();
+  Future<void> addTimelineEffect() async {
+    if (videoClips.isEmpty || busy) {
+      setStatus('Сначала добавьте видео на таймлайн.');
+      return;
+    }
+    final type = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: const Text('Добавить эффект на таймлайн'),
+        children: [
+          for (final value in _timelineEffectTypes)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(dialogContext).pop(value),
+              child: Text(value),
+            ),
+        ],
+      ),
+    );
+    if (!mounted || type == null) return;
+    final start = playheadSeconds.clamp(0.0, math.max(0.0, timelineSeconds - 0.25)).toDouble();
+    final end = math.min(timelineSeconds, start + 2.0).toDouble();
+    _performTimelineEdit(() {
+      effectClips.add(TimelineEffectClip(type: type, start: start, end: end));
+      selectedEffectClipIndex = effectClips.length - 1;
+      selectedTransitionIndex = -1;
+      status = 'Эффект «$type» добавлен на дорожку эффектов.';
+    });
+  }
+
+  Future<void> addTimelineTransition() async {
+    if (videoClips.length < 2 || busy) {
+      setStatus('Для перехода нужны два видеоклипа на таймлайне.');
+      return;
+    }
+    final clips = List<TimelineClip>.of(videoClips)..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
+    final joins = <({double at, TimelineClip left, TimelineClip right})>[];
+    for (var i = 1; i < clips.length; i++) {
+      final previous = clips[i - 1];
+      final next = clips[i];
+      if ((previous.timelineEnd - next.timelineStart).abs() <= 0.025) {
+        joins.add((at: next.timelineStart, left: previous, right: next));
+      }
+    }
+    if (joins.isEmpty) {
+      setStatus('Переход можно поставить только на стык двух клипов без разрыва.');
+      return;
+    }
+    joins.sort((a, b) => (a.at - playheadSeconds).abs().compareTo((b.at - playheadSeconds).abs()));
+    final join = joins.first;
+    final type = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: Text('Переход на ${time(Duration(milliseconds: (join.at * 1000).round()))}'),
+        children: [
+          for (final value in _timelineTransitionTypes)
+            SimpleDialogOption(onPressed: () => Navigator.of(dialogContext).pop(value), child: Text(value)),
+        ],
+      ),
+    );
+    if (!mounted || type == null) return;
+    final limit = math.min(join.left.length / 2, join.right.length / 2);
+    final length = math.min(0.6, limit).clamp(0.1, 0.6).toDouble();
+    _performTimelineEdit(() {
+      final existing = timelineTransitions.indexWhere((item) => (item.at - join.at).abs() <= 0.025);
+      final transition = TimelineTransition(type: type, at: join.at, duration: length);
+      if (existing >= 0) {
+        timelineTransitions[existing] = transition;
+        selectedTransitionIndex = existing;
+      } else {
+        timelineTransitions.add(transition);
+        selectedTransitionIndex = timelineTransitions.length - 1;
+      }
+      selectedEffectClipIndex = -1;
+      status = 'Переход «$type» добавлен между видеоклипами.';
+    });
+  }
+
+  double _maxTransitionDurationAt(double at) {
+    final ordered = List<TimelineClip>.of(videoClips)..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
+    for (var i = 1; i < ordered.length; i++) {
+      final left = ordered[i - 1];
+      final right = ordered[i];
+      if ((left.timelineEnd - at).abs() <= 0.025 && (right.timelineStart - at).abs() <= 0.025) {
+        return math.min(5.0, math.min(left.length / 2, right.length / 2)).toDouble();
+      }
+    }
+    return 0.1;
+  }
+
+  Future<void> showEffectClipMenu(Offset position, int index) async {
+    if (index < 0 || index >= effectClips.length) return;
+    setState(() { selectedEffectClipIndex = index; selectedTransitionIndex = -1; });
+    final action = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx + 1, position.dy + 1),
+      items: const [
+        PopupMenuItem(value: 'longer', child: Text('Увеличить на 1 секунду')),
+        PopupMenuItem(value: 'shorter', child: Text('Уменьшить на 1 секунду')),
+        PopupMenuDivider(),
+        PopupMenuItem(value: 'delete', child: Text('Удалить эффект')),
+      ],
+    );
+    if (!mounted || action == null || index >= effectClips.length) return;
+    _performTimelineEdit(() {
+      final effect = effectClips[index];
+      if (action == 'delete') {
+        effectClips.removeAt(index);
+        selectedEffectClipIndex = -1;
+        status = 'Эффект удалён с таймлайна.';
+      } else if (action == 'longer') {
+        effect.end = math.min(timelineSeconds, effect.end + 1).toDouble();
+        status = 'Длительность эффекта увеличена.';
+      } else {
+        effect.end = math.max(effect.start + 0.25, effect.end - 1).toDouble();
+        status = 'Длительность эффекта уменьшена.';
+      }
+    });
+  }
+
+  Future<void> showTimelineTransitionMenu(Offset position, int index) async {
+    if (index < 0 || index >= timelineTransitions.length) return;
+    setState(() { selectedTransitionIndex = index; selectedEffectClipIndex = -1; });
+    final action = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx + 1, position.dy + 1),
+      items: const [
+        PopupMenuItem(value: 'change', child: Text('Изменить переход')),
+        PopupMenuItem(value: 'shorter', child: Text('Короче')),
+        PopupMenuItem(value: 'longer', child: Text('Длиннее')),
+        PopupMenuDivider(),
+        PopupMenuItem(value: 'delete', child: Text('Удалить переход')),
+      ],
+    );
+    if (!mounted || action == null || index >= timelineTransitions.length) return;
+    if (action == 'change') {
+      final type = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => SimpleDialog(
+          title: const Text('Тип перехода'),
+          children: [
+            for (final value in _timelineTransitionTypes)
+              SimpleDialogOption(onPressed: () => Navigator.of(dialogContext).pop(value), child: Text(value)),
+          ],
+        ),
+      );
+      if (!mounted || type == null) return;
+      _performTimelineEdit(() { timelineTransitions[index].type = type; status = 'Тип перехода изменён на «$type».'; });
+      return;
+    }
+    _performTimelineEdit(() {
+      if (action == 'delete') {
+        timelineTransitions.removeAt(index);
+        selectedTransitionIndex = -1;
+        status = 'Переход удалён.';
+      } else {
+        final transition = timelineTransitions[index];
+        final maxDuration = _maxTransitionDurationAt(transition.at);
+        transition.duration = action == 'longer'
+            ? math.min(maxDuration, transition.duration + 0.1).toDouble()
+            : math.max(0.1, transition.duration - 0.1).toDouble();
+        status = 'Длительность перехода изменена.';
+      }
+    });
+  }
+
+  void _startEffectClipMove(int index) {
+    if (index < 0 || index >= effectClips.length) return;
+    _effectClipMoveBefore = _captureTimelineSnapshot();
+    _effectClipMoveIndex = index;
+    _effectClipMoveStart = effectClips[index].start;
+    _effectClipMovePointerX = 0;
+    setState(() { selectedEffectClipIndex = index; selectedTransitionIndex = -1; });
+  }
+
+  void _updateEffectClipMove(DragUpdateDetails details) {
+    if (_effectClipMoveIndex < 0 || _effectClipMoveIndex >= effectClips.length) return;
+    _effectClipMovePointerX += details.delta.dx;
+    final effect = effectClips[_effectClipMoveIndex];
+    final length = effect.duration;
+    final nextStart = math.max(0.0, _effectClipMoveStart + _effectClipMovePointerX / zoom).toDouble();
+    setState(() { effect.start = nextStart; effect.end = nextStart + length; projectDirty = true; });
+  }
+
+  void _finishEffectClipMove() {
+    final before = _effectClipMoveBefore;
+    if (before != null) _timelineHistory.record(before: before, after: _captureTimelineSnapshot());
+    _effectClipMoveBefore = null;
+    _effectClipMoveIndex = -1;
+  }
 
   int _nearestClipIndexToPlayhead() {
     final active = _clipIndexAtTimelineTime(playheadSeconds);
