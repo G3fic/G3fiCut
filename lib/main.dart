@@ -249,15 +249,6 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   static const _timelineEffectTypes = ProjectEffectClip.supportedTypes;
   static const _timelineTransitionTypes = ProjectTransition.supportedTypes;
 
-  double get previewAspectRatio => const {
-    '16:9': 16 / 9,
-    '9:16': 9 / 16,
-    '1:1': 1.0,
-    '4:3': 4 / 3,
-    '4:5': 4 / 5,
-    '3:2': 3 / 2,
-  }[aspectRatioPreset] ?? 16 / 9;
-
   String get _exportEffectFilter => const {
     'Оригинал': 'null',
     'Чёрно-белый': 'hue=s=0',
