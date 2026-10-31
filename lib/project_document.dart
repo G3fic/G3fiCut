@@ -96,6 +96,37 @@ class ProjectTransition {
   int get hashCode => Object.hash(type, at, duration);
 }
 
+/// A timed, editable text layer stored in sequence time.
+class ProjectTextOverlay {
+  const ProjectTextOverlay({
+    required this.text,
+    required this.start,
+    required this.end,
+    this.fontSize = 42,
+    this.x = 0,
+    this.y = 0,
+    this.colorValue = 0xFFFFFFFF,
+  });
+
+  final String text;
+  final double start;
+  final double end;
+  final double fontSize;
+  final double x;
+  final double y;
+  final int colorValue;
+
+  Map<String, Object> toJson() => <String, Object>{
+        'text': text,
+        'start': start,
+        'end': end,
+        'fontSize': fontSize,
+        'x': x,
+        'y': y,
+        'colorValue': colorValue,
+      };
+}
+
 /// Versioned, validated representation of a GifCut editing project.
 ///
 /// Media paths are deliberately persisted as local absolute paths for schema
@@ -117,14 +148,18 @@ class ProjectDocument {
     required this.playheadMs,
     List<ProjectEffectClip> effectClips = const [],
     List<ProjectTransition> transitions = const [],
+    List<ProjectTextOverlay> textOverlays = const [],
+    List<String> mediaLibraryPaths = const [],
   })  : videoClips = List<ProjectClipRange>.unmodifiable(videoClips),
         effectClips = List<ProjectEffectClip>.unmodifiable(effectClips),
-        transitions = List<ProjectTransition>.unmodifiable(transitions) {
+        transitions = List<ProjectTransition>.unmodifiable(transitions),
+        textOverlays = List<ProjectTextOverlay>.unmodifiable(textOverlays),
+        mediaLibraryPaths = List<String>.unmodifiable(mediaLibraryPaths) {
     _validate();
   }
 
   static const formatId = 'g3ficut-project';
-  static const currentSchemaVersion = 3;
+  static const currentSchemaVersion = 4;
 
   final String format;
   final int schemaVersion;
@@ -141,12 +176,14 @@ class ProjectDocument {
   final int playheadMs;
   final List<ProjectEffectClip> effectClips;
   final List<ProjectTransition> transitions;
+  final List<ProjectTextOverlay> textOverlays;
+  final List<String> mediaLibraryPaths;
 
   void _validate() {
     if (format != formatId) {
       throw const FormatException('Неподдерживаемый формат файла проекта.');
     }
-    if (schemaVersion != 1 && schemaVersion != 2 && schemaVersion != currentSchemaVersion) {
+    if (schemaVersion < 1 || schemaVersion > currentSchemaVersion) {
       throw FormatException('Версия формата проекта $schemaVersion не поддерживается.');
     }
     if (appVersion.trim().isEmpty) {
@@ -199,6 +236,32 @@ class ProjectDocument {
         throw FormatException('Некорректный эффект на таймлайне ${i + 1}.');
       }
     }
+    for (var i = 0; i < textOverlays.length; i++) {
+      final overlay = textOverlays[i];
+      if (overlay.text.trim().isEmpty ||
+          overlay.text.length > 2000 ||
+          !_isFinite(overlay.start) ||
+          !_isFinite(overlay.end) ||
+          !_isFinite(overlay.fontSize) ||
+          !_isFinite(overlay.x) ||
+          !_isFinite(overlay.y) ||
+          overlay.start < 0 ||
+          overlay.end <= overlay.start ||
+          overlay.fontSize < 8 ||
+          overlay.fontSize > 240 ||
+          overlay.x < -1 ||
+          overlay.x > 1 ||
+          overlay.y < -1 ||
+          overlay.y > 1) {
+        throw FormatException('Некорректный текстовый слой ${i + 1}.');
+      }
+    }
+    for (var i = 0; i < mediaLibraryPaths.length; i++) {
+      if (mediaLibraryPaths[i].trim().isEmpty) {
+        throw FormatException('Путь к медиафайлу ${i + 1} не может быть пустым.');
+      }
+    }
+
     for (var i = 0; i < transitions.length; i++) {
       final transition = transitions[i];
       if (!ProjectTransition.supportedTypes.contains(transition.type) ||
@@ -265,6 +328,8 @@ class ProjectDocument {
         'playheadMs': playheadMs,
         'effectClips': effectClips.map((effect) => effect.toJson()).toList(),
         'transitions': transitions.map((transition) => transition.toJson()).toList(),
+        'textOverlays': textOverlays.map((overlay) => overlay.toJson()).toList(),
+        'mediaLibraryPaths': mediaLibraryPaths,
       };
 
   String encode() => const JsonEncoder.withIndent('  ').convert(toJson());
@@ -329,6 +394,37 @@ class ProjectDocument {
         }).toList();
       }
 
+      List<ProjectTextOverlay> readTextOverlays() {
+        final raw = json['textOverlays'] ?? const [];
+        if (raw is! List) throw const FormatException('Поле textOverlays должно быть массивом.');
+        return raw.asMap().entries.map((entry) {
+          final value = entry.value;
+          if (value is! Map) throw FormatException('Текстовый слой ${entry.key + 1} должен быть объектом.');
+          final map = <String, dynamic>{};
+          for (final field in value.entries) {
+            if (field.key is! String) throw const FormatException('Некорректные поля текстового слоя.');
+            map[field.key as String] = field.value;
+          }
+          return ProjectTextOverlay(
+            text: _readString(map, 'text'),
+            start: _readDouble(map, 'start'),
+            end: _readDouble(map, 'end'),
+            fontSize: map.containsKey('fontSize') ? _readDouble(map, 'fontSize') : 42,
+            x: map.containsKey('x') ? _readDouble(map, 'x') : 0,
+            y: map.containsKey('y') ? _readDouble(map, 'y') : 0,
+            colorValue: map.containsKey('colorValue') ? _readInt(map, 'colorValue') : 0xFFFFFFFF,
+          );
+        }).toList();
+      }
+
+      List<String> readMediaLibraryPaths() {
+        final raw = json['mediaLibraryPaths'] ?? const [];
+        if (raw is! List || raw.any((value) => value is! String)) {
+          throw const FormatException('Поле mediaLibraryPaths должно быть массивом путей.');
+        }
+        return raw.cast<String>();
+      }
+
       List<ProjectTransition> readTransitions() {
         final raw = json['transitions'] ?? const [];
         if (raw is! List) throw const FormatException('Поле transitions должно быть массивом.');
@@ -369,6 +465,8 @@ class ProjectDocument {
         playheadMs: _readInt(json, 'playheadMs'),
         effectClips: readEffects(),
         transitions: readTransitions(),
+        textOverlays: readTextOverlays(),
+        mediaLibraryPaths: readMediaLibraryPaths(),
       );
     } on FormatException {
       rethrow;
