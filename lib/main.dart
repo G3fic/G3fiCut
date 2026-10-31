@@ -21,6 +21,8 @@ import 'timeline_editing.dart';
 import 'project_document.dart';
 import 'canvas_snapping.dart';
 import 'release_assets.dart';
+import 'editor_geometry.dart';
+import 'transition_presets.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -171,7 +173,7 @@ class ExportTimelineSegment {
 }
 
 class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.74');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.75');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -269,37 +271,147 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     'Мягкое размытие': <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0],
   }[videoEffect] ?? const <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0];
 
-  ({Color color, double opacity}) get previewTransitionOverlay {
+  double get _previewAspectRatio => aspectRatioForPreset(aspectRatioPreset);
+
+  ({String type, double progress})? get activePreviewTransition {
     final seconds = position.inMilliseconds / 1000;
-    var opacity = 0.0;
-    var color = Colors.black;
+    ({String type, double progress})? active;
     for (final transition in timelineTransitions) {
-      final half = transition.duration / 2;
-      final progress = 1 - (seconds - transition.at).abs() / math.max(0.05, half);
-      if (progress <= 0) continue;
-      if (transition.type == 'Белая вспышка') color = Colors.white;
-      if (transition.type == 'Затемнение' || transition.type == 'Растворение') color = Colors.black;
-      if (transition.type == 'Белая вспышка' ||
-          transition.type == 'Затемнение' ||
-          transition.type == 'Растворение') {
-        opacity = math.max(opacity, progress.clamp(0.0, 1.0)).toDouble();
+      final half = math.max(0.05, transition.duration / 2);
+      final progress = (1 - (seconds - transition.at).abs() / half)
+          .clamp(0.0, 1.0)
+          .toDouble();
+      if (progress > 0 && (active == null || progress > active.progress)) {
+        active = (type: transition.type, progress: progress);
       }
     }
-    // Keep the legacy inspector transition as a fallback for projects that
-    // use the global transition setting but have no per-cut transition clips.
-    if (timelineTransitions.isEmpty && transitionEffect != 'Нет' && videoClips.length > 1) {
+
+    // Preserve the legacy global transition option for old projects.
+    if (active == null &&
+        timelineTransitions.isEmpty &&
+        transitionEffect != 'Нет' &&
+        videoClips.length > 1) {
       for (var i = 0; i < videoClips.length; i++) {
         final clip = videoClips[i];
-        if (i > 0 && seconds >= clip.timelineStart && seconds < clip.timelineStart + transitionDuration) {
-          opacity = math.max(opacity, 1 - (seconds - clip.timelineStart) / transitionDuration).toDouble();
+        double progress = 0;
+        if (i > 0 &&
+            seconds >= clip.timelineStart &&
+            seconds < clip.timelineStart + transitionDuration) {
+          progress = 1 -
+              (seconds - clip.timelineStart) / transitionDuration;
         }
-        if (i < videoClips.length - 1 && seconds > clip.timelineEnd - transitionDuration && seconds <= clip.timelineEnd) {
-          opacity = math.max(opacity, (seconds - (clip.timelineEnd - transitionDuration)) / transitionDuration).toDouble();
+        if (i < videoClips.length - 1 &&
+            seconds > clip.timelineEnd - transitionDuration &&
+            seconds <= clip.timelineEnd) {
+          progress = (seconds -
+                  (clip.timelineEnd - transitionDuration)) /
+              transitionDuration;
+        }
+        if (progress > 0 && (active == null || progress > active.progress)) {
+          active = (
+            type: transitionEffect,
+            progress: progress.clamp(0.0, 1.0).toDouble(),
+          );
         }
       }
-      color = transitionEffect == 'Белая вспышка' ? Colors.white : Colors.black;
     }
-    return (color: color, opacity: opacity.clamp(0.0, 1.0).toDouble());
+    return active;
+  }
+
+  Widget _buildTransitionPreviewOverlay(
+    ({String type, double progress}) transition,
+  ) {
+    final progress = transition.progress.clamp(0.0, 1.0).toDouble();
+    final peak = math.sin(math.pi * progress).clamp(0.0, 1.0).toDouble();
+    final type = transition.type;
+
+    if (type == 'Смахивание влево' ||
+        type == 'Покрытие слева' ||
+        type == 'Открытие справа') {
+      final align = type == 'Смахивание влево' || type == 'Покрытие слева'
+          ? Alignment.centerLeft
+          : Alignment.centerRight;
+      return Align(
+        alignment: align,
+        child: FractionallySizedBox(
+          widthFactor: progress,
+          heightFactor: 1,
+          child: ColoredBox(
+            color: Colors.white.withValues(alpha: 0.72 * peak),
+          ),
+        ),
+      );
+    }
+    if (type == 'Смахивание вправо' ||
+        type == 'Скольжение вправо') {
+      return Align(
+        alignment: Alignment.centerRight,
+        child: FractionallySizedBox(
+          widthFactor: progress,
+          heightFactor: 1,
+          child: ColoredBox(
+            color: Colors.white.withValues(alpha: 0.72 * peak),
+          ),
+        ),
+      );
+    }
+    if (type == 'Смахивание вверх') {
+      return Align(
+        alignment: Alignment.topCenter,
+        child: FractionallySizedBox(
+          widthFactor: 1,
+          heightFactor: progress,
+          child: ColoredBox(
+            color: Colors.white.withValues(alpha: 0.72 * peak),
+          ),
+        ),
+      );
+    }
+    if (type == 'Смахивание вниз') {
+      return Align(
+        alignment: Alignment.bottomCenter,
+        child: FractionallySizedBox(
+          widthFactor: 1,
+          heightFactor: progress,
+          child: ColoredBox(
+            color: Colors.white.withValues(alpha: 0.72 * peak),
+          ),
+        ),
+      );
+    }
+    if (type == 'Круговое открытие') {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final diameter = math.max(
+            constraints.maxWidth,
+            constraints.maxHeight,
+          ) * progress;
+          return Center(
+            child: SizedBox(
+              width: diameter,
+              height: diameter,
+              child: ClipOval(
+                child: ColoredBox(
+                  color: Colors.white.withValues(alpha: 0.65 * peak),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    }
+
+    final color = type == 'Белая вспышка'
+        ? Colors.white
+        : type == 'Затемнение'
+            ? Colors.black
+            : const Color(0xFFE4E0EF);
+    final opacity = type == 'Белая вспышка'
+        ? 0.92 * peak
+        : type == 'Затемнение'
+            ? 0.86 * peak
+            : 0.48 * peak;
+    return ColoredBox(color: color.withValues(alpha: opacity));
   }
   String inspectorTab = 'video';
   String mediaPanelTab = 'media';
@@ -1369,11 +1481,25 @@ try {
       _activePlaybackClipIndex = index;
     }
     final clip = videoClips[index];
-    if (sourceSeconds >= clip.end - 0.045) {
+    if (sourceSeconds >= clip.end - 0.005) {
       if (playing && index + 1 < videoClips.length) {
         final next = videoClips[index + 1];
         if (next.timelineStart > clip.timelineEnd + 0.001) {
           _startGapPlayback(startSeconds: clip.timelineEnd, nextClipIndex: index + 1);
+          return;
+        }
+        if (TimelineEditing.canContinuePlaybackWithoutSeek(
+          currentSourceEnd: clip.end,
+          nextSourceStart: next.start,
+          currentTimelineEnd: clip.timelineEnd,
+          nextTimelineStart: next.timelineStart,
+        )) {
+          // A split creates two adjacent ranges over the same source frames.
+          // Keep media_kit decoding and audio playback uninterrupted.
+          _activePlaybackClipIndex = index + 1;
+          setState(() => position = Duration(
+                milliseconds: (next.timelineStart * 1000).round(),
+              ));
           return;
         }
         _activePlaybackClipIndex = index + 1;
@@ -1794,19 +1920,19 @@ try {
                   children: [
                     toolRail(),
                     const VerticalDivider(width: 1),
-                    SizedBox(width: _mediaPanelWidth, child: mediaPanel()),
-                    _verticalPanelSplitter('media-panel-splitter', (dx) {
-                      final screenWidth = MediaQuery.sizeOf(context).width;
-                      final maxWidth = (screenWidth - 64 - 1 - 14 - _inspectorPanelWidth - 220).clamp(150.0, 420.0).toDouble();
-                      _mediaPanelWidth = (_mediaPanelWidth + dx).clamp(150.0, maxWidth).toDouble();
-                    }),
-                    Expanded(child: previewPanel()),
+                    SizedBox(width: _inspectorPanelWidth, child: inspectorPanel()),
                     _verticalPanelSplitter('inspector-panel-splitter', (dx) {
                       final screenWidth = MediaQuery.sizeOf(context).width;
                       final maxWidth = (screenWidth - 64 - 1 - 14 - _mediaPanelWidth - 220).clamp(190.0, 440.0).toDouble();
-                      _inspectorPanelWidth = (_inspectorPanelWidth - dx).clamp(190.0, maxWidth).toDouble();
+                      _inspectorPanelWidth = (_inspectorPanelWidth + dx).clamp(190.0, maxWidth).toDouble();
                     }),
-                    SizedBox(width: _inspectorPanelWidth, child: inspectorPanel()),
+                    Expanded(child: previewPanel()),
+                    _verticalPanelSplitter('media-panel-splitter', (dx) {
+                      final screenWidth = MediaQuery.sizeOf(context).width;
+                      final maxWidth = (screenWidth - 64 - 1 - 14 - _inspectorPanelWidth - 220).clamp(150.0, 420.0).toDouble();
+                      _mediaPanelWidth = (_mediaPanelWidth - dx).clamp(150.0, maxWidth).toDouble();
+                    }),
+                    SizedBox(width: _mediaPanelWidth, child: mediaPanel()),
                   ],
                 ),
               ),
@@ -1917,38 +2043,75 @@ try {
             child: SingleChildScrollView(
               child: mediaPanelTab == 'media'
                   ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      SizedBox(
-                        width: double.infinity,
-                        child: LayoutBuilder(builder: (context, constraints) {
-                          final compact = constraints.maxWidth < 170;
-                          return Tooltip(
-                            message: 'Импортировать видео',
-                            child: OutlinedButton.icon(
-                              onPressed: busy ? null : pickVideo,
-                              icon: const Icon(Icons.video_call_outlined, size: 17),
-                              label: Text(
-                                compact ? 'Импорт' : 'Импортировать видео',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                      LayoutBuilder(builder: (context, constraints) {
+                        final compact = constraints.maxWidth < 230;
+                        return Row(children: [
+                          Expanded(
+                            child: Tooltip(
+                              message: 'Импортировать видео',
+                              child: OutlinedButton.icon(
+                                onPressed: busy ? null : pickVideo,
+                                icon: const Icon(Icons.video_call_outlined, size: 16),
+                                label: Text(
+                                  compact ? 'Видео' : 'Добавить видео',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                             ),
-                          );
-                        }),
-                      ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Tooltip(
+                              message: 'Добавить фото',
+                              child: OutlinedButton.icon(
+                                onPressed: busy ? null : importPhotoOverlay,
+                                icon: const Icon(Icons.add_photo_alternate_outlined, size: 16),
+                                label: Text(
+                                  compact ? 'Фото' : 'Добавить фото',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ]);
+                      }),
                       const SizedBox(height: 8),
                       InkWell(
                         onTap: busy ? null : pickVideo,
                         borderRadius: BorderRadius.circular(10),
                         child: Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10),
+                          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
                           decoration: BoxDecoration(color: const Color(0xFF202630), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFF333542))),
                           child: const Column(children: [
-                            Icon(Icons.video_call_outlined, color: accent, size: 30),
-                            SizedBox(height: 8),
+                            Icon(Icons.video_call_outlined, color: accent, size: 28),
+                            SizedBox(height: 7),
                             Text('Добавить видео', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                             SizedBox(height: 4),
                             Text('MP4 · MOV · MKV и другие', style: TextStyle(fontSize: 10, color: muted), textAlign: TextAlign.center),
+                          ]),
+                        ),
+                      ),
+                      const SizedBox(height: 7),
+                      InkWell(
+                        onTap: busy ? null : importPhotoOverlay,
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF24202F),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFF51416D)),
+                          ),
+                          child: const Column(children: [
+                            Icon(Icons.add_photo_alternate_outlined, color: Color(0xFFB18CFF), size: 27),
+                            SizedBox(height: 6),
+                            Text('Добавить фото', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                            SizedBox(height: 3),
+                            Text('PNG · JPG · WEBP и другие', style: TextStyle(fontSize: 10, color: muted), textAlign: TextAlign.center),
                           ]),
                         ),
                       ),
@@ -2308,13 +2471,8 @@ try {
     'Высокий контраст': 'eq=contrast=1.65:saturation=1.15',
   }[type] ?? 'null';
 
-  String _transitionFilterName(String type) => const {
-    'Затемнение': 'fadeblack',
-    'Белая вспышка': 'fadewhite',
-    'Растворение': 'dissolve',
-    'Смахивание влево': 'wipeleft',
-    'Смахивание вправо': 'wiperight',
-  }[type] ?? 'fadeblack';
+  String _transitionFilterName(String type) =>
+      transitionFilterName(type);
 
   Widget previewPanel() => Container(
         color: const Color(0xFF101217),
@@ -2334,7 +2492,7 @@ try {
           Expanded(
             child: Container(
               width: double.infinity,
-              color: const Color(0xFF080A0E),
+              color: const Color(0xFF292C34),
               alignment: Alignment.center,
               padding: const EdgeInsets.all(18),
               child: videoPath == null
@@ -2359,8 +2517,10 @@ try {
                           Text('Можно продолжить извлечение аудио.', style: TextStyle(color: Color(0xFF8A8D9D), fontSize: 11)),
                         ])
                       : Center(
-                          child: SizedBox.expand(
-                            child: LayoutBuilder(builder: (context, bounds) {
+                          child: AspectRatio(
+                            aspectRatio: _previewAspectRatio,
+                            child: SizedBox.expand(
+                              child: LayoutBuilder(builder: (context, bounds) {
                               final shortSide = math.min(bounds.maxWidth, bounds.maxHeight);
                               return ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
@@ -2594,14 +2754,19 @@ try {
                                           ),
                                         ),
                                       ),
-                                    if (previewTransitionOverlay.opacity > 0)
-                                      Positioned.fill(child: IgnorePointer(child: ColoredBox(color: previewTransitionOverlay.color.withValues(alpha: previewTransitionOverlay.opacity)))),
+                                    if (activePreviewTransition != null)
+                                      Positioned.fill(
+                                        child: IgnorePointer(
+                                          child: _buildTransitionPreviewOverlay(activePreviewTransition!),
+                                        ),
+                                      ),
                                     if (_playheadInGap)
                                       const Positioned.fill(child: IgnorePointer(child: ColoredBox(color: Colors.black))),
                                   ]),
                                 ),
                               );
-                            }),
+                              }),
+                            ),
                           ),
                         ),
             ),
@@ -2680,11 +2845,211 @@ try {
     ),
   );
 
+  bool get _hasSelectedInspectorItem =>
+      (selectedTransitionIndex >= 0 &&
+          selectedTransitionIndex < timelineTransitions.length) ||
+      (selectedEffectClipIndex >= 0 &&
+          selectedEffectClipIndex < effectClips.length) ||
+      (selectedPhotoOverlay >= 0 &&
+          selectedPhotoOverlay < photoOverlays.length) ||
+      selectedAudioClip ||
+      (_selectedCanvasObject == 'video' &&
+          videoClips.isNotEmpty &&
+          selectedClipIndex >= 0 &&
+          selectedClipIndex < videoClips.length);
+
+  Widget _selectedItemInspector() {
+    if (selectedTransitionIndex >= 0 &&
+        selectedTransitionIndex < timelineTransitions.length) {
+      final transition = timelineTransitions[selectedTransitionIndex];
+      final maximum = math.max(0.1, _maxTransitionDurationAt(transition.at));
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('НАСТРОЙКИ ПЕРЕХОДА', style: TextStyle(color: accent, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          property('Позиция', time(Duration(milliseconds: (transition.at * 1000).round()))),
+          DropdownButtonFormField<String>(
+            key: ValueKey('transition-type-$selectedTransitionIndex-${transition.type}'),
+            isExpanded: true,
+            initialValue: transition.type,
+            decoration: const InputDecoration(isDense: true, labelText: 'Тип перехода', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9)),
+            items: (ProjectTransition.supportedTypes.toList()..sort())
+                .map((type) => DropdownMenuItem(value: type, child: Text(type, style: const TextStyle(fontSize: 11))))
+                .toList(),
+            onChanged: (value) {
+              if (value == null) return;
+              _performTimelineEdit(() {
+                transition.type = value;
+                status = 'Тип перехода изменён на «$value».';
+              });
+            },
+          ),
+          _adjustmentSlider('Длительность', transition.duration, 0.1, maximum, (value) {
+            setState(() {
+              transition.duration = value.clamp(0.1, maximum).toDouble();
+              projectDirty = true;
+            });
+          }),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: deleteSelectedTimelineItem,
+              icon: const Icon(Icons.delete_outline, size: 16),
+              label: const Text('Удалить переход'),
+            ),
+          ),
+          const Divider(height: 22),
+        ],
+      );
+    }
+
+    if (selectedEffectClipIndex >= 0 &&
+        selectedEffectClipIndex < effectClips.length) {
+      final effect = effectClips[selectedEffectClipIndex];
+      var nextStart = timelineSeconds;
+      for (var i = 0; i < effectClips.length; i++) {
+        if (i == selectedEffectClipIndex) continue;
+        final other = effectClips[i];
+        if (other.start >= effect.end && other.start < nextStart) {
+          nextStart = other.start;
+        }
+      }
+      final maximum = math.max(0.25, nextStart - effect.start).toDouble();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('НАСТРОЙКИ ЭФФЕКТА', style: TextStyle(color: accent, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            key: ValueKey('effect-type-$selectedEffectClipIndex-${effect.type}'),
+            isExpanded: true,
+            initialValue: effect.type,
+            decoration: const InputDecoration(isDense: true, labelText: 'Тип эффекта', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9)),
+            items: (_timelineEffectTypes.toList()..sort())
+                .map((type) => DropdownMenuItem(value: type, child: Text(type, style: const TextStyle(fontSize: 11))))
+                .toList(),
+            onChanged: (value) {
+              if (value == null) return;
+              _performTimelineEdit(() {
+                effect.type = value;
+                status = 'Эффект изменён на «$value».';
+              });
+            },
+          ),
+          property('Начало', time(Duration(milliseconds: (effect.start * 1000).round()))),
+          _adjustmentSlider('Длительность', effect.duration, 0.25, maximum, (value) {
+            final ranges = effectClips
+                .map((item) => TimelineEffectRange(item.type, item.start, item.end))
+                .toList();
+            final resized = TimelineEditing.resizeEffectEdge(
+              effects: ranges,
+              index: selectedEffectClipIndex,
+              requestedTime: effect.start + value,
+              timelineEnd: timelineSeconds,
+              resizeStart: false,
+            );
+            setState(() {
+              effect.end = resized.end;
+              projectDirty = true;
+            });
+          }),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: deleteSelectedTimelineItem,
+              icon: const Icon(Icons.delete_outline, size: 16),
+              label: const Text('Удалить эффект'),
+            ),
+          ),
+          const Divider(height: 22),
+        ],
+      );
+    }
+
+    if (selectedPhotoOverlay >= 0 &&
+        selectedPhotoOverlay < photoOverlays.length) {
+      final photo = photoOverlays[selectedPhotoOverlay];
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('НАСТРОЙКИ ФОТО', style: TextStyle(color: accent, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          property('Файл', p.basename(photo.path)),
+          _adjustmentSlider('Размер', photo.scale, 0.1, 5.0, (value) => setState(() { photo.scale = value; projectDirty = true; })),
+          _adjustmentSlider('Поворот', photo.rotation, -180, 180, (value) => setState(() { photo.rotation = value; projectDirty = true; })),
+          _adjustmentSlider('Прозрачность', photo.opacity, 0.05, 1, (value) => setState(() { photo.opacity = value; projectDirty = true; })),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: deleteSelectedTimelineItem,
+              icon: const Icon(Icons.delete_outline, size: 16),
+              label: const Text('Удалить фото'),
+            ),
+          ),
+          const Divider(height: 22),
+        ],
+      );
+    }
+
+    if (selectedAudioClip && audioPath != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('НАСТРОЙКИ АУДИО', style: TextStyle(color: accent, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          property('Файл', p.basename(audioPath!)),
+          property('Длительность', time(audioDuration)),
+          _adjustmentSlider('Громкость', exportVolume, 0, 2, (value) => setState(() { exportVolume = value; projectDirty = true; })),
+          const Divider(height: 22),
+        ],
+      );
+    }
+
+    if (_selectedCanvasObject == 'video' &&
+        videoClips.isNotEmpty &&
+        selectedClipIndex >= 0 &&
+        selectedClipIndex < videoClips.length) {
+      final clip = videoClips[selectedClipIndex];
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('НАСТРОЙКИ ВИДЕОКЛИПА', style: TextStyle(color: accent, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          property('Файл', videoPath == null ? 'Не выбран' : p.basename(videoPath!)),
+          property('Клип', '${selectedClipIndex + 1} из ${videoClips.length}'),
+          property('Начало исходника', time(Duration(milliseconds: (clip.start * 1000).round()))),
+          property('Конец исходника', time(Duration(milliseconds: (clip.end * 1000).round()))),
+          property('Длительность', time(Duration(milliseconds: (clip.length * 1000).round()))),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              OutlinedButton.icon(
+                onPressed: splitSelectedClip,
+                icon: const Icon(Icons.content_cut, size: 15),
+                label: const Text('Разделить'),
+              ),
+              OutlinedButton.icon(
+                onPressed: duplicateSelectedClip,
+                icon: const Icon(Icons.copy, size: 15),
+                label: const Text('Копия'),
+              ),
+            ],
+          ),
+          const Divider(height: 22),
+        ],
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
   Widget inspectorPanel() => Container(
         color: panel,
         padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
         child: SingleChildScrollView(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (_hasSelectedInspectorItem) _selectedItemInspector(),
             Row(children: [
               inspectorTabButton('video', 'Видео', Icons.movie_outlined),
               inspectorTabButton('audio', 'Аудио', Icons.graphic_eq),
