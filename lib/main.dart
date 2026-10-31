@@ -3672,23 +3672,131 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       final joinedVideo = audioPath == null
           ? savePath
           : p.join(temp.path, 'joined_video.mp4');
-      final concatResult = await Process.run(ffmpeg, [
-        '-hide_banner',
-        '-y',
-        '-f',
-        'concat',
-        '-safe',
-        '0',
-        '-i',
-        listFile.path,
-        '-c',
-        'copy',
-        '-movflags',
-        '+faststart',
-        joinedVideo,
-      ]);
-      if (concatResult.exitCode != 0) {
-        throw Exception(concatResult.stderr.toString().split('\n').last);
+      final useTransitionGraph = timelineTransitions.isNotEmpty && exportSegments.length > 1;
+      if (!useTransitionGraph) {
+        final concatResult = await Process.run(ffmpeg, [
+          '-hide_banner',
+          '-y',
+          '-f',
+          'concat',
+          '-safe',
+          '0',
+          '-i',
+          listFile.path,
+          '-c',
+          'copy',
+          '-movflags',
+          '+faststart',
+          joinedVideo,
+        ]);
+        if (concatResult.exitCode != 0) {
+          throw Exception(concatResult.stderr.toString().split('\n').last);
+        }
+      } else {
+        final graph = <String>[];
+        final args = <String>['-hide_banner', '-y'];
+        for (var i = 0; i < exportSegments.length; i++) {
+          args.addAll(['-i', exportSegments[i].path]);
+          graph.add(
+            '[$i:v]settb=AVTB,setpts=PTS-STARTPTS,fps=${frameRate.toStringAsFixed(3)},format=yuv420p[v$i]',
+          );
+          if (sourceHasAudio) graph.add('[$i:a]asetpts=PTS-STARTPTS[a$i]');
+        }
+
+        var activeVideo = 'v0';
+        var activeAudio = 'a0';
+        var accumulatedDuration = exportSegments.first.duration;
+        for (var i = 1; i < exportSegments.length; i++) {
+          final previousSegment = exportSegments[i - 1];
+          final currentSegment = exportSegments[i];
+          TimelineTransition? transition;
+          if (!previousSegment.isGap &&
+              !currentSegment.isGap &&
+              (previousSegment.end - currentSegment.start).abs() <= 0.025) {
+            for (final candidate in timelineTransitions) {
+              if ((candidate.at - currentSegment.start).abs() <= 0.025) {
+                transition = candidate;
+                break;
+              }
+            }
+          }
+
+          final durationForTransition = transition == null
+              ? 0.0
+              : math.min(
+                  transition.duration,
+                  math.min(previousSegment.duration / 2, currentSegment.duration / 2),
+                ).toDouble();
+          final canTransition = transition != null && durationForTransition >= 0.05;
+          final videoOutput = 'vjoin$i';
+          final audioOutput = 'ajoin$i';
+          if (canTransition) {
+            final name = _transitionFilterName(transition.type);
+            final offset = math.max(0.0, accumulatedDuration - durationForTransition).toDouble();
+            graph.add(
+              '[$activeVideo][v$i]xfade=transition=$name:duration=${durationForTransition.toStringAsFixed(3)}:offset=${offset.toStringAsFixed(3)}[$videoOutput]',
+            );
+            if (sourceHasAudio) {
+              graph.add(
+                '[$activeAudio][a$i]acrossfade=d=${durationForTransition.toStringAsFixed(3)}:c1=tri:c2=tri[$audioOutput]',
+              );
+            }
+            accumulatedDuration += currentSegment.duration - durationForTransition;
+          } else {
+            graph.add('[$activeVideo][v$i]concat=n=2:v=1:a=0[$videoOutput]');
+            if (sourceHasAudio) {
+              graph.add('[$activeAudio][a$i]concat=n=2:v=0:a=1[$audioOutput]');
+            }
+            accumulatedDuration += currentSegment.duration;
+          }
+          activeVideo = videoOutput;
+          if (sourceHasAudio) activeAudio = audioOutput;
+        }
+
+        final graphArgs = <String>[
+          ...args,
+          '-filter_complex',
+          graph.join(';'),
+          '-map',
+          '[$activeVideo]',
+          if (sourceHasAudio) ...[
+            '-map',
+            '[$activeAudio]',
+            '-c:a',
+            'aac',
+            '-b:a',
+            '192k',
+            '-ac',
+            '2',
+            '-ar',
+            '44100',
+          ],
+          '-r',
+          frameRate.toStringAsFixed(3),
+          ..._videoEncoderArguments(encoder),
+          '-movflags',
+          '+faststart',
+          joinedVideo,
+        ];
+        var joinResult = await Process.run(ffmpeg, graphArgs);
+        if (joinResult.exitCode != 0 && encoder != 'libx264') {
+          final fallbackArgs = List<String>.of(graphArgs);
+          final encoderIndex = fallbackArgs.indexOf(encoder);
+          if (encoderIndex >= 0) {
+            fallbackArgs.replaceRange(
+              encoderIndex - 1,
+              encoderIndex + 1,
+              ['-c:v', 'libx264'],
+            );
+            final presetIndex = fallbackArgs.indexOf('-preset');
+            if (presetIndex >= 0) fallbackArgs.replaceRange(presetIndex, presetIndex + 2, ['-preset', 'veryfast']);
+            fallbackArgs.addAll(['-crf', '18']);
+          }
+          joinResult = await Process.run(ffmpeg, fallbackArgs);
+        }
+        if (joinResult.exitCode != 0 || !await File(joinedVideo).exists()) {
+          throw Exception(joinResult.stderr.toString().split('\n').last);
+        }
       }
 
       // Detached audio replaces source audio at its own trim range.
