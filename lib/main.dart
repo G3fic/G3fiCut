@@ -2894,7 +2894,7 @@ try {
                       icon: const Icon(Icons.content_cut_rounded, size: 17),
                     ),
                     IconButton(
-                      tooltip: 'Удалить выбранный клип',
+                      tooltip: 'Удалить выбранный элемент',
                       visualDensity: VisualDensity.compact,
                       onPressed: videoClips.isEmpty && effectClips.isEmpty && timelineTransitions.isEmpty && audioPath == null && photoOverlays.isEmpty
                           ? null
