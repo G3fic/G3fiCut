@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -85,7 +86,7 @@ class PhotoOverlay {
 }
 
 class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.65');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.66');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -202,6 +203,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   int selectedClipIndex = 0;
   double audioClipStart = 0;
   double audioClipEnd = 0;
+  List<double> audioWaveform = const [];
   String status = 'Импортируйте видео, чтобы начать монтаж.';
 
   double get _timelineEndSeconds => videoClips.isEmpty
@@ -826,6 +828,11 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         playing = false;
         status = 'Проект открыт: ${p.basename(selectedPath)}';
       });
+      if (document.audioPath != null) {
+        unawaited(_readWaveform(document.audioPath!).then((wave) {
+          if (mounted && audioPath == document.audioPath) setState(() => audioWaveform = wave);
+        }));
+      }
       try {
         await seek(restoredPosition);
       } catch (e) {
@@ -867,6 +874,37 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     } catch (e) { setStatus('Не удалось импортировать фото: $e'); }
   }
 
+  Future<List<double>> _readWaveform(String path, {int buckets = 1800}) async {
+    final bytes = await File(path).readAsBytes();
+    if (bytes.length < 44 || String.fromCharCodes(bytes.sublist(0, 4)) != 'RIFF') return const [];
+    final dataOffset = 12 + 8;
+    final channels = ByteData.sublistView(bytes).getUint16(22, Endian.little);
+    final bitsPerSample = ByteData.sublistView(bytes).getUint16(34, Endian.little);
+    final dataSize = ByteData.sublistView(bytes).getUint32(40, Endian.little);
+    if (bitsPerSample != 16 || channels < 1) return const [];
+    final sampleCount = math.min((bytes.length - dataOffset) ~/ 2, dataSize ~/ 2);
+    if (sampleCount <= 0) return const [];
+    final frames = sampleCount ~/ channels;
+    final count = math.min(buckets, frames);
+    final data = ByteData.sublistView(bytes);
+    final result = <double>[];
+    for (var bucket = 0; bucket < count; bucket++) {
+      final first = (bucket * frames / count).floor();
+      final last = math.max(first + 1, ((bucket + 1) * frames / count).floor());
+      var peak = 0.0;
+      for (var frame = first; frame < last; frame++) {
+        for (var channel = 0; channel < channels; channel++) {
+          final index = dataOffset + (frame * channels + channel) * 2;
+          if (index + 1 >= bytes.length) break;
+          final sample = data.getInt16(index, Endian.little).abs() / 32768.0;
+          if (sample > peak) peak = sample;
+        }
+      }
+      result.add(peak);
+    }
+    return result;
+  }
+
   Future<void> extractAudio() async {
     final video = videoPath;
     if (video == null || busy) return;
@@ -891,8 +929,10 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         }
         throw Exception('FFmpeg не смог обработать видео.');
       }
+      final waveform = await _readWaveform(output);
       if (!mounted) return;
       _performTimelineEdit(() {
+        audioWaveform = waveform;
         audioPath = output;
         audioDuration = duration;
         audioClipStart = 0;
@@ -1274,16 +1314,17 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           child: Column(
             children: [
               topBar(),
-              toolbar(),
               Expanded(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    SizedBox(width: 270, child: mediaPanel()),
+                    toolRail(),
+                    const VerticalDivider(width: 1),
+                    SizedBox(width: MediaQuery.of(context).size.width < 1000 ? 190 : 270, child: mediaPanel()),
                     const VerticalDivider(width: 1),
                     Expanded(child: previewPanel()),
                     const VerticalDivider(width: 1),
-                    SizedBox(width: 270, child: inspectorPanel()),
+                    SizedBox(width: MediaQuery.of(context).size.width < 1000 ? 190 : 270, child: inspectorPanel()),
                   ],
                 ),
               ),
@@ -1305,13 +1346,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           const SizedBox(width: 10),
           const Text('gifcut', style: TextStyle(fontSize: 18, letterSpacing: -.5, fontWeight: FontWeight.w900)),
           const SizedBox(width: 10),
-          IconButton(tooltip: 'Открыть проект', visualDensity: VisualDensity.compact, onPressed: busy ? null : openProject, icon: const Icon(Icons.folder_open_outlined, size: 18)),
-          IconButton(tooltip: 'Сохранить проект', visualDensity: VisualDensity.compact, onPressed: videoPath == null || busy ? null : () => unawaited(saveProject()), icon: const Icon(Icons.save_outlined, size: 18)),
-          IconButton(tooltip: 'Сохранить как', visualDensity: VisualDensity.compact, onPressed: videoPath == null || busy ? null : () => unawaited(saveProject(saveAs: true)), icon: const Icon(Icons.save_as_outlined, size: 18)),
-          IconButton(tooltip: 'Быстрый импорт видео', visualDensity: VisualDensity.compact, onPressed: busy ? null : pickVideo, icon: const Icon(Icons.video_call_outlined, size: 18, color: accent)),
-          IconButton(tooltip: 'Добавить фото', visualDensity: VisualDensity.compact, onPressed: busy || videoPath == null ? null : importPhotoOverlay, icon: const Icon(Icons.add_photo_alternate_outlined, size: 18)),
-          IconButton(tooltip: 'Экспортировать видео', visualDensity: VisualDensity.compact, onPressed: videoClips.isEmpty || busy ? null : exportEditedVideo, icon: const Icon(Icons.ios_share, size: 18, color: accent)),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           Flexible(child: Text((projectFilePath == null ? 'Новый проект' : p.basenameWithoutExtension(projectFilePath!)) + (projectDirty ? ' •' : ''), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Color(0xFFD3D3DF)))),
           const Spacer(),
           IconButton(
@@ -1335,78 +1370,41 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         ]),
       );
 
-  Widget toolbar() => Container(
-        constraints: const BoxConstraints(minHeight: 62),
-        color: const Color(0xFF1B1D24),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+  Widget toolRail() => Container(
+        width: 64,
+        color: const Color(0xFF17191F),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Wrap(
-            spacing: 10,
-            runSpacing: 0,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-            FilledButton.icon(onPressed: videoPath == null || busy ? null : extractAudio, icon: busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.graphic_eq, size: 18), label: Text(busy ? 'Обработка…' : 'Извлечь звук на таймлайн')),
-            OutlinedButton.icon(
-              onPressed: busy || videoClips.isEmpty ? null : showColorAdjustments,
-              icon: const Icon(Icons.tune_rounded, size: 18),
-              label: const Text('Цвет'),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(color: const Color(0xFF202630), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF343B47))),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(exportVolume == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded, size: 17, color: accent),
-                const SizedBox(width: 6),
-                const Text('Громкость', style: TextStyle(fontSize: 11, color: muted)),
-                SizedBox(
-                  width: 100,
-                  child: Slider(
-                    min: 0,
-                    max: 2,
-                    divisions: 20,
-                    value: exportVolume,
-                    onChanged: busy ? null : (value) => setState(() => exportVolume = value),
-                  ),
-                ),
-                SizedBox(width: 32, child: Text('${(exportVolume * 100).round()}%', textAlign: TextAlign.end, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700))),
-                IconButton(
-                  tooltip: 'Сбросить громкость',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: busy ? null : () => setState(() => exportVolume = 1.0),
-                  icon: const Icon(Icons.restart_alt, size: 16),
-                ),
-              ]),
-            ),
-            Tooltip(
-              message: 'Отменить (Ctrl+Z)',
-              child: OutlinedButton.icon(
-                key: const ValueKey('toolbar-undo'),
-                onPressed: _timelineHistory.canUndo ? undoTimelineEdit : null,
-                icon: const Icon(Icons.undo, size: 18),
-                label: const Text('Отменить'),
-              ),
-            ),
-            Tooltip(
-              message: 'Повторить (Ctrl+Y, Ctrl+Shift+Z)',
-              child: OutlinedButton.icon(
-                key: const ValueKey('toolbar-redo'),
-                onPressed: _timelineHistory.canRedo ? redoTimelineEdit : null,
-                icon: const Icon(Icons.redo, size: 18),
-                label: const Text('Повторить'),
-              ),
-            ),
-            if (audioPath != null)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                decoration: BoxDecoration(color: audioGreen.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8), border: Border.all(color: audioGreen.withValues(alpha: 0.35))),
-                child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.check_circle_outline, color: audioGreen, size: 15),
-                  SizedBox(width: 6),
-                  Text('Аудио на таймлайне', style: TextStyle(color: audioGreen, fontSize: 11, fontWeight: FontWeight.w600)),
-                ]),
-              ),
-            ],
+          child: Column(children: [
+            _railAction(Icons.folder_open_outlined, 'Открыть проект', openProject, disabled: busy),
+            _railAction(Icons.save_outlined, 'Сохранить', () => unawaited(saveProject()), disabled: videoPath == null || busy),
+            _railAction(Icons.save_as_outlined, 'Сохранить как', () => unawaited(saveProject(saveAs: true)), disabled: videoPath == null || busy),
+            const Divider(height: 14),
+            _railAction(Icons.video_call_outlined, 'Импорт видео', pickVideo, disabled: busy, color: accent),
+            _railAction(Icons.add_photo_alternate_outlined, 'Добавить фото', importPhotoOverlay, disabled: busy || videoPath == null),
+            _railAction(Icons.graphic_eq, 'Извлечь звук', extractAudio, disabled: busy || videoPath == null),
+            const Divider(height: 14),
+            _railAction(Icons.tune_rounded, 'Цвет', showColorAdjustments, disabled: busy || videoClips.isEmpty),
+            _railAction(Icons.volume_up_rounded, 'Громкость', () => setState(() => inspectorTab = 'audio')),
+            _railAction(Icons.undo, 'Отменить', undoTimelineEdit, disabled: !_timelineHistory.canUndo),
+            _railAction(Icons.redo, 'Повторить', redoTimelineEdit, disabled: !_timelineHistory.canRedo),
+            const Divider(height: 14),
+            _railAction(Icons.ios_share, 'Экспорт', exportEditedVideo, disabled: videoClips.isEmpty || busy, color: accent),
+            _railAction(Icons.system_update_alt, 'Обновления', () => unawaited(checkForUpdates(showNoUpdateMessage: true)), disabled: checkingForUpdates),
+            _railAction(Icons.keyboard_outlined, 'Горячие клавиши', showKeyboardShortcuts),
+          ]),
+        ),
+      );
+
+  Widget _railAction(IconData icon, String tooltip, VoidCallback action, {bool disabled = false, Color color = muted}) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Tooltip(
+          message: tooltip,
+          child: IconButton(
+            visualDensity: VisualDensity.compact,
+            onPressed: disabled ? null : action,
+            icon: Icon(icon, size: 20, color: disabled ? muted.withValues(alpha: .35) : color),
           ),
         ),
       );
@@ -1597,35 +1595,20 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                         ),
                                       ),
                                     ),
-                                    if (selectedPhotoOverlay < 0) ...[
-                                      for (final handle in const [
-                                        Alignment.topLeft, Alignment.topCenter, Alignment.topRight,
-                                        Alignment.centerLeft, Alignment.centerRight,
-                                        Alignment.bottomLeft, Alignment.bottomCenter, Alignment.bottomRight,
-                                      ])
-                                        Positioned(
-                                          left: bounds.maxWidth / 2 + videoOffsetX * bounds.maxWidth + handle.x * videoScaleX * previewZoom * bounds.maxWidth / 2 - 7,
-                                          top: bounds.maxHeight / 2 + videoOffsetY * bounds.maxHeight + handle.y * videoScaleY * previewZoom * bounds.maxHeight / 2 - 7,
-                                          child: GestureDetector(
-                                            key: ValueKey('video-resize-${handle.x}-${handle.y}'),
-                                            onPanUpdate: (d) => setState(() {
-                                              if (handle.x != 0) videoScaleX = (videoScaleX + d.delta.dx * handle.x * 2 / math.max(1, bounds.maxWidth)).clamp(0.1, 5.0).toDouble();
-                                              if (handle.y != 0) videoScaleY = (videoScaleY + d.delta.dy * handle.y * 2 / math.max(1, bounds.maxHeight)).clamp(0.1, 5.0).toDouble();
-                                              projectDirty = true;
-                                            }),
-                                            child: Container(width: 14, height: 14, decoration: BoxDecoration(color: Colors.white, border: Border.all(color: accent, width: 2), borderRadius: BorderRadius.circular(2), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 3)])),
-                                          ),
-                                        ),
+                                    if (selectedPhotoOverlay < 0)
                                       Positioned(
-                                        left: bounds.maxWidth / 2 + videoOffsetX * bounds.maxWidth - 8,
-                                        top: bounds.maxHeight / 2 + videoOffsetY * bounds.maxHeight - videoScaleY * previewZoom * bounds.maxHeight / 2 - 25,
+                                        left: bounds.maxWidth / 2 + videoOffsetX * bounds.maxWidth - 18,
+                                        top: bounds.maxHeight / 2 + videoOffsetY * bounds.maxHeight + videoScaleY * previewZoom * bounds.maxHeight / 2 + 12,
                                         child: GestureDetector(
                                           key: const ValueKey('video-rotate-handle'),
                                           onPanUpdate: (d) => setState(() { videoRotation = (videoRotation + d.delta.dx * 0.7) % 360; projectDirty = true; }),
-                                          child: Container(width: 16, height: 16, decoration: BoxDecoration(color: accent, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), child: const Icon(Icons.rotate_right, size: 10, color: Colors.white)),
+                                          child: Container(
+                                            width: 36, height: 30,
+                                            decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white, width: 1.5), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 4)]),
+                                            child: const Icon(Icons.rotate_90_degrees_ccw, size: 19, color: Colors.white),
+                                          ),
                                         ),
                                       ),
-                                    ],
                                     for (var i = 0; i < photoOverlays.length; i++)
                                       Positioned(
                                         left: bounds.maxWidth / 2 + photoOverlays[i].x * bounds.maxWidth - shortSide * .18 * photoOverlays[i].scale,
@@ -1769,9 +1752,10 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               const Text('ЭФФЕКТ ВИДЕО', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 initialValue: videoEffect,
                 decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9)),
-                items: const ['Оригинал', 'Чёрно-белый', 'Сепия', 'Холодный', 'Тёплый', 'Негатив', 'Мягкое размытие'].map((v) => DropdownMenuItem(value: v, child: Text(v, style: const TextStyle(fontSize: 11)))).toList(),
+                items: const ['Оригинал', 'Чёрно-белый', 'Сепия', 'Холодный', 'Тёплый', 'Негатив', 'Мягкое размытие'].map((v) => DropdownMenuItem(value: v, child: Text(v, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)))).toList(),
                 onChanged: (value) => setState(() { videoEffect = value ?? 'Оригинал'; projectDirty = true; }),
               ),
               const SizedBox(height: 8),
@@ -1783,18 +1767,20 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               const Text('СООТНОШЕНИЕ СТОРОН', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 initialValue: aspectRatioPreset,
                 decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9)),
-                items: const ['16:9', '9:16', '1:1', '4:3', '4:5', '3:2'].map((v) => DropdownMenuItem(value: v, child: Text(v, style: const TextStyle(fontSize: 11)))).toList(),
+                items: const ['16:9', '9:16', '1:1', '4:3', '4:5', '3:2'].map((v) => DropdownMenuItem(value: v, child: Text(v, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)))).toList(),
                 onChanged: (value) => setState(() { aspectRatioPreset = value ?? '16:9'; projectDirty = true; }),
               ),
               const SizedBox(height: 10),
               const Text('ПЕРЕХОД МЕЖДУ КЛИПАМИ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 initialValue: transitionEffect,
                 decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9)),
-                items: const ['Нет', 'Затемнение', 'Белая вспышка'].map((v) => DropdownMenuItem(value: v, child: Text(v, style: const TextStyle(fontSize: 11)))).toList(),
+                items: const ['Нет', 'Затемнение', 'Белая вспышка'].map((v) => DropdownMenuItem(value: v, child: Text(v, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)))).toList(),
                 onChanged: (value) => setState(() { transitionEffect = value ?? 'Нет'; projectDirty = true; }),
               ),
               if (transitionEffect != 'Нет')
@@ -2283,6 +2269,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           break;
         case 'audioDelete':
           audioPath = null;
+          audioWaveform = const [];
           audioClipStart = 0;
           audioClipEnd = 0;
           status = 'Звуковой клип удалён. Видеоклипы не изменены.';
@@ -2892,7 +2879,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   Widget audioClip(String path) => ClipRRect(
         borderRadius: BorderRadius.circular(6),
         child: CustomPaint(
-          painter: const WaveformPainter(color: audioGreen),
+          painter: WaveformPainter(color: audioGreen, samples: audioWaveform),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 9),
             decoration: BoxDecoration(border: Border.all(color: audioGreen), borderRadius: BorderRadius.circular(6), color: const Color(0x66205E51)),
@@ -3002,21 +2989,22 @@ class VideoStripPainter extends CustomPainter {
 }
 
 class WaveformPainter extends CustomPainter {
-  const WaveformPainter({required this.color});
+  const WaveformPainter({required this.color, required this.samples});
   final Color color;
+  final List<double> samples;
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFF163E37));
-    final count = (size.width / 5).floor();
-    final paint = Paint()..color = color.withValues(alpha: 0.92)..strokeWidth = 2..strokeCap = StrokeCap.round;
+    final count = samples.isEmpty ? 0 : math.min(samples.length, (size.width / 2.5).floor());
+    final paint = Paint()..color = color.withValues(alpha: 0.92)..strokeWidth = 1.8..strokeCap = StrokeCap.round;
     final center = size.height / 2;
     for (var i = 0; i < count; i++) {
-      final wave = (math.sin(i * 0.47) * 0.48 + math.cos(i * 0.19) * 0.3 + math.sin(i * 0.09) * 0.22).abs();
-      final h = math.max(3.0, wave * size.height * 0.72);
-      final x = i * 5.0 + 2;
+      final sampleIndex = (i * samples.length / count).floor().clamp(0, samples.length - 1);
+      final h = math.max(1.5, samples[sampleIndex] * size.height * 0.88);
+      final x = i * size.width / count + 1;
       canvas.drawLine(Offset(x, center - h / 2), Offset(x, center + h / 2), paint);
     }
   }
   @override
-  bool shouldRepaint(covariant WaveformPainter old) => old.color != color;
+  bool shouldRepaint(covariant WaveformPainter old) => old.color != color || !identical(old.samples, samples);
 }

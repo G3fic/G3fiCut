@@ -26,14 +26,15 @@ void main() {
     await tester.pumpWidget(const G3fiCutApp());
     await tester.pump();
 
-    // Use explicit keys: the controls live in separate scrollable panels,
-    // and disabled tooltip widgets are not guaranteed to enter the finder tree.
-    for (final key in const ['toolbar-undo', 'toolbar-redo']) {
-      expect(find.byKey(ValueKey(key)), findsOneWidget);
-      expect(
-        tester.widget<OutlinedButton>(find.byKey(ValueKey(key))).onPressed,
-        isNull,
+    // The editor now exposes undo/redo in the left tool rail and timeline.
+    // Check their visible tooltips and ensure the commands are disabled initially.
+    for (final tooltip in const ['Отменить', 'Повторить']) {
+      final button = find.descendant(
+        of: find.byTooltip(tooltip),
+        matching: find.byType(IconButton),
       );
+      expect(find.byTooltip(tooltip), findsOneWidget);
+      expect(tester.widget<IconButton>(button).onPressed, isNull);
     }
     for (final key in const ['timeline-undo', 'timeline-redo']) {
       expect(find.byKey(ValueKey(key)), findsOneWidget);
@@ -50,14 +51,14 @@ void main() {
     await tester.pump();
 
     expect(find.byTooltip('Открыть проект'), findsOneWidget);
-    expect(find.byTooltip('Сохранить проект'), findsOneWidget);
+    expect(find.byTooltip('Сохранить'), findsOneWidget);
     expect(find.byTooltip('Сохранить как'), findsOneWidget);
     expect(
-      tester.widget<IconButton>(find.ancestor(of: find.byTooltip('Сохранить проект'), matching: find.byType(IconButton))).onPressed,
+      tester.widget<IconButton>(find.descendant(of: find.byTooltip('Сохранить'), matching: find.byType(IconButton))).onPressed,
       isNull,
     );
     expect(
-      tester.widget<IconButton>(find.ancestor(of: find.byTooltip('Сохранить как'), matching: find.byType(IconButton))).onPressed,
+      tester.widget<IconButton>(find.descendant(of: find.byTooltip('Сохранить как'), matching: find.byType(IconButton))).onPressed,
       isNull,
     );
     expect(tester.takeException(), isNull);
