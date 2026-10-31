@@ -100,7 +100,7 @@ void main() {
       ];
 
       expect(
-        TimelineEffectEditing.findAvailableEffectStart(
+        TimelineEditing.findAvailableEffectStart(
           effects: effects,
           preferred: 3,
           length: 1.5,
@@ -109,7 +109,7 @@ void main() {
         4,
       );
       expect(
-        TimelineEffectEditing.findAvailableEffectStart(
+        TimelineEditing.findAvailableEffectStart(
           effects: effects,
           preferred: 3,
           length: 3,
@@ -118,7 +118,7 @@ void main() {
         isNull,
       );
       expect(
-        TimelineEffectEditing.findAvailableEffectStart(
+        TimelineEditing.findAvailableEffectStart(
           effects: effects,
           preferred: 7,
           length: 2,
@@ -136,7 +136,7 @@ void main() {
       ];
 
       expect(
-        TimelineEffectEditing.resizeEffectEdge(
+        TimelineEditing.resizeEffectEdge(
           effects: effects,
           index: 1,
           requestedTime: 2,
@@ -146,7 +146,7 @@ void main() {
         const TimelineEffectRange('sepia', 3, 6),
       );
       expect(
-        TimelineEffectEditing.resizeEffectEdge(
+        TimelineEditing.resizeEffectEdge(
           effects: effects,
           index: 1,
           requestedTime: 8,
