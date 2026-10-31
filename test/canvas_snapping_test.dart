@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:g3ficut/canvas_snapping.dart';
+import 'package:gifcut/canvas_snapping.dart';
 
 void main() {
   group('CenterAxisSnapper', () {
@@ -60,4 +60,25 @@ void main() {
       expect(result.isSnapped, isFalse);
     });
   });
+  group('AngleSnapper', () {
+    const snapper = AngleSnapper(stepDegrees: 15, catchDistance: 3);
+
+    test('snaps to the nearest 15-degree angle inside the catch distance', () {
+      expect(snapper.snap(13), 15);
+      expect(snapper.snap(1), 0);
+    });
+
+    test('leaves the angle unchanged outside the catch distance', () {
+      expect(snapper.snap(10), 10);
+    });
+
+    test('respects the shared snapping toggle', () {
+      expect(snapper.snap(13, enabled: false), 13);
+    });
+
+    test('handles angles across the 360-degree boundary', () {
+      expect(snapper.snap(359), 360);
+    });
+  });
+
 }
