@@ -2307,11 +2307,19 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         color: panel,
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            _mediaPanelTabButton('media', 'Медиа', Icons.perm_media_outlined),
-            const SizedBox(width: 6),
-            _mediaPanelTabButton('effects', 'Эффекты', Icons.auto_awesome_outlined),
-          ]),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(children: [
+              _mediaPanelTabButton('media', 'Медиа', Icons.perm_media_outlined),
+              _mediaPanelTabButton('audio', 'Аудио', Icons.graphic_eq),
+              _mediaPanelTabButton('text', 'Текст', Icons.title),
+              _mediaPanelTabButton('stickers', 'Стикеры', Icons.emoji_emotions_outlined),
+              _mediaPanelTabButton('effects', 'Эффекты', Icons.auto_awesome_outlined),
+              _mediaPanelTabButton('transitions', 'Переходы', Icons.compare_arrows),
+              _mediaPanelTabButton('captions', 'Титры', Icons.closed_caption_outlined),
+              _mediaPanelTabButton('filters', 'Фильтры', Icons.filter_vintage),
+            ]),
+          ),
           const SizedBox(height: 10),
           Expanded(
             child: SingleChildScrollView(
@@ -2392,14 +2400,29 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                       const SizedBox(height: 5),
                       const Text('Извлеките звук, чтобы получить отдельный клип на аудиодорожке под видео.', style: TextStyle(color: muted, fontSize: 11, height: 1.4)),
                     ])
-                  : _effectsLibraryPanel(),
+                  : mediaPanelTab == 'audio'
+                      ? _audioLibraryPanel()
+                      : mediaPanelTab == 'text'
+                          ? _textLibraryPanel()
+                          : mediaPanelTab == 'stickers'
+                              ? _stickersLibraryPanel()
+                              : mediaPanelTab == 'transitions'
+                                  ? _transitionLibraryPanel()
+                                  : mediaPanelTab == 'captions'
+                                      ? _captionsLibraryPanel()
+                                      : mediaPanelTab == 'filters'
+                                          ? _filtersLibraryPanel()
+                                          : _effectsLibraryPanel(),
             ),
           ),
         ]),
       );
 
-  Widget _mediaPanelTabButton(String id, String label, IconData icon) => Expanded(
-        child: InkWell(
+  Widget _mediaPanelTabButton(String id, String label, IconData icon) => SizedBox(
+        width: 82,
+        child: Padding(
+          padding: const EdgeInsets.only(right: 4),
+          child: InkWell(
           key: ValueKey('media-library-$id'),
           borderRadius: BorderRadius.circular(7),
           onTap: () => setState(() => mediaPanelTab = id),
@@ -2432,7 +2455,182 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               ),
             ),
           ),
+          ),
         ),
+      );
+
+  Widget _audioLibraryPanel() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('АУДИОФАЙЛЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            key: const ValueKey('import-audio-file'),
+            onPressed: busy ? null : importAudioFile,
+            icon: const Icon(Icons.audio_file_outlined, size: 17),
+            label: const Text('Импортировать аудио'),
+          ),
+          if (audioPath != null) ...[
+            const SizedBox(height: 10),
+            mediaItem(Icons.graphic_eq, p.basename(audioPath!), 'Аудиодорожка · отдельный файл', audioGreen,
+              selected: selectedAudioClip,
+              onTap: () => setState(() {
+                selectedAudioClip = true;
+                selectedPhotoOverlay = -1;
+                selectedTextOverlay = -1;
+                inspectorTab = 'audio';
+                _selectedCanvasObject = 'audio';
+              })),
+            if (audioDuration > Duration.zero) ...[
+              const SizedBox(height: 6),
+              property('Длительность', time(audioDuration)),
+            ],
+          ],
+          const SizedBox(height: 10),
+          const Text('Поддерживаются WAV, MP3, M4A, AAC, FLAC, OGG и OPUS. В текущей версии — одна независимая аудиодорожка.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
+        ],
+      );
+
+  Widget _textLibraryPanel() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('ТЕКСТОВЫЕ СЛОИ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            key: const ValueKey('add-text-overlay'),
+            onPressed: busy ? null : () => unawaited(addTextOverlay()),
+            icon: const Icon(Icons.add, size: 17),
+            label: const Text('Добавить текст'),
+          ),
+          const SizedBox(height: 8),
+          const Text('Текст создаётся отдельным клипом на дорожке. Его можно перемещать в предпросмотре и настраивать справа.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
+          if (textOverlays.isNotEmpty) ...[
+            const Divider(height: 22),
+            for (var i = 0; i < textOverlays.length; i++) ...[
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                selected: selectedTextOverlay == i,
+                leading: const Icon(Icons.title, color: accent),
+                title: Text(textOverlays[i].text, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
+                subtitle: Text('${textOverlays[i].start.toStringAsFixed(1)}–${textOverlays[i].end.toStringAsFixed(1)} с', style: const TextStyle(color: muted, fontSize: 9)),
+                onTap: () => setState(() {
+                  selectedTextOverlay = i;
+                  selectedPhotoOverlay = -1;
+                  selectedAudioClip = false;
+                  selectedEffectClipIndex = -1;
+                  selectedTransitionIndex = -1;
+                  inspectorTab = 'text';
+                  _selectedCanvasObject = 'text';
+                }),
+              ),
+            ],
+          ],
+        ],
+      );
+
+  Widget _stickersLibraryPanel() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('СТИКЕРЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final sticker in const ['⭐', '❤️', '🔥', '✨', '🎉', '👍', '💡', '🎬'])
+                InkWell(
+                  key: ValueKey('sticker-$sticker'),
+                  onTap: busy ? null : () => unawaited(addTextOverlay(initialText: sticker)),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(color: const Color(0xFF202630), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF343644))),
+                    child: Text(sticker, style: const TextStyle(fontSize: 25)),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Text('Стикеры добавляются как редактируемые текстовые слои.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
+        ],
+      );
+
+  Widget _transitionLibraryPanel() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('ПЕРЕХОДЫ МЕЖДУ КЛИПАМИ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 7),
+          for (final type in (_timelineTransitionTypes.toList()..sort()))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: OutlinedButton(
+                key: ValueKey('transition-card-$type'),
+                onPressed: busy || videoClips.length < 2 ? null : () => unawaited(addTimelineTransition(type)),
+                style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9)),
+                child: Row(children: [
+                  const Icon(Icons.compare_arrows, size: 15),
+                  const SizedBox(width: 7),
+                  Expanded(child: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  _libraryPreviewIndicator('transition:$type', color: const Color(0xFFFFC56B), icon: Icons.compare_arrows, transition: true),
+                ]),
+              ),
+            ),
+          const SizedBox(height: 8),
+          const Text('Наведите курсор на карточку для демонстрации. Переход ставится на ближайший стык клипов; детали доступны справа.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
+        ],
+      );
+
+  Widget _captionsLibraryPanel() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('СУБТИТРЫ И ТИТРЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            key: const ValueKey('import-captions-file'),
+            onPressed: busy ? null : () async {
+              final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['srt', 'vtt'], allowMultiple: true);
+              for (final file in result?.files ?? const <PlatformFile>[]) {
+                if (file.path != null) await _importSubtitleFile(file.path!);
+              }
+            },
+            icon: const Icon(Icons.subtitles_outlined, size: 17),
+            label: const Text('Импортировать SRT / VTT'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: busy ? null : () => unawaited(addTextOverlay(initialText: 'Новый титр')),
+            icon: const Icon(Icons.title, size: 17),
+            label: const Text('Создать титр'),
+          ),
+          const SizedBox(height: 8),
+          const Text('Временные метки SRT/VTT переносятся в отдельные текстовые клипы.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
+        ],
+      );
+
+  Widget _filtersLibraryPanel() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('ЦВЕТОВЫЕ ФИЛЬТРЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 7),
+          for (final type in globalVideoEffectOptions)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 5),
+              child: OutlinedButton(
+                key: ValueKey('filter-card-$type'),
+                onPressed: busy ? null : () => setState(() { videoEffect = type; projectDirty = true; status = 'Фильтр выбран: $type'; }),
+                style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8)),
+                child: Row(children: [
+                  const Icon(Icons.filter_vintage_outlined, size: 14, color: accent),
+                  const SizedBox(width: 7),
+                  Expanded(child: Text(type, style: const TextStyle(fontSize: 11))),
+                  if (videoEffect == type) const Icon(Icons.check, size: 15, color: accent),
+                ]),
+              ),
+            ),
+        ],
       );
 
   Widget _libraryPreviewIndicator(
