@@ -3833,7 +3833,7 @@ try {
   }
 
   void _startEffectClipMove(int index) {
-    if (index < 0 || index >= effectClips.length) return;
+    if (_timelinePanPointer != null || index < 0 || index >= effectClips.length) return;
     _effectClipMoveBefore = _captureTimelineSnapshot();
     _effectClipMoveIndex = index;
     _effectClipMoveStart = effectClips[index].start;
@@ -3848,7 +3848,7 @@ try {
   }
 
   void _updateEffectClipMove(DragUpdateDetails details) {
-    if (_effectClipMoveIndex < 0 || _effectClipMoveIndex >= effectClips.length) return;
+    if (_timelinePanPointer != null || _effectClipMoveIndex < 0 || _effectClipMoveIndex >= effectClips.length) return;
     _effectClipMovePointerX += details.delta.dx;
     final effect = effectClips[_effectClipMoveIndex];
     final length = effect.duration;
@@ -3869,7 +3869,7 @@ try {
   }
 
   void _startEffectResize(int index, {required bool fromLeft}) {
-    if (index < 0 || index >= effectClips.length) return;
+    if (_timelinePanPointer != null || index < 0 || index >= effectClips.length) return;
     final effect = effectClips[index];
     _effectResizeBefore = _captureTimelineSnapshot();
     _effectResizeIndex = index;
@@ -3887,6 +3887,7 @@ try {
   }
 
   void _updateEffectResize(DragUpdateDetails details) {
+    if (_timelinePanPointer != null) return;
     final index = _effectResizeIndex;
     if (index < 0 || index >= effectClips.length) return;
     _effectResizePointerX += details.delta.dx;
@@ -4092,7 +4093,7 @@ try {
   }
 
   void _startClipMove(int index) {
-    if (index < 0 || index >= videoClips.length) return;
+    if (_timelinePanPointer != null || index < 0 || index >= videoClips.length) return;
     _clipMoveBefore = _captureTimelineSnapshot();
     _clipMoveIndex = index;
     _clipMoveOriginalStart = videoClips[index].timelineStart;
@@ -4109,6 +4110,7 @@ try {
   }
 
   void _updateClipMove(DragUpdateDetails details) {
+    if (_timelinePanPointer != null) return;
     final before = _clipMoveBefore;
     if (before == null || _clipMoveIndex < 0 ||
         _clipMoveIndex >= videoClips.length ||
