@@ -2123,10 +2123,38 @@ try {
                         const SizedBox(height: 14),
                         const Text('ФАЙЛЫ ПРОЕКТА', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.1, fontWeight: FontWeight.w700)),
                         const SizedBox(height: 8),
-                        mediaItem(Icons.movie_outlined, p.basename(videoPath!), 'Видео · исходник', videoBlue, imagePath: videoThumbnails.isNotEmpty ? videoThumbnails.first : null),
+                        mediaItem(
+                          Icons.movie_outlined,
+                          p.basename(videoPath!),
+                          'Видео · исходник',
+                          videoBlue,
+                          imagePath: videoThumbnails.isNotEmpty ? videoThumbnails.first : null,
+                          selected: _selectedCanvasObject == 'video',
+                          onTap: () => setState(() {
+                            if (videoClips.isNotEmpty) selectedClipIndex = selectedClipIndex.clamp(0, videoClips.length - 1);
+                            selectedPhotoOverlay = -1;
+                            selectedAudioClip = false;
+                            selectedEffectClipIndex = -1;
+                            selectedTransitionIndex = -1;
+                            _selectedCanvasObject = 'video';
+                          }),
+                        ),
                         if (audioPath != null) ...[
                           const SizedBox(height: 7),
-                          mediaItem(Icons.graphic_eq, p.basename(audioPath!), 'Извлечённое аудио', audioGreen),
+                          mediaItem(
+                            Icons.graphic_eq,
+                            p.basename(audioPath!),
+                            'Извлечённое аудио',
+                            audioGreen,
+                            selected: selectedAudioClip,
+                            onTap: () => setState(() {
+                              selectedAudioClip = true;
+                              selectedPhotoOverlay = -1;
+                              selectedEffectClipIndex = -1;
+                              selectedTransitionIndex = -1;
+                              _selectedCanvasObject = 'audio';
+                            }),
+                          ),
                         ],
                         if (photoOverlays.isNotEmpty) ...[
                           const SizedBox(height: 10),
