@@ -1460,15 +1460,16 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   void _finishEdgeDrag() {
     if (_edgeDragIndex < 0) return;
     final before = _edgeDragBefore;
-    if (before != null) _timelineHistory.record(before: before, after: _captureTimelineSnapshot());
-    _edgeDragBefore = null;
-    _edgeDragIndex = -1;
     if (mounted) {
       setState(() {
+        _reconcileTimelineAnnotations();
         _timelineSnapAt = null;
         status = 'Длина клипа изменена. Ctrl+Z — отменить.';
       });
     }
+    if (before != null) _timelineHistory.record(before: before, after: _captureTimelineSnapshot());
+    _edgeDragBefore = null;
+    _edgeDragIndex = -1;
   }
 
   void setTimelineZoom(double next) {
@@ -3172,7 +3173,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         return math.min(5.0, math.min(left.length / 2, right.length / 2)).toDouble();
       }
     }
-    return 0.1;
+    return 0.0;
   }
 
   Future<void> showEffectClipMenu(Offset position, int index) async {
@@ -3265,7 +3266,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     _effectClipMovePointerX += details.delta.dx;
     final effect = effectClips[_effectClipMoveIndex];
     final length = effect.duration;
-    final nextStart = math.max(0.0, _effectClipMoveStart + _effectClipMovePointerX / zoom).toDouble();
+    final maxStart = math.max(0.0, timelineSeconds - length).toDouble();
+    final nextStart = (_effectClipMoveStart + _effectClipMovePointerX / zoom).clamp(0.0, maxStart).toDouble();
     setState(() { effect.start = nextStart; effect.end = nextStart + length; projectDirty = true; });
   }
 
