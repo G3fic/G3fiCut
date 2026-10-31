@@ -29,8 +29,16 @@ Map<String, dynamic>? findReleaseInstallerAsset(
   return null;
 }
 
-/// Finds the portable Windows application archive used by GifCut's in-app
-/// updater. The archive contains the complete runner/Release directory.
+/// Finds the Windows executable used by the in-app updater. The regular
+/// installer is required because it handles elevation and safe replacement
+/// of files in the existing installation directory.
+Map<String, dynamic>? findReleaseUpdateAsset(
+  List<dynamic> assets,
+  String version,
+) => findReleaseInstallerAsset(assets, version);
+
+/// Finds the portable Windows application archive for manual/portable use.
+/// The archive contains the complete runner/Release directory.
 Map<String, dynamic>? findReleaseAppArchiveAsset(
   List<dynamic> assets,
   String version,

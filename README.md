@@ -30,6 +30,7 @@ Multiple independent source assets and video/audio tracks, multi-select, autosav
 2. Run the installer and follow the prompts.
 3. GifCut checks for a newer stable release on startup. You can also click the update icon in the title bar.
 4. When you accept an update, GifCut downloads the published installer, verifies its SHA-256 digest from the GitHub Releases API, and launches the installer. Windows may request administrator permission.
+5. When upgrading from GifCut 0.3.75 or earlier, download and run the new installer manually once. Those older versions use the previous ZIP-based updater and cannot reliably install this updater fix. Future in-app updates launch the verified Windows installer directly.
 
 Updates are published from semantic version tags. For example, push a tag named **v0.2.2** to trigger a Windows build and publish the installer to GitHub Releases. The built-in updater uses the public endpoint https://api.github.com/repos/G3fic/G3fiCut/releases/latest, so the repository must be public for unauthenticated clients to read release metadata and download assets.
 
