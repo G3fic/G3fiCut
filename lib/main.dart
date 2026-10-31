@@ -136,7 +136,7 @@ class PhotoOverlay {
 }
 
 class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.67');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.68');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
