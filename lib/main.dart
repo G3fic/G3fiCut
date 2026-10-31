@@ -385,7 +385,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           final diameter = math.max(
             constraints.maxWidth,
             constraints.maxHeight,
-          ) * progress;
+          ).toDouble() * progress;
           return Center(
             child: SizedBox(
               width: diameter,
@@ -2519,6 +2519,7 @@ try {
                         ])
                       : Center(
                           child: AspectRatio(
+                            key: const ValueKey('preview-aspect-ratio-frame'),
                             aspectRatio: _previewAspectRatio,
                             child: SizedBox.expand(
                               child: LayoutBuilder(builder: (context, bounds) {
@@ -2863,7 +2864,7 @@ try {
     if (selectedTransitionIndex >= 0 &&
         selectedTransitionIndex < timelineTransitions.length) {
       final transition = timelineTransitions[selectedTransitionIndex];
-      final maximum = math.max(0.1, _maxTransitionDurationAt(transition.at));
+      final maximum = math.max(0.1, _maxTransitionDurationAt(transition.at)).toDouble();
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
