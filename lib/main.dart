@@ -821,6 +821,16 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         audioClipEnd: audioClipEnd,
         timelineZoom: zoom,
         playheadMs: position.inMilliseconds.clamp(0, timelineDuration.inMilliseconds).toInt(),
+        effectClips: effectClips.map((effect) => ProjectEffectClip(
+          type: effect.type,
+          start: effect.start,
+          end: effect.end,
+        )).toList(),
+        transitions: timelineTransitions.map((transition) => ProjectTransition(
+          type: transition.type,
+          at: transition.at,
+          duration: transition.duration,
+        )).toList(),
       );
       await File(targetPath).writeAsString(document.encode(), flush: true);
       if (!mounted) return true;
@@ -942,6 +952,22 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         audioClipStart = document.audioClipStart;
         audioClipEnd = document.audioClipEnd;
         zoom = document.timelineZoom;
+        effectClips
+          ..clear()
+          ..addAll(document.effectClips.map((effect) => TimelineEffectClip(
+            type: effect.type,
+            start: effect.start,
+            end: effect.end,
+          )));
+        timelineTransitions
+          ..clear()
+          ..addAll(document.transitions.map((transition) => TimelineTransition(
+            type: transition.type,
+            at: transition.at,
+            duration: transition.duration,
+          )));
+        selectedEffectClipIndex = -1;
+        selectedTransitionIndex = -1;
         position = restoredPosition;
         projectFilePath = selectedPath;
         projectDirty = false;
@@ -2715,6 +2741,12 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         audioPath: audioPath,
         audioClipStart: audioClipStart,
         audioClipEnd: audioClipEnd,
+        effectClips: effectClips.map((effect) => TimelineEffectRange(
+          effect.type, effect.start, effect.end,
+        )).toList(),
+        transitions: timelineTransitions.map((transition) => TimelineTransitionRange(
+          transition.type, transition.at, transition.duration,
+        )).toList(),
       );
 
   void _restoreTimelineSnapshot(TimelineSnapshot snapshot) {
@@ -2733,6 +2765,20 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     audioPath = snapshot.audioPath;
     audioClipStart = snapshot.audioClipStart;
     audioClipEnd = snapshot.audioClipEnd;
+    effectClips
+      ..clear()
+      ..addAll(snapshot.effectClips.map((effect) => TimelineEffectClip(
+        type: effect.type, start: effect.start, end: effect.end,
+      )));
+    timelineTransitions
+      ..clear()
+      ..addAll(snapshot.transitions.map((transition) => TimelineTransition(
+        type: transition.type, at: transition.at, duration: transition.duration,
+      )));
+    selectedEffectClipIndex = selectedEffectClipIndex < effectClips.length
+        ? selectedEffectClipIndex : -1;
+    selectedTransitionIndex = selectedTransitionIndex < timelineTransitions.length
+        ? selectedTransitionIndex : -1;
   }
 
   void _performTimelineEdit(VoidCallback update) {
