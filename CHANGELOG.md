@@ -1,5 +1,15 @@
 # Changelog
 
+## GifCut v0.3.75 — 2026-10-31
+
+- Restore the selected aspect ratio in the preview and use a dark-grey surround for letterboxed areas.
+- Open contextual settings for selected video, photo, audio, effect, and transition items in the left inspector panel.
+- Add photo import directly to the Media tab and place the inspector to the left of the preview.
+- Expand transition choices and map them to FFmpeg xfade modes with editable type and duration.
+- Avoid decoder seeks at contiguous split points to prevent a one-frame flash and brief audio dropout.
+- Reduce the unused timeline label gutter and align all tracks closer to the left edge.
+
+
 ## GifCut v0.3.74 — 2026-10-31
 
 - Fix the effect-placement regression test: the timeline correctly chooses the nearest available two-second gap, rather than incorrectly expecting no slot.

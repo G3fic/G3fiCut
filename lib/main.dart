@@ -171,7 +171,7 @@ class ExportTimelineSegment {
 }
 
 class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.74');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.75');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -229,7 +229,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   bool _suppressPlayerStateEvents = false;
   double _mediaPanelWidth = 188;
   double _inspectorPanelWidth = 220;
-  double _timelinePanelHeight = 276;
+  double _timelinePanelHeight = 252;
   final Map<String, Offset> _resizeHandleLastGlobal = {};
   double frameRate = 30.0;
   bool snappingEnabled = true;
@@ -243,6 +243,11 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   bool _showVerticalSnapGuide = false;
   bool _showHorizontalSnapGuide = false;
   String aspectRatioPreset = '16:9';
+  static const double _timelineLabelWidth = 112;
+  double _aspectRatioValue(String preset) => switch (preset) {
+    '9:16' => 9 / 16, '1:1' => 1, '4:3' => 4 / 3,
+    '4:5' => 4 / 5, '3:2' => 3 / 2, _ => 16 / 9,
+  };
   String videoEffect = 'Оригинал';
   String transitionEffect = 'Нет';
   double transitionDuration = 0.4;
@@ -277,13 +282,14 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       final half = transition.duration / 2;
       final progress = 1 - (seconds - transition.at).abs() / math.max(0.05, half);
       if (progress <= 0) continue;
-      if (transition.type == 'Белая вспышка') color = Colors.white;
-      if (transition.type == 'Затемнение' || transition.type == 'Растворение') color = Colors.black;
-      if (transition.type == 'Белая вспышка' ||
-          transition.type == 'Затемнение' ||
-          transition.type == 'Растворение') {
-        opacity = math.max(opacity, progress.clamp(0.0, 1.0)).toDouble();
+      if (transition.type == 'Белая вспышка' || transition.type == 'Растворение через белый') {
+        color = Colors.white;
+      } else if (transition.type == 'Затемнение' || transition.type == 'Растворение через чёрный' || transition.type == 'Растворение') {
+        color = Colors.black;
+      } else {
+        color = const Color(0xFFB7A1E8);
       }
+      opacity = math.max(opacity, progress.clamp(0.0, 0.72)).toDouble();
     }
     // Keep the legacy inspector transition as a fallback for projects that
     // use the global transition setting but have no per-cut transition clips.
@@ -1377,6 +1383,12 @@ try {
           return;
         }
         _activePlaybackClipIndex = index + 1;
+        if ((next.start - clip.end).abs() <= 0.05) {
+          // Split clips share a contiguous source range; seeking here causes
+          // a visible frame flash and a brief audio dropout in media_kit.
+          setState(() => position = Duration(milliseconds: (next.timelineStart * 1000).round()));
+          return;
+        }
         _seekingAcrossCut = true;
         setState(() => position = Duration(milliseconds: (next.timelineStart * 1000).round()));
         try {
@@ -1800,13 +1812,13 @@ try {
                       final maxWidth = (screenWidth - 64 - 1 - 14 - _inspectorPanelWidth - 220).clamp(150.0, 420.0).toDouble();
                       _mediaPanelWidth = (_mediaPanelWidth + dx).clamp(150.0, maxWidth).toDouble();
                     }),
-                    Expanded(child: previewPanel()),
+                    SizedBox(width: _inspectorPanelWidth, child: inspectorPanel()),
                     _verticalPanelSplitter('inspector-panel-splitter', (dx) {
                       final screenWidth = MediaQuery.sizeOf(context).width;
                       final maxWidth = (screenWidth - 64 - 1 - 14 - _mediaPanelWidth - 220).clamp(190.0, 440.0).toDouble();
                       _inspectorPanelWidth = (_inspectorPanelWidth - dx).clamp(190.0, maxWidth).toDouble();
                     }),
-                    SizedBox(width: _inspectorPanelWidth, child: inspectorPanel()),
+                    Expanded(child: previewPanel()),
                   ],
                 ),
               ),
@@ -1936,6 +1948,12 @@ try {
                         }),
                       ),
                       const SizedBox(height: 8),
+                      SizedBox(width: double.infinity, child: OutlinedButton.icon(
+                        onPressed: busy ? null : importPhotoOverlay,
+                        icon: const Icon(Icons.add_photo_alternate_outlined, size: 17),
+                        label: const Text('Добавить фото'),
+                      )),
+                      const SizedBox(height: 8),
                       InkWell(
                         onTap: busy ? null : pickVideo,
                         borderRadius: BorderRadius.circular(10),
@@ -1956,10 +1974,15 @@ try {
                         const SizedBox(height: 14),
                         const Text('ФАЙЛЫ ПРОЕКТА', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.1, fontWeight: FontWeight.w700)),
                         const SizedBox(height: 8),
-                        mediaItem(Icons.movie_outlined, p.basename(videoPath!), 'Видео · исходник', videoBlue, imagePath: videoThumbnails.isNotEmpty ? videoThumbnails.first : null),
+                        mediaItem(Icons.movie_outlined, p.basename(videoPath!), 'Видео · исходник', videoBlue,
+                          imagePath: videoThumbnails.isNotEmpty ? videoThumbnails.first : null,
+                          selected: _selectedCanvasObject == 'video',
+                          onTap: () => _selectVideoClip(selectedClipIndex.clamp(0, videoClips.isEmpty ? 0 : videoClips.length - 1).toInt())),
                         if (audioPath != null) ...[
                           const SizedBox(height: 7),
-                          mediaItem(Icons.graphic_eq, p.basename(audioPath!), 'Извлечённое аудио', audioGreen),
+                          mediaItem(Icons.graphic_eq, p.basename(audioPath!), 'Извлечённое аудио', audioGreen,
+                            selected: selectedAudioClip,
+                            onTap: () => setState(() { selectedAudioClip = true; selectedPhotoOverlay = -1; selectedEffectClipIndex = -1; selectedTransitionIndex = -1; inspectorTab = 'audio'; _selectedCanvasObject = 'audio'; })),
                         ],
                         if (photoOverlays.isNotEmpty) ...[
                           const SizedBox(height: 10),
@@ -2309,11 +2332,16 @@ try {
   }[type] ?? 'null';
 
   String _transitionFilterName(String type) => const {
-    'Затемнение': 'fadeblack',
-    'Белая вспышка': 'fadewhite',
-    'Растворение': 'dissolve',
-    'Смахивание влево': 'wipeleft',
-    'Смахивание вправо': 'wiperight',
+    'Затемнение': 'fadeblack', 'Белая вспышка': 'fadewhite',
+    'Растворение': 'dissolve', 'Смахивание влево': 'wipeleft',
+    'Смахивание вправо': 'wiperight', 'Смахивание вверх': 'wipeup',
+    'Смахивание вниз': 'wipedown', 'Сдвиг влево': 'slideleft',
+    'Сдвиг вправо': 'slideright', 'Сдвиг вверх': 'slideup',
+    'Сдвиг вниз': 'slidedown', 'Круговое открытие': 'circleopen',
+    'Круговое закрытие': 'circleclose', 'Пикселизация': 'pixelize',
+    'Диагональное стирание': 'diagtl',
+    'Растворение через чёрный': 'fadeblack',
+    'Растворение через белый': 'fadewhite',
   }[type] ?? 'fadeblack';
 
   Widget previewPanel() => Container(
@@ -2334,13 +2362,13 @@ try {
           Expanded(
             child: Container(
               width: double.infinity,
-              color: const Color(0xFF080A0E),
+              color: const Color(0xFF303238),
               alignment: Alignment.center,
-              padding: const EdgeInsets.all(18),
+              padding: const EdgeInsets.all(6),
               child: videoPath == null
                   ? SingleChildScrollView(
                       child: ConstrainedBox(
-                        constraints: const BoxConstraints(minHeight: 120),
+                        constraints: const BoxConstraints(minHeight: 96),
                         child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                           Icon(Icons.slideshow_outlined, size: 54, color: Color(0xFF414451)),
                           SizedBox(height: 14),
@@ -2359,7 +2387,8 @@ try {
                           Text('Можно продолжить извлечение аудио.', style: TextStyle(color: Color(0xFF8A8D9D), fontSize: 11)),
                         ])
                       : Center(
-                          child: SizedBox.expand(
+                          child: AspectRatio(
+                            aspectRatio: _aspectRatioValue(aspectRatioPreset),
                             child: LayoutBuilder(builder: (context, bounds) {
                               final shortSide = math.min(bounds.maxWidth, bounds.maxHeight);
                               return ClipRRect(
@@ -2497,6 +2526,7 @@ try {
                       selectedAudioClip = false;
                       selectedEffectClipIndex = -1;
                       selectedTransitionIndex = -1;
+                      inspectorTab = 'video';
                       _selectedCanvasObject = 'photo';
                     }),
                                           onPanStart: (_) {
@@ -2680,11 +2710,90 @@ try {
     ),
   );
 
+  Widget _selectedItemSettings() {
+    if (selectedTransitionIndex >= 0 && selectedTransitionIndex < timelineTransitions.length) {
+      final t = timelineTransitions[selectedTransitionIndex];
+      final maxDuration = math.max(0.1, _maxTransitionDurationAt(t.at)).toDouble();
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('НАСТРОЙКИ ПЕРЕХОДА', style: TextStyle(color: muted, fontSize: 10, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          isExpanded: true, initialValue: t.type,
+          decoration: const InputDecoration(labelText: 'Тип перехода', isDense: true, border: OutlineInputBorder()),
+          items: (_timelineTransitionTypes.toList()..sort()).map((v) => DropdownMenuItem(value: v, child: Text(v, style: const TextStyle(fontSize: 11)))).toList(),
+          onChanged: (v) { if (v != null) _performTimelineEdit(() { t.type = v; status = 'Переход изменён: $v'; }); },
+        ),
+        _adjustmentSlider('Длительность', t.duration, 0.1, maxDuration, (v) => _performTimelineEdit(() { t.duration = v; })),
+        property('Стык', '${t.at.toStringAsFixed(2)} с'),
+        TextButton.icon(onPressed: deleteSelectedTimelineItem, icon: const Icon(Icons.delete_outline), label: const Text('Удалить переход')),
+        const Divider(),
+      ]);
+    }
+    if (selectedEffectClipIndex >= 0 && selectedEffectClipIndex < effectClips.length) {
+      final e = effectClips[selectedEffectClipIndex];
+      final maxDuration = math.max(0.08, timelineSeconds - e.start).toDouble();
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('НАСТРОЙКИ ЭФФЕКТА', style: TextStyle(color: muted, fontSize: 10, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          isExpanded: true, initialValue: e.type,
+          decoration: const InputDecoration(labelText: 'Эффект', isDense: true, border: OutlineInputBorder()),
+          items: (_timelineEffectTypes.toList()..sort()).map((v) => DropdownMenuItem(value: v, child: Text(v, style: const TextStyle(fontSize: 11)))).toList(),
+          onChanged: (v) { if (v != null) _performTimelineEdit(() { e.type = v; }); },
+        ),
+        _adjustmentSlider('Длительность', e.duration, 0.08, maxDuration, (v) {
+          final ranges = effectClips.map((x) => TimelineEffectRange(x.type, x.start, x.end)).toList();
+          final resized = TimelineEditing.resizeEffectEdge(effects: ranges, index: selectedEffectClipIndex, requestedTime: e.start + v, timelineEnd: timelineSeconds, resizeStart: false);
+          _performTimelineEdit(() { e.start = resized.start; e.end = resized.end; });
+        }),
+        property('Начало', '${e.start.toStringAsFixed(2)} с'),
+        TextButton.icon(onPressed: deleteSelectedTimelineItem, icon: const Icon(Icons.delete_outline), label: const Text('Удалить эффект')),
+        const Divider(),
+      ]);
+    }
+    if (selectedPhotoOverlay >= 0 && selectedPhotoOverlay < photoOverlays.length) {
+      final pht = photoOverlays[selectedPhotoOverlay];
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('НАСТРОЙКИ ФОТО', style: TextStyle(color: muted, fontSize: 10, fontWeight: FontWeight.w800)),
+        property('Файл', p.basename(pht.path)),
+        _adjustmentSlider('Размер', pht.scale, 0.1, 5, (v) => setState(() { pht.scale = v; projectDirty = true; })),
+        _adjustmentSlider('Поворот', pht.rotation, -180, 180, (v) => setState(() { pht.rotation = v; projectDirty = true; })),
+        _adjustmentSlider('Прозрачность', pht.opacity, 0.05, 1, (v) => setState(() { pht.opacity = v; projectDirty = true; })),
+        TextButton.icon(onPressed: deleteSelectedTimelineItem, icon: const Icon(Icons.delete_outline), label: const Text('Удалить фото')),
+        const Divider(),
+      ]);
+    }
+    if (selectedAudioClip && audioPath != null) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('НАСТРОЙКИ АУДИО', style: TextStyle(color: muted, fontSize: 10, fontWeight: FontWeight.w800)),
+        _adjustmentSlider('Громкость', exportVolume, 0, 2, (v) => setState(() { exportVolume = v; projectDirty = true; })),
+        property('Файл', p.basename(audioPath!)),
+        TextButton.icon(onPressed: deleteSelectedTimelineItem, icon: const Icon(Icons.delete_outline), label: const Text('Удалить аудио')),
+        const Divider(),
+      ]);
+    }
+    if (_selectedCanvasObject == 'video' && videoClips.isNotEmpty && selectedClipIndex < videoClips.length) {
+      final c = videoClips[selectedClipIndex];
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('НАСТРОЙКИ ВИДЕОКЛИПА', style: TextStyle(color: muted, fontSize: 10, fontWeight: FontWeight.w800)),
+        property('Фрагмент', '${c.start.toStringAsFixed(2)}–${c.end.toStringAsFixed(2)} с'),
+        property('На таймлайне', '${c.timelineStart.toStringAsFixed(2)} с'),
+        const Divider(),
+      ]);
+    }
+    return const SizedBox.shrink();
+  }
+
   Widget inspectorPanel() => Container(
         color: panel,
         padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
         child: SingleChildScrollView(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if ((selectedTransitionIndex >= 0 && selectedTransitionIndex < timelineTransitions.length) ||
+                (selectedEffectClipIndex >= 0 && selectedEffectClipIndex < effectClips.length) ||
+                (selectedPhotoOverlay >= 0 && selectedPhotoOverlay < photoOverlays.length) || selectedAudioClip ||
+                (videoClips.isNotEmpty && _selectedCanvasObject == 'video' && selectedClipIndex < videoClips.length))
+              _selectedItemSettings(),
             Row(children: [
               inspectorTabButton('video', 'Видео', Icons.movie_outlined),
               inspectorTabButton('audio', 'Аудио', Icons.graphic_eq),
@@ -2731,7 +2840,7 @@ try {
                 isExpanded: true,
                 initialValue: transitionEffect,
                 decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9)),
-                items: const ['Нет', 'Затемнение', 'Белая вспышка'].map((v) => DropdownMenuItem(value: v, child: Text(v, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)))).toList(),
+                items: ['Нет', ...(_timelineTransitionTypes.toList()..sort())].map((v) => DropdownMenuItem(value: v, child: Text(v, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)))).toList(),
                 onChanged: (value) => setState(() { transitionEffect = value ?? 'Нет'; projectDirty = true; }),
               ),
               if (transitionEffect != 'Нет')
@@ -2951,12 +3060,12 @@ try {
                 final verticalController = timelineVerticalScrollController;
                 if (event.scrollDelta.dy != 0 && horizontalController.hasClients) {
                   final pointerX = event.localPosition.dx;
-                  final anchorSeconds = ((horizontalController.offset + pointerX - 140) / zoom)
+                  final anchorSeconds = ((horizontalController.offset + pointerX - _timelineLabelWidth) / zoom)
                       .clamp(0.0, timelineSeconds).toDouble();
                   setTimelineZoom(event.scrollDelta.dy < 0 ? zoom + 4 : zoom - 4);
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (!horizontalController.hasClients) return;
-                    final nextOffset = anchorSeconds * zoom + 140 - pointerX;
+                    final nextOffset = anchorSeconds * zoom + _timelineLabelWidth - pointerX;
                     horizontalController.jumpTo(nextOffset.clamp(0.0, horizontalController.position.maxScrollExtent).toDouble());
                   });
                 } else if (verticalController.hasClients &&
@@ -2972,7 +3081,7 @@ try {
               physics: const NeverScrollableScrollPhysics(),
               scrollDirection: Axis.horizontal,
               child: SizedBox(
-                width: 140 + timelineWidth,
+                width: _timelineLabelWidth + timelineWidth,
                 child: SingleChildScrollView(
                   controller: timelineVerticalScrollController,
                   primary: false,
@@ -2986,7 +3095,7 @@ try {
                     SizedBox(
                       height: 32,
                       child: Row(children: [
-                        Container(width: 140, padding: const EdgeInsets.only(left: 14), alignment: Alignment.centerLeft, color: const Color(0xFF171820), child: const Text('ВРЕМЯ', style: TextStyle(color: muted, fontSize: 9, letterSpacing: 1.1, fontWeight: FontWeight.w800))),
+                        Container(width: _timelineLabelWidth, padding: const EdgeInsets.only(left: 14), alignment: Alignment.centerLeft, color: const Color(0xFF171820), child: const Text('ВРЕМЯ', style: TextStyle(color: muted, fontSize: 9, letterSpacing: 1.1, fontWeight: FontWeight.w800))),
                         SizedBox(width: timelineWidth, child: CustomPaint(painter: RulerPainter(seconds: timelineSeconds, pixelsPerSecond: zoom), child: const SizedBox.expand())),
                       ]),
                     ),
@@ -3016,11 +3125,11 @@ try {
       );
 
   Widget effectTrackRow() => SizedBox(
-        width: 140 + timelineWidth,
+        width: _timelineLabelWidth + timelineWidth,
         height: 54,
         child: Row(children: [
           Container(
-            width: 140, height: 54, padding: const EdgeInsets.symmetric(horizontal: 9),
+            width: _timelineLabelWidth, height: 54, padding: const EdgeInsets.symmetric(horizontal: 9),
             decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
             child: Row(children: [
               const Icon(Icons.auto_awesome_outlined, size: 16, color: Color(0xFFB18CFF)),
@@ -3054,6 +3163,7 @@ try {
                           selectedTransitionIndex = -1;
                           selectedAudioClip = false;
                           selectedPhotoOverlay = -1;
+                          inspectorTab = 'video';
                           _selectedCanvasObject = 'timeline-effect';
                         }),
                         onSecondaryTapUp: (details) {
@@ -3136,11 +3246,11 @@ try {
       );
 
   Widget transitionTrackRow() => SizedBox(
-        width: 140 + timelineWidth,
+        width: _timelineLabelWidth + timelineWidth,
         height: 42,
         child: Row(children: [
           Container(
-            width: 140, height: 42, padding: const EdgeInsets.symmetric(horizontal: 9),
+            width: _timelineLabelWidth, height: 42, padding: const EdgeInsets.symmetric(horizontal: 9),
             decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
             child: Row(children: [
               const Icon(Icons.compare_arrows, size: 16, color: Color(0xFFFFC56B)),
@@ -3170,6 +3280,7 @@ try {
                       selectedEffectClipIndex = -1;
                       selectedAudioClip = false;
                       selectedPhotoOverlay = -1;
+                      inspectorTab = 'video';
                       _selectedCanvasObject = 'timeline-transition';
                     }),
                     onSecondaryTapUp: (details) {
@@ -3190,11 +3301,11 @@ try {
         ]),
       );
   Widget photoTrackRow() => SizedBox(
-        width: 140 + timelineWidth,
+        width: _timelineLabelWidth + timelineWidth,
         height: 54,
         child: Row(children: [
           Container(
-            width: 140, height: 54, padding: const EdgeInsets.symmetric(horizontal: 12),
+            width: _timelineLabelWidth, height: 54, padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
             child: const Row(children: [
               Icon(Icons.image_outlined, size: 17, color: Color(0xFFB18CFF)),
@@ -3241,11 +3352,11 @@ try {
     final playhead = (position.inMilliseconds / 1000 * zoom).clamp(0.0, timelineWidth - 2).toDouble();
 
     return SizedBox(
-      width: 140 + timelineWidth,
+      width: _timelineLabelWidth + timelineWidth,
       height: 63,
       child: Row(children: [
         Container(
-          width: 140,
+          width: _timelineLabelWidth,
           height: 63,
           padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
@@ -3255,7 +3366,7 @@ try {
             Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(audio ? 'Аудио 1' : 'Видео 1', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
               const SizedBox(height: 2),
-              Text(audio ? 'Звуковая дорожка' : 'Видеодорожка', style: const TextStyle(fontSize: 9, color: muted)),
+              Text(audio ? 'Звуковая дорожка' : 'Видеодорожка', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9, color: muted)),
             ])),
           ]),
         ),
@@ -3281,6 +3392,7 @@ try {
                       selectedEffectClipIndex = -1;
                       selectedTransitionIndex = -1;
                       selectedPhotoOverlay = -1;
+                      inspectorTab = 'audio';
                       _selectedCanvasObject = 'audio';
                     }),
                     onSecondaryTapUp: (details) {
@@ -3961,6 +4073,7 @@ try {
       selectedAudioClip = false;
       selectedEffectClipIndex = -1;
       selectedTransitionIndex = -1;
+      inspectorTab = 'video';
       _selectedCanvasObject = 'video';
     });
   }
