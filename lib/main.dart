@@ -2733,7 +2733,12 @@ try {
                   title: Text(p.basename(photoOverlays[i].path), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10)),
                   trailing: IconButton(tooltip: 'Удалить фото', visualDensity: VisualDensity.compact, onPressed: () => setState(() {
                     photoOverlays.removeAt(i);
-                    if (selectedPhotoOverlay >= photoOverlays.length) selectedPhotoOverlay = photoOverlays.length - 1;
+                    if (selectedPhotoOverlay == i) {
+                      selectedPhotoOverlay = -1;
+                      _selectedCanvasObject = 'video';
+                    } else if (selectedPhotoOverlay > i) {
+                      selectedPhotoOverlay--;
+                    }
                     projectDirty = true;
                   }), icon: const Icon(Icons.delete_outline, size: 16)),
                   onTap: () => setState(() {
@@ -3562,6 +3567,8 @@ try {
           audioWaveform = const [];
           audioClipStart = 0;
           audioClipEnd = 0;
+          selectedAudioClip = false;
+          _selectedCanvasObject = 'video';
           status = 'Звуковой клип удалён. Видеоклипы не изменены.';
           break;
       }
