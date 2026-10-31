@@ -255,7 +255,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   String transitionEffect = 'Нет';
   double transitionDuration = 0.4;
   static const _timelineEffectTypes = ProjectEffectClip.supportedTypes;
-  static const _timelineTransitionTypes = ProjectTransition.supportedTypes;
+  static final _timelineTransitionTypes = ProjectTransition.supportedTypes;
 
   String get _exportEffectFilter => _filterForEffect(videoEffect);
 
