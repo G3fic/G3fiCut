@@ -333,10 +333,21 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   final List<TimelineTransition> timelineTransitions = [];
   int selectedEffectClipIndex = -1;
   int selectedTransitionIndex = -1;
+  bool selectedAudioClip = false;
   int _effectClipMoveIndex = -1;
   double _effectClipMoveStart = 0;
   double _effectClipMovePointerX = 0;
   TimelineSnapshot? _effectClipMoveBefore;
+  int _effectResizeIndex = -1;
+  bool _effectResizeLeft = false;
+  double _effectResizePointerX = 0;
+  double _effectResizeStart = 0;
+  double _effectResizeEnd = 0;
+  TimelineSnapshot? _effectResizeBefore;
+  String? _hoveredLibraryPreview;
+  int? _timelinePanPointer;
+  Offset? _timelinePanLastGlobal;
+  bool _timelinePanMoved = false;
   double audioClipStart = 0;
   double audioClipEnd = 0;
   List<double> audioWaveform = const [];
@@ -1135,9 +1146,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     _selectVideoAtPlayhead();
   }
 
-  double _softAngleSnap(double degrees) =>
-      const AngleSnapper(stepDegrees: 15, catchDistance: 3)
-          .snap(degrees, enabled: snappingEnabled);
+  double _softAngleSnap(double degrees) {
+    if (!snappingEnabled) return degrees;
+    final rightAngle = const AngleSnapper(stepDegrees: 90, catchDistance: 5)
+        .snap(degrees);
+    if (rightAngle != degrees) return rightAngle;
+    return const AngleSnapper(stepDegrees: 15, catchDistance: 3).snap(degrees);
+  }
 
   Future<void> extractAudio() async {
     final video = videoPath;
@@ -1728,21 +1743,6 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           const SizedBox(width: 10),
           Flexible(child: Text((projectFilePath == null ? 'Новый проект' : p.basenameWithoutExtension(projectFilePath!)) + (projectDirty ? ' •' : ''), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Color(0xFFD3D3DF)))),
           const Spacer(),
-          IconButton(
-            tooltip: checkingForUpdates ? 'Проверка обновлений…' : 'Проверить обновления',
-            visualDensity: VisualDensity.compact,
-            onPressed: checkingForUpdates ? null : () => unawaited(checkForUpdates(showNoUpdateMessage: true)),
-            icon: checkingForUpdates
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.system_update_alt, size: 18, color: muted),
-          ),
-          IconButton(
-            key: const ValueKey('keyboard-shortcuts'),
-            tooltip: 'Горячие клавиши',
-            visualDensity: VisualDensity.compact,
-            onPressed: showKeyboardShortcuts,
-            icon: const Icon(Icons.keyboard_outlined, size: 18),
-          ),
           const Icon(Icons.desktop_windows_outlined, size: 16, color: muted),
           const SizedBox(width: 8),
           const Text('DESKTOP BETA', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w700)),
@@ -1770,17 +1770,18 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             const Divider(height: 14),
             _railAction(Icons.ios_share, 'Экспорт', exportEditedVideo, disabled: videoClips.isEmpty || busy, color: accent),
             _railAction(Icons.system_update_alt, 'Обновления', () => unawaited(checkForUpdates(showNoUpdateMessage: true)), disabled: checkingForUpdates),
-            _railAction(Icons.keyboard_outlined, 'Горячие клавиши', showKeyboardShortcuts),
+            _railAction(Icons.keyboard_outlined, 'Горячие клавиши', showKeyboardShortcuts, key: const ValueKey('keyboard-shortcuts')),
           ]),
         ),
       );
 
-  Widget _railAction(IconData icon, String tooltip, VoidCallback action, {bool disabled = false, Color color = muted}) =>
+  Widget _railAction(IconData icon, String tooltip, VoidCallback action, {bool disabled = false, Color color = muted, Key? key}) =>
       Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Tooltip(
           message: tooltip,
           child: IconButton(
+            key: key,
             visualDensity: VisualDensity.compact,
             onPressed: disabled ? null : action,
             icon: Icon(icon, size: 20, color: disabled ? muted.withValues(alpha: .35) : color),
@@ -2126,8 +2127,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                           Text('Можно продолжить извлечение аудио.', style: TextStyle(color: Color(0xFF8A8D9D), fontSize: 11)),
                         ])
                       : Center(
-                          child: AspectRatio(
-                            aspectRatio: previewAspectRatio,
+                          child: SizedBox.expand(
                             child: LayoutBuilder(builder: (context, bounds) {
                               final shortSide = math.min(bounds.maxWidth, bounds.maxHeight);
                               return ClipRRect(
