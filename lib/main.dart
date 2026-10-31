@@ -491,7 +491,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       if (downloadUri == null ||
           downloadUri.scheme != 'https' ||
           downloadUri.host != 'github.com' ||
-          !downloadUri.path.startsWith('/G3fic/G3fiCut/releases/download/')) {
+          !(downloadUri.path.startsWith('/G3fic/G3fiCut/releases/download/') ||
+            downloadUri.path.startsWith('/G3fic/GifCut/releases/download/'))) {
         throw const FormatException('Ссылка на установщик не принадлежит официальным GitHub Releases GifCut.');
       }
 
