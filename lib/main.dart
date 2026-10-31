@@ -5529,7 +5529,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           ));
           await textFile.writeAsString(overlay.text);
           final safeTextPath = textFile.absolute.path
-              .replaceAll(r'\', '/')
+              .replaceAll(String.fromCharCode(92), '/')
               .replaceAll(':', r'\:')
               .replaceAll("'", r"\'");
           final fontSize = (overlay.fontSize * int.parse(outputHeight) / 1080)
