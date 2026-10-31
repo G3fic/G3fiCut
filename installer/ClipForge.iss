@@ -7,7 +7,7 @@
 
 [Setup]
 AppId={{6B7F4C9D-21C3-4E88-9B13-CE9A4C1F6D27}
-AppName={#MyAppName}
+AppName={#MyAppName} v{#MyAppVersion}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\GifCut

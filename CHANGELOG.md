@@ -1,5 +1,16 @@
 # Changelog
 
+## GifCut v0.3.80 — 2026-11-01
+
+- Add separate Media, Audio, Text, Stickers, Effects, Transitions, Captions and Filters library tabs.
+- Accept native Windows Explorer drag-and-drop for video, photo, audio and SRT/VTT caption files.
+- Add timed photo overlays and editable text/title clips with their own timeline lanes, inspector controls and on-canvas positioning.
+- Persist timed photo and text layers in project schema v4; migrate older v1–v3 projects automatically.
+- Include image and text overlays in FFmpeg export; default export canvas is black, with background blur available as an explicit option.
+- Split effect and transition libraries: selecting a card opens the right-side inspector, and a separate action applies it to the timeline.
+
+**Limitations:** this release still uses one source video and one independent audio file per project. Multiple independent video sources, multiple audio tracks, and full multi-track clip mixing remain follow-up work.
+
 ## GifCut v0.3.79 — 2026-11-01
 
 - Make the preview canvas black by default instead of filling unused canvas space with a continuously blurred duplicate of the video.

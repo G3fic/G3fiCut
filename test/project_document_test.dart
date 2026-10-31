@@ -22,6 +22,8 @@ ProjectDocument makeProject({
   int playheadMs = 6200,
   List<ProjectEffectClip> effectClips = const [],
   List<ProjectTransition> transitions = const [],
+  List<ProjectPhotoOverlay> photoOverlays = const [],
+  List<ProjectTextOverlay> textOverlays = const [],
 }) =>
     ProjectDocument(
       format: format,
@@ -39,6 +41,8 @@ ProjectDocument makeProject({
       playheadMs: playheadMs,
       effectClips: effectClips,
       transitions: transitions,
+      photoOverlays: photoOverlays,
+      textOverlays: textOverlays,
     );
 
 void main() {
@@ -183,6 +187,89 @@ void main() {
         );
         expect(ProjectDocument.decode(project.encode()).effectClips.single.type, type);
       }
+    });
+
+
+    test('schema v4 roundtrip preserves timed photo and text layers', () {
+      final original = makeProject(
+        photoOverlays: const [
+          ProjectPhotoOverlay(
+            path: r'C:\\media\\logo.png',
+            x: 0.2,
+            y: -0.1,
+            scale: 1.4,
+            rotation: 12,
+            opacity: 0.8,
+            start: 1.5,
+            end: 8,
+          ),
+        ],
+        textOverlays: const [
+          ProjectTextOverlay(
+            text: 'Заголовок',
+            start: 2,
+            end: 6.5,
+            x: 0.1,
+            y: -0.25,
+            fontSize: 56,
+            color: '#FFD166',
+            bold: false,
+            opacity: 0.9,
+          ),
+        ],
+      );
+
+      final decoded = ProjectDocument.decode(original.encode());
+
+      expect(decoded.schemaVersion, 4);
+      expect(decoded.photoOverlays.single.path, r'C:\\media\\logo.png');
+      expect(decoded.photoOverlays.single.start, 1.5);
+      expect(decoded.photoOverlays.single.end, 8);
+      expect(decoded.photoOverlays.single.scale, 1.4);
+      expect(decoded.textOverlays.single.text, 'Заголовок');
+      expect(decoded.textOverlays.single.color, '#FFD166');
+      expect(decoded.textOverlays.single.fontSize, 56);
+      expect(decoded.textOverlays.single.bold, isFalse);
+      expect(decoded.textOverlays.single.opacity, 0.9);
+    });
+
+    test('legacy schema v3 projects migrate with empty photo and text layers', () {
+      final legacy = makeProject(schemaVersion: 3).toJson()
+        ..remove('photoOverlays')
+        ..remove('textOverlays');
+
+      final migrated = ProjectDocument.decode(jsonEncode(legacy));
+
+      expect(migrated.schemaVersion, ProjectDocument.currentSchemaVersion);
+      expect(migrated.photoOverlays, isEmpty);
+      expect(migrated.textOverlays, isEmpty);
+    });
+
+    test('rejects malformed photo and text layer timing or formatting', () {
+      expect(
+        () => makeProject(
+          photoOverlays: const [
+            ProjectPhotoOverlay(path: 'logo.png', start: 2, end: 1),
+          ],
+        ),
+        throwsFormatException,
+      );
+      expect(
+        () => makeProject(
+          textOverlays: const [
+            ProjectTextOverlay(text: ' ', start: 0, end: 2),
+          ],
+        ),
+        throwsFormatException,
+      );
+      expect(
+        () => makeProject(
+          textOverlays: const [
+            ProjectTextOverlay(text: 'Title', start: 0, end: 2, color: 'red'),
+          ],
+        ),
+        throwsFormatException,
+      );
     });
 
     test('rejects an unknown format and an unsupported schema version', () {

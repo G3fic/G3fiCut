@@ -15,6 +15,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 
 import 'timeline_history.dart';
 import 'timeline_editing.dart';
@@ -104,7 +105,7 @@ class GifCutApp extends StatelessWidget {
   const GifCutApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'GifCut v0.3.79',
+        title: 'GifCut v${_EditorPageState.appVersion}',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           useMaterial3: true,
@@ -139,9 +140,36 @@ class TimelineClip {
 }
 
 class PhotoOverlay {
-  PhotoOverlay({required this.path, this.x = 0, this.y = 0, this.scale = 1, this.rotation = 0, this.opacity = 1});
+  PhotoOverlay({
+    required this.path,
+    this.x = 0,
+    this.y = 0,
+    this.scale = 1,
+    this.rotation = 0,
+    this.opacity = 1,
+    this.start = 0,
+    this.end = 3,
+  });
   final String path;
-  double x, y, scale, rotation, opacity;
+  double x, y, scale, rotation, opacity, start, end;
+}
+
+class TextOverlay {
+  TextOverlay({
+    required this.text,
+    required this.start,
+    required this.end,
+    this.x = 0,
+    this.y = 0.28,
+    this.fontSize = 42,
+    this.color = '#FFFFFF',
+    this.bold = true,
+    this.opacity = 1,
+  });
+  String text;
+  double start, end, x, y, fontSize, opacity;
+  String color;
+  bool bold;
 }
 
 class TimelineEffectClip {
@@ -172,7 +200,7 @@ class ExportTimelineSegment {
 }
 
 class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.79');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.80');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -206,7 +234,15 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   double previewZoom = 1.0;
   double videoScaleX = 1.0, videoScaleY = 1.0, videoRotation = 0, videoOffsetX = 0, videoOffsetY = 0;
   final List<PhotoOverlay> photoOverlays = [];
+  final List<TextOverlay> textOverlays = [];
   int selectedPhotoOverlay = -1;
+  int selectedTextOverlay = -1;
+  int _overlayLaneMoveIndex = -1;
+  bool _overlayLaneMoveIsText = false;
+  double _overlayLaneMoveStart = 0;
+  double _overlayLaneMoveDuration = 0;
+  double _overlayLaneMovePointerX = 0;
+  bool _isExternalDragOver = false;
   bool _playheadInGap = false;
   int _activePlaybackClipIndex = -1;
   Timer? _gapPlaybackTimer;
@@ -247,7 +283,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   bool _showVerticalSnapGuide = false;
   bool _showHorizontalSnapGuide = false;
   String aspectRatioPreset = '16:9';
-  static const double _timelineLabelWidth = 112;
+  static const double _timelineLabelWidth = 0;
   double _aspectRatioValue(String preset) => switch (preset) {
     '9:16' => 9 / 16, '1:1' => 1, '4:3' => 4 / 3,
     '4:5' => 4 / 5, '3:2' => 3 / 2, _ => 16 / 9,
@@ -374,6 +410,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   double _effectResizeEnd = 0;
   TimelineSnapshot? _effectResizeBefore;
   String? _hoveredLibraryPreview;
+  String? _selectedLibraryEffect;
+  String? _selectedLibraryTransition;
   int? _timelinePanPointer;
   Offset? _timelinePanLastGlobal;
   bool _timelinePanMoved = false;
@@ -958,6 +996,27 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           at: transition.at,
           duration: transition.duration,
         )).toList(),
+        photoOverlays: photoOverlays.map((overlay) => ProjectPhotoOverlay(
+          path: overlay.path,
+          x: overlay.x,
+          y: overlay.y,
+          scale: overlay.scale,
+          rotation: overlay.rotation,
+          opacity: overlay.opacity,
+          start: overlay.start,
+          end: overlay.end,
+        )).toList(),
+        textOverlays: textOverlays.map((overlay) => ProjectTextOverlay(
+          text: overlay.text,
+          start: overlay.start,
+          end: overlay.end,
+          x: overlay.x,
+          y: overlay.y,
+          fontSize: overlay.fontSize,
+          color: overlay.color,
+          bold: overlay.bold,
+          opacity: overlay.opacity,
+        )).toList(),
       );
       await File(targetPath).writeAsString(document.encode(), flush: true);
       if (!mounted) return true;
@@ -1003,6 +1062,11 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       final audio = document.audioPath;
       if (audio != null && !await File(audio).exists()) {
         throw FileSystemException('Файл аудио проекта не найден.', audio);
+      }
+      for (final overlay in document.photoOverlays) {
+        if (!await File(overlay.path).exists()) {
+          throw FileSystemException('Изображение проекта не найдено.', overlay.path);
+        }
       }
     } catch (e) {
       setStatus('Не удалось прочитать проект: $e');
@@ -1093,6 +1157,33 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             at: transition.at,
             duration: transition.duration,
           )));
+        photoOverlays
+          ..clear()
+          ..addAll(document.photoOverlays.map((overlay) => PhotoOverlay(
+            path: overlay.path,
+            x: overlay.x,
+            y: overlay.y,
+            scale: overlay.scale,
+            rotation: overlay.rotation,
+            opacity: overlay.opacity,
+            start: overlay.start,
+            end: overlay.end,
+          )));
+        textOverlays
+          ..clear()
+          ..addAll(document.textOverlays.map((overlay) => TextOverlay(
+            text: overlay.text,
+            start: overlay.start,
+            end: overlay.end,
+            x: overlay.x,
+            y: overlay.y,
+            fontSize: overlay.fontSize,
+            color: overlay.color,
+            bold: overlay.bold,
+            opacity: overlay.opacity,
+          )));
+        selectedPhotoOverlay = -1;
+        selectedTextOverlay = -1;
         selectedEffectClipIndex = -1;
         selectedTransitionIndex = -1;
         position = restoredPosition;
@@ -1134,20 +1225,332 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   Future<void> importPhotoOverlay() async {
     if (busy) return;
     try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.image, allowMultiple: false, dialogTitle: 'Выберите изображение для слоя фото', allowedExtensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp']);
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: true,
+        dialogTitle: 'Выберите изображения',
+        allowedExtensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'],
+      );
+      if (result == null || result.files.isEmpty) return;
+      for (final picked in result.files) {
+        final path = picked.path;
+        if (path != null) await _importPhotoFromPath(path);
+      }
+    } catch (e) {
+      setStatus('Не удалось импортировать фото: $e');
+    }
+  }
+
+  Future<void> _importPhotoFromPath(String path) async {
+    if (!await File(path).exists()) {
+      setStatus('Не удалось прочитать изображение: ${p.basename(path)}');
+      return;
+    }
+    final start = position.inMilliseconds / 1000;
+    final end = math.max(start + 3, timelineSeconds).toDouble();
+    if (!mounted) return;
+    setState(() {
+      photoOverlays.add(PhotoOverlay(path: path, start: start, end: end));
+      selectedPhotoOverlay = photoOverlays.length - 1;
+      selectedTextOverlay = -1;
+      selectedAudioClip = false;
+      selectedEffectClipIndex = -1;
+      selectedTransitionIndex = -1;
+      _selectedCanvasObject = 'photo';
+      projectDirty = true;
+      status = 'Фото добавлено на дорожку изображений.';
+    });
+  }
+
+  Future<void> importAudioFile() async {
+    if (busy) return;
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.audio,
+        allowMultiple: false,
+        dialogTitle: 'Выберите аудиофайл',
+      );
       if (result == null || result.files.isEmpty) return;
       final path = result.files.single.path;
-      if (path == null || !await File(path).exists()) { setStatus('Не удалось прочитать изображение.'); return; }
+      if (path != null) await _importAudioFromPath(path);
+    } catch (e) {
+      setStatus('Не удалось импортировать аудио: $e');
+    }
+  }
+
+  Future<Duration> _probeMediaDuration(String path) async {
+    try {
+      final ffmpeg = await findFfmpeg();
+      final result = await Process.run(ffmpeg, ['-hide_banner', '-i', path]);
+      final output = '${result.stdout}\n${result.stderr}';
+      final match = RegExp(r'Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)').firstMatch(output);
+      if (match == null) return Duration.zero;
+      final hours = int.parse(match.group(1)!);
+      final minutes = int.parse(match.group(2)!);
+      final seconds = double.parse(match.group(3)!);
+      return Duration(milliseconds: ((hours * 3600 + minutes * 60 + seconds) * 1000).round());
+    } catch (_) {
+      return Duration.zero;
+    }
+  }
+
+  Future<void> _importAudioFromPath(String path) async {
+    if (!await File(path).exists()) {
+      setStatus('Аудиофайл не найден: ${p.basename(path)}');
+      return;
+    }
+    final detectedDuration = await _probeMediaDuration(path);
+    final waveform = await _readWaveform(path);
+    if (!mounted) return;
+    setState(() {
+      audioPath = path;
+      audioDuration = detectedDuration;
+      audioClipStart = 0;
+      audioClipEnd = detectedDuration.inMilliseconds > 0
+          ? detectedDuration.inMilliseconds / 1000
+          : timelineSeconds;
+      audioWaveform = waveform;
+      selectedAudioClip = true;
+      selectedPhotoOverlay = -1;
+      selectedTextOverlay = -1;
+      selectedEffectClipIndex = -1;
+      selectedTransitionIndex = -1;
+      inspectorTab = 'audio';
+      _selectedCanvasObject = 'audio';
+      projectDirty = true;
+      status = 'Аудио добавлено на дорожку: ${p.basename(path)}';
+    });
+  }
+
+  void _insertTextOverlay(String value) {
+    final text = value.trim();
+    if (text.isEmpty || !mounted) return;
+    final start = position.inMilliseconds / 1000;
+    final end = math.max(start + 3, timelineSeconds).toDouble();
+    setState(() {
+      textOverlays.add(TextOverlay(text: text, start: start, end: end));
+      selectedTextOverlay = textOverlays.length - 1;
+      selectedPhotoOverlay = -1;
+      selectedAudioClip = false;
+      selectedEffectClipIndex = -1;
+      selectedTransitionIndex = -1;
+      inspectorTab = 'text';
+      _selectedCanvasObject = 'text';
+      projectDirty = true;
+      status = 'Текстовый слой добавлен. Перемещайте его в окне предпросмотра.';
+    });
+  }
+
+  Future<void> addTextOverlay({String initialText = 'Ваш текст'}) async {
+    if (busy) return;
+    final controller = TextEditingController(text: initialText);
+    final value = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Добавить текст'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            labelText: 'Текст на видео',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (text) => Navigator.of(dialogContext).pop(text),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Отмена')),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(controller.text), child: const Text('Добавить')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value == null || !mounted) return;
+    _insertTextOverlay(value);
+  }
+
+  double _parseSubtitleTime(String value) {
+    final normalized = value.trim().replaceAll(',', '.');
+    final parts = normalized.split(':');
+    if (parts.length == 3) {
+      return int.parse(parts[0]) * 3600 +
+          int.parse(parts[1]) * 60 +
+          double.parse(parts[2]);
+    }
+    if (parts.length == 2) {
+      return int.parse(parts[0]) * 60 + double.parse(parts[1]);
+    }
+    return 0;
+  }
+
+  Future<void> _importSubtitleFile(String path) async {
+    final source = await File(path).readAsString();
+    final blocks = source.replaceAll('\r', '').split(RegExp(r'\n\s*\n'));
+    final parsed = <TextOverlay>[];
+    final timing = RegExp(r'(\d{1,2}:\d{2}(?::\d{2})?[,.]\d{3})\s*-->\s*(\d{1,2}:\d{2}(?::\d{2})?[,.]\d{3})');
+    for (final block in blocks) {
+      final lines = block.split('\n').map((line) => line.trim()).where((line) => line.isNotEmpty).toList();
+      if (lines.isEmpty) continue;
+      final timingIndex = lines.indexWhere((line) => timing.hasMatch(line));
+      if (timingIndex < 0) continue;
+      final match = timing.firstMatch(lines[timingIndex]);
+      if (match == null) continue;
+      final textLines = lines.skip(timingIndex + 1)
+          .map((line) => line.replaceAll(RegExp(r'<[^>]*>'), '').trim())
+          .where((line) => line.isNotEmpty);
+      final caption = textLines.join(' ');
+      if (caption.isEmpty) continue;
+      final start = _parseSubtitleTime(match.group(1)!);
+      final end = _parseSubtitleTime(match.group(2)!);
+      if (end <= start) continue;
+      parsed.add(TextOverlay(text: caption, start: start, end: end));
+    }
+    if (!mounted || parsed.isEmpty) {
+      if (mounted && parsed.isEmpty) setStatus('В файле субтитров не найдено временных меток SRT/VTT.');
+      return;
+    }
+    setState(() {
+      textOverlays.addAll(parsed);
+      selectedTextOverlay = textOverlays.length - 1;
+      selectedPhotoOverlay = -1;
+      selectedAudioClip = false;
+      inspectorTab = 'text';
+      _selectedCanvasObject = 'text';
+      projectDirty = true;
+      status = 'Импортировано субтитров: ${parsed.length}.';
+    });
+  }
+
+  Future<void> _loadDroppedVideo(String path) async {
+    if (busy) return;
+    final previousPath = videoPath;
+    final previousPosition = position;
+    setState(() {
+      busy = true;
+      _switchingMedia = true;
+      _switchingMediaDuration = null;
+      status = 'Открываю видео из перетаскивания…';
+    });
+    try {
+      final activePlayer = ensurePlayer();
+      await activePlayer.stop();
+      await activePlayer.open(Media(path), play: false);
+      var openedDuration = activePlayer.state.duration;
+      if (openedDuration <= Duration.zero) {
+        openedDuration = await activePlayer.stream.duration
+            .firstWhere((value) => value > Duration.zero)
+            .timeout(const Duration(seconds: 12));
+      }
+      if (!mounted) return;
+      _timelineHistory.clear();
       setState(() {
-        photoOverlays.add(PhotoOverlay(path: path));
-        selectedPhotoOverlay = photoOverlays.length - 1;
-        _selectedCanvasObject = 'photo';
+        videoPath = path;
+        duration = openedDuration;
+        position = Duration.zero;
+        playing = false;
+        audioPath = null;
+        audioDuration = Duration.zero;
+        audioClipStart = 0;
+        audioClipEnd = 0;
+        audioWaveform = const [];
+        videoClips
+          ..clear()
+          ..add(TimelineClip(start: 0, end: openedDuration.inMilliseconds / 1000, timelineStart: 0));
+        effectClips.clear();
+        timelineTransitions.clear();
+        selectedClipIndex = 0;
+        selectedPhotoOverlay = -1;
+        selectedTextOverlay = -1;
+        selectedEffectClipIndex = -1;
+        selectedTransitionIndex = -1;
+        selectedAudioClip = false;
+        _activePlaybackClipIndex = 0;
+        _playheadInGap = false;
+        projectFilePath = null;
         projectDirty = true;
-        status = videoPath == null
-            ? 'Фото загружено. Добавьте видео, чтобы разместить его поверх.'
-            : 'Фото добавлено поверх видео.';
+        status = 'Видео добавлено. Можно добавить фото, аудио и субтитры.';
       });
-    } catch (e) { setStatus('Не удалось импортировать фото: $e'); }
+      unawaited(_generateVideoThumbnails(path, openedDuration));
+    } catch (e) {
+      if (previousPath != null) {
+        try {
+          final activePlayer = ensurePlayer();
+          await activePlayer.open(Media(previousPath), play: false);
+          await activePlayer.seek(previousPosition);
+        } catch (_) {}
+      }
+      if (mounted) {
+        setState(() {
+          position = previousPosition;
+          status = 'Не удалось открыть перетащенное видео: $e';
+        });
+      }
+    } finally {
+      _switchingMedia = false;
+      _switchingMediaDuration = null;
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _importDroppedFiles(List<String> paths) async {
+    final existing = paths.where((path) => File(path).existsSync()).toSet().toList();
+    if (existing.isEmpty) return;
+    final videoExt = {'.mp4', '.mov', '.mkv', '.avi', '.webm', '.m4v', '.wmv'};
+    final imageExt = {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif'};
+    final audioExt = {'.wav', '.mp3', '.m4a', '.aac', '.flac', '.ogg', '.opus', '.wma'};
+    final subtitleExt = {'.srt', '.vtt'};
+    final videos = existing.where((path) => videoExt.contains(p.extension(path).toLowerCase())).toList();
+    final images = existing.where((path) => imageExt.contains(p.extension(path).toLowerCase())).toList();
+    final audios = existing.where((path) => audioExt.contains(p.extension(path).toLowerCase())).toList();
+    final subtitles = existing.where((path) => subtitleExt.contains(p.extension(path).toLowerCase())).toList();
+
+    if (videos.isNotEmpty) {
+      if (!await _confirmReplaceIfDirty()) return;
+      await _loadDroppedVideo(videos.first);
+      if (videos.length > 1 && mounted) {
+        setStatus('Открыт первый видеоролик. Несколько независимых видеоисточников пока не поддерживаются.');
+      }
+    }
+    for (final path in images) {
+      await _importPhotoFromPath(path);
+    }
+    if (audios.isNotEmpty) {
+      await _importAudioFromPath(audios.first);
+      if (audios.length > 1 && mounted) {
+        setStatus('Добавлен первый аудиофайл. Независимых аудиодорожек пока одна.');
+      }
+    }
+    for (final path in subtitles) {
+      await _importSubtitleFile(path);
+    }
+  }
+
+  Future<void> _handleExternalDrop(PerformDropEvent event) async {
+    final paths = <String>[];
+    for (final item in event.session.items) {
+      final reader = item.dataReader;
+      if (reader == null || !reader.canProvide(Formats.fileUri)) continue;
+      final completer = Completer<Uri?>();
+      reader.getValue<Uri>(
+        Formats.fileUri,
+        (value) {
+          if (!completer.isCompleted) completer.complete(value);
+        },
+        onError: (_) {
+          if (!completer.isCompleted) completer.complete(null);
+        },
+      );
+      final uri = await completer.future.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => null,
+      );
+      if (uri != null && uri.scheme == 'file') {
+        try {
+          paths.add(uri.toFilePath(windows: Platform.isWindows));
+        } catch (_) {}
+      }
+    }
+    await _importDroppedFiles(paths);
   }
 
   Future<List<double>> _readWaveform(String path, {int buckets = 1800}) async {
@@ -1788,7 +2191,26 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   }
 
   @override
-  Widget build(BuildContext context) => Focus(
+  Widget build(BuildContext context) => DropRegion(
+        formats: Formats.standardFormats,
+        hitTestBehavior: HitTestBehavior.opaque,
+        onDropOver: (event) => event.session.items.any((item) => item.canProvide(Formats.fileUri))
+            ? DropOperation.copy
+            : DropOperation.none,
+        onDropEnter: (_) {
+          if (mounted) setState(() => _isExternalDragOver = true);
+        },
+        onDropLeave: (_) {
+          if (mounted) setState(() => _isExternalDragOver = false);
+        },
+        onPerformDrop: (event) async {
+          if (mounted) setState(() => _isExternalDragOver = false);
+          await _handleExternalDrop(event);
+        },
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Focus(
         autofocus: true,        onKeyEvent: _handleKeyEvent,
         child: Scaffold(
         body: SafeArea(
@@ -1824,7 +2246,41 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             ],
           ),
         ),
-      ));
+            ),
+            ),
+            if (_isExternalDragOver)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Container(
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.12),
+                      border: Border.all(color: accent, width: 3),
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF17191F),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: accent, width: 1.5),
+                      ),
+                      child: const Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.file_download_outlined, size: 44, color: accent),
+                          SizedBox(height: 10),
+                          Text('Перетащите файлы в проект', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                          SizedBox(height: 5),
+                          Text('Видео · фото · аудио · SRT / VTT', style: TextStyle(fontSize: 12, color: muted)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
 
   Widget _verticalPanelSplitter(String key, ValueChanged<double> onDrag) => MouseRegion(
         cursor: SystemMouseCursors.resizeColumn,
@@ -1914,11 +2370,19 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         color: panel,
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            _mediaPanelTabButton('media', 'Медиа', Icons.perm_media_outlined),
-            const SizedBox(width: 6),
-            _mediaPanelTabButton('effects', 'Эффекты', Icons.auto_awesome_outlined),
-          ]),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(children: [
+              _mediaPanelTabButton('media', 'Медиа', Icons.perm_media_outlined),
+              _mediaPanelTabButton('audio', 'Аудио', Icons.graphic_eq),
+              _mediaPanelTabButton('text', 'Текст', Icons.title),
+              _mediaPanelTabButton('stickers', 'Стикеры', Icons.emoji_emotions_outlined),
+              _mediaPanelTabButton('effects', 'Эффекты', Icons.auto_awesome_outlined),
+              _mediaPanelTabButton('transitions', 'Переходы', Icons.compare_arrows),
+              _mediaPanelTabButton('captions', 'Титры', Icons.closed_caption_outlined),
+              _mediaPanelTabButton('filters', 'Фильтры', Icons.filter_vintage),
+            ]),
+          ),
           const SizedBox(height: 10),
           Expanded(
             child: SingleChildScrollView(
@@ -1965,14 +2429,15 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                           ]),
                         ),
                       ),
-                      if (videoPath != null) ...[
+                      if (videoPath != null || audioPath != null || photoOverlays.isNotEmpty || textOverlays.isNotEmpty) ...[
                         const SizedBox(height: 14),
                         const Text('ФАЙЛЫ ПРОЕКТА', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.1, fontWeight: FontWeight.w700)),
                         const SizedBox(height: 8),
-                        mediaItem(Icons.movie_outlined, p.basename(videoPath!), 'Видео · исходник', videoBlue,
-                          imagePath: videoThumbnails.isNotEmpty ? videoThumbnails.first : null,
-                          selected: _selectedCanvasObject == 'video',
-                          onTap: () => _selectVideoClip(selectedClipIndex.clamp(0, videoClips.isEmpty ? 0 : videoClips.length - 1).toInt())),
+                        if (videoPath != null)
+                          mediaItem(Icons.movie_outlined, p.basename(videoPath!), 'Видео · исходник', videoBlue,
+                            imagePath: videoThumbnails.isNotEmpty ? videoThumbnails.first : null,
+                            selected: _selectedCanvasObject == 'video',
+                            onTap: () => _selectVideoClip(selectedClipIndex.clamp(0, videoClips.isEmpty ? 0 : videoClips.length - 1).toInt())),
                         if (audioPath != null) ...[
                           const SizedBox(height: 7),
                           mediaItem(Icons.graphic_eq, p.basename(audioPath!), 'Извлечённое аудио', audioGreen,
@@ -1988,7 +2453,29 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                             mediaItem(Icons.image_outlined, p.basename(photoOverlays[i].path), 'Фото · слой \${i + 1}', accent,
                               imagePath: photoOverlays[i].path,
                               selected: selectedPhotoOverlay == i,
-                              onTap: () => setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; })),
+                              onTap: () => setState(() {
+                                selectedPhotoOverlay = i;
+                                selectedTextOverlay = -1;
+                                selectedAudioClip = false;
+                                _selectedCanvasObject = 'photo';
+                              })),
+                          ],
+                        ],
+                        if (textOverlays.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          const Text('ТЕКСТ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.1, fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 7),
+                          for (var i = 0; i < textOverlays.length; i++) ...[
+                            if (i > 0) const SizedBox(height: 6),
+                            mediaItem(Icons.title, textOverlays[i].text, 'Текстовый слой', const Color(0xFFFFC56B),
+                              selected: selectedTextOverlay == i,
+                              onTap: () => setState(() {
+                                selectedTextOverlay = i;
+                                selectedPhotoOverlay = -1;
+                                selectedAudioClip = false;
+                                inspectorTab = 'text';
+                                _selectedCanvasObject = 'text';
+                              })),
                           ],
                         ],
                       ],
@@ -1999,14 +2486,29 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                       const SizedBox(height: 5),
                       const Text('Извлеките звук, чтобы получить отдельный клип на аудиодорожке под видео.', style: TextStyle(color: muted, fontSize: 11, height: 1.4)),
                     ])
-                  : _effectsLibraryPanel(),
+                  : mediaPanelTab == 'audio'
+                      ? _audioLibraryPanel()
+                      : mediaPanelTab == 'text'
+                          ? _textLibraryPanel()
+                          : mediaPanelTab == 'stickers'
+                              ? _stickersLibraryPanel()
+                              : mediaPanelTab == 'transitions'
+                                  ? _transitionLibraryPanel()
+                                  : mediaPanelTab == 'captions'
+                                      ? _captionsLibraryPanel()
+                                      : mediaPanelTab == 'filters'
+                                          ? _filtersLibraryPanel()
+                                          : _effectsLibraryPanel(),
             ),
           ),
         ]),
       );
 
-  Widget _mediaPanelTabButton(String id, String label, IconData icon) => Expanded(
-        child: InkWell(
+  Widget _mediaPanelTabButton(String id, String label, IconData icon) => SizedBox(
+        width: 82,
+        child: Padding(
+          padding: const EdgeInsets.only(right: 4),
+          child: InkWell(
           key: ValueKey('media-library-$id'),
           borderRadius: BorderRadius.circular(7),
           onTap: () => setState(() => mediaPanelTab = id),
@@ -2039,8 +2541,245 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               ),
             ),
           ),
+          ),
         ),
       );
+
+  Widget _audioLibraryPanel() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('АУДИОФАЙЛЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            key: const ValueKey('import-audio-file'),
+            onPressed: busy ? null : importAudioFile,
+            icon: const Icon(Icons.audio_file_outlined, size: 17),
+            label: const Text('Импортировать аудио'),
+          ),
+          if (audioPath != null) ...[
+            const SizedBox(height: 10),
+            mediaItem(Icons.graphic_eq, p.basename(audioPath!), 'Аудиодорожка · отдельный файл', audioGreen,
+              selected: selectedAudioClip,
+              onTap: () => setState(() {
+                selectedAudioClip = true;
+                selectedPhotoOverlay = -1;
+                selectedTextOverlay = -1;
+                inspectorTab = 'audio';
+                _selectedCanvasObject = 'audio';
+              })),
+            if (audioDuration > Duration.zero) ...[
+              const SizedBox(height: 6),
+              property('Длительность', time(audioDuration)),
+            ],
+          ],
+          const SizedBox(height: 10),
+          const Text('Поддерживаются WAV, MP3, M4A, AAC, FLAC, OGG и OPUS. В текущей версии — одна независимая аудиодорожка.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
+        ],
+      );
+
+  Widget _textLibraryPanel() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('ТЕКСТОВЫЕ СЛОИ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            key: const ValueKey('add-text-overlay'),
+            onPressed: busy ? null : () => unawaited(addTextOverlay()),
+            icon: const Icon(Icons.add, size: 17),
+            label: const Text('Добавить текст'),
+          ),
+          const SizedBox(height: 8),
+          const Text('Текст создаётся отдельным клипом на дорожке. Его можно перемещать в предпросмотре и настраивать справа.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
+          if (textOverlays.isNotEmpty) ...[
+            const Divider(height: 22),
+            for (var i = 0; i < textOverlays.length; i++) ...[
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                selected: selectedTextOverlay == i,
+                leading: const Icon(Icons.title, color: accent),
+                title: Text(textOverlays[i].text, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
+                subtitle: Text('${textOverlays[i].start.toStringAsFixed(1)}–${textOverlays[i].end.toStringAsFixed(1)} с', style: const TextStyle(color: muted, fontSize: 9)),
+                onTap: () => setState(() {
+                  selectedTextOverlay = i;
+                  selectedPhotoOverlay = -1;
+                  selectedAudioClip = false;
+                  selectedEffectClipIndex = -1;
+                  selectedTransitionIndex = -1;
+                  inspectorTab = 'text';
+                  _selectedCanvasObject = 'text';
+                }),
+              ),
+            ],
+          ],
+        ],
+      );
+
+  Widget _stickersLibraryPanel() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('СТИКЕРЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final sticker in const ['⭐', '❤️', '🔥', '✨', '🎉', '👍', '💡', '🎬'])
+                InkWell(
+                  key: ValueKey('sticker-$sticker'),
+                  onTap: busy ? null : () => _insertTextOverlay(sticker),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(color: const Color(0xFF202630), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF343644))),
+                    child: Text(sticker, style: const TextStyle(fontSize: 25)),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Text('Стикеры добавляются как редактируемые текстовые слои.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
+        ],
+      );
+
+  Widget _transitionLibraryPanel() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('ПЕРЕХОДЫ МЕЖДУ КЛИПАМИ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 7),
+          for (final type in (_timelineTransitionTypes.toList()..sort()))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: OutlinedButton(
+                key: ValueKey('transition-card-$type'),
+                onPressed: busy ? null : () => setState(() {
+                  _selectedLibraryTransition = type;
+                  _selectedLibraryEffect = null;
+                  selectedEffectClipIndex = -1;
+                  selectedTransitionIndex = -1;
+                  selectedPhotoOverlay = -1;
+                  selectedTextOverlay = -1;
+                  selectedAudioClip = false;
+                }),
+                style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9)),
+                child: Row(children: [
+                  const Icon(Icons.compare_arrows, size: 15),
+                  const SizedBox(width: 7),
+                  Expanded(child: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  _libraryPreviewIndicator('transition:$type', color: const Color(0xFFFFC56B), icon: Icons.compare_arrows, transition: true),
+                ]),
+              ),
+            ),
+          const SizedBox(height: 8),
+          const Text('Наведите курсор на карточку для демонстрации. Переход ставится на ближайший стык клипов; детали доступны справа.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
+        ],
+      );
+
+  Widget _captionsLibraryPanel() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('СУБТИТРЫ И ТИТРЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            key: const ValueKey('import-captions-file'),
+            onPressed: busy ? null : () async {
+              final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['srt', 'vtt'], allowMultiple: true);
+              for (final file in result?.files ?? const <PlatformFile>[]) {
+                if (file.path != null) await _importSubtitleFile(file.path!);
+              }
+            },
+            icon: const Icon(Icons.subtitles_outlined, size: 17),
+            label: const Text('Импортировать SRT / VTT'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: busy ? null : () => unawaited(addTextOverlay(initialText: 'Новый титр')),
+            icon: const Icon(Icons.title, size: 17),
+            label: const Text('Создать титр'),
+          ),
+          const SizedBox(height: 8),
+          const Text('Временные метки SRT/VTT переносятся в отдельные текстовые клипы.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
+        ],
+      );
+
+  Widget _filtersLibraryPanel() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('ЦВЕТОВЫЕ ФИЛЬТРЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 7),
+          for (final type in globalVideoEffectOptions)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 5),
+              child: OutlinedButton(
+                key: ValueKey('filter-card-$type'),
+                onPressed: busy ? null : () => setState(() { videoEffect = type; projectDirty = true; status = 'Фильтр выбран: $type'; }),
+                style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8)),
+                child: Row(children: [
+                  const Icon(Icons.filter_vintage_outlined, size: 14, color: accent),
+                  const SizedBox(width: 7),
+                  Expanded(child: Text(type, style: const TextStyle(fontSize: 11))),
+                  if (videoEffect == type) const Icon(Icons.check, size: 15, color: accent),
+                ]),
+              ),
+            ),
+        ],
+      );
+
+  Widget _selectedLibraryItemInspector() {
+    if (_selectedLibraryEffect != null) {
+      final type = _selectedLibraryEffect!;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('ВЫБРАННЫЙ ЭФФЕКТ', style: TextStyle(color: muted, fontSize: 10, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          Text(type, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          _libraryPreviewIndicator('effect:$type', color: accent, icon: Icons.auto_awesome, transition: false),
+          const SizedBox(height: 8),
+          const Text('Предпросмотр карточки — демонстрация. Нажмите кнопку, чтобы добавить эффект к текущему месту курсора.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: busy || videoClips.isEmpty ? null : () async {
+              await addTimelineEffect(type);
+              if (mounted) setState(() => _selectedLibraryEffect = null);
+            },
+            icon: const Icon(Icons.add, size: 16),
+            label: const Text('Добавить на таймлайн'),
+          ),
+          const Divider(),
+        ],
+      );
+    }
+    if (_selectedLibraryTransition != null) {
+      final type = _selectedLibraryTransition!;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('ВЫБРАННЫЙ ПЕРЕХОД', style: TextStyle(color: muted, fontSize: 10, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          Text(type, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          _libraryPreviewIndicator('transition:$type', color: const Color(0xFFFFC56B), icon: Icons.compare_arrows, transition: true),
+          const SizedBox(height: 8),
+          const Text('Переход применяется к ближайшему доступному стыку видеоклипов.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: busy || videoClips.length < 2 ? null : () async {
+              await addTimelineTransition(type);
+              if (mounted) setState(() => _selectedLibraryTransition = null);
+            },
+            icon: const Icon(Icons.add, size: 16),
+            label: const Text('Добавить на стык'),
+          ),
+          const Divider(),
+        ],
+      );
+    }
+    return const SizedBox.shrink();
+  }
 
   Widget _libraryPreviewIndicator(
     String key, {
@@ -2108,7 +2847,15 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                     }
                   },
                   child: OutlinedButton(
-                    onPressed: busy || videoClips.isEmpty ? null : () => unawaited(addTimelineEffect(type)),
+                    onPressed: busy ? null : () => setState(() {
+                      _selectedLibraryEffect = type;
+                      _selectedLibraryTransition = null;
+                      selectedEffectClipIndex = -1;
+                      selectedTransitionIndex = -1;
+                      selectedPhotoOverlay = -1;
+                      selectedTextOverlay = -1;
+                      selectedAudioClip = false;
+                    }),
                     style: OutlinedButton.styleFrom(
                       alignment: Alignment.centerLeft,
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -2139,55 +2886,6 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                           'Высокий контраст': Icons.contrast,
                         }[type] ?? Icons.auto_awesome,
                         transition: false,
-                      ),
-                    ]),
-                  ),
-                ),
-              ),
-            ),
-          const Divider(height: 22),
-          const Text('СТАНДАРТНЫЕ ПЕРЕХОДЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 7),
-          for (final type in (_timelineTransitionTypes.toList()..sort()))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: SizedBox(
-                width: double.infinity,
-                child: MouseRegion(
-                  onEnter: (_) => setState(() => _hoveredLibraryPreview = 'transition:$type'),
-                  onExit: (_) {
-                    if (_hoveredLibraryPreview == 'transition:$type') {
-                      setState(() => _hoveredLibraryPreview = null);
-                    }
-                  },
-                  child: OutlinedButton(
-                    onPressed: busy || videoClips.length < 2 ? null : () => unawaited(addTimelineTransition(type)),
-                    style: OutlinedButton.styleFrom(
-                      alignment: Alignment.centerLeft,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                    ),
-                    child: Row(children: [
-                      const Icon(Icons.add, size: 14),
-                      const SizedBox(width: 5),
-                      Expanded(child: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                      const SizedBox(width: 4),
-                      _libraryPreviewIndicator(
-                        'transition:$type',
-                        color: const {
-                          'Затемнение': Color(0xFF8A8D98),
-                          'Белая вспышка': Color(0xFFFFFFFF),
-                          'Растворение': Color(0xFFB79BFF),
-                          'Смахивание влево': Color(0xFF72C8FF),
-                          'Смахивание вправо': Color(0xFF72E0BA),
-                        }[type] ?? const Color(0xFFFFC56B),
-                        icon: const {
-                          'Затемнение': Icons.brightness_3,
-                          'Белая вспышка': Icons.flash_on,
-                          'Растворение': Icons.blur_circular,
-                          'Смахивание влево': Icons.swipe_left,
-                          'Смахивание вправо': Icons.swipe_right,
-                        }[type] ?? Icons.compare_arrows,
-                        transition: true,
                       ),
                     ]),
                   ),
@@ -2281,6 +2979,11 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         ),
       ),
     );
+  }
+
+  Color _overlayColor(String hex) {
+    final value = int.tryParse(hex.replaceFirst('#', ''), radix: 16) ?? 0xFFFFFF;
+    return Color(0xFF000000 | value);
   }
 
   Widget _buildPreviewBackdrop() => ClipRect(
@@ -2568,6 +3271,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                       ),
                                     ),
                                     for (var i = 0; i < photoOverlays.length; i++)
+                                      if (playheadSeconds >= photoOverlays[i].start &&
+                                          playheadSeconds < photoOverlays[i].end)
                                       Positioned(
                                         left: bounds.maxWidth / 2 + photoOverlays[i].x * bounds.maxWidth - shortSide * .18 * photoOverlays[i].scale,
                                         top: bounds.maxHeight / 2 + photoOverlays[i].y * bounds.maxHeight - shortSide * .18 * photoOverlays[i].scale,
@@ -2700,6 +3405,60 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                           ),
                                         ),
                                       ),
+                                    for (var i = 0; i < textOverlays.length; i++)
+                                      if (playheadSeconds >= textOverlays[i].start &&
+                                          playheadSeconds < textOverlays[i].end)
+                                        Positioned(
+                                          left: bounds.maxWidth * 0.1 + textOverlays[i].x * bounds.maxWidth,
+                                          top: bounds.maxHeight * 0.5 + textOverlays[i].y * bounds.maxHeight,
+                                          width: bounds.maxWidth * 0.8,
+                                          child: GestureDetector(
+                                            key: ValueKey('text-overlay-canvas-$i'),
+                                            onTap: () => setState(() {
+                                              selectedTextOverlay = i;
+                                              selectedPhotoOverlay = -1;
+                                              selectedAudioClip = false;
+                                              selectedEffectClipIndex = -1;
+                                              selectedTransitionIndex = -1;
+                                              inspectorTab = 'text';
+                                              _selectedCanvasObject = 'text';
+                                            }),
+                                            onPanStart: (_) => setState(() {
+                                              selectedTextOverlay = i;
+                                              selectedPhotoOverlay = -1;
+                                              selectedAudioClip = false;
+                                              inspectorTab = 'text';
+                                              _selectedCanvasObject = 'text';
+                                            }),
+                                            onPanUpdate: (details) => setState(() {
+                                              textOverlays[i]
+                                                ..x += details.delta.dx / math.max(1, bounds.maxWidth)
+                                                ..y += details.delta.dy / math.max(1, bounds.maxHeight);
+                                              projectDirty = true;
+                                            }),
+                                            child: Opacity(
+                                              opacity: textOverlays[i].opacity,
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                                decoration: BoxDecoration(
+                                                  border: selectedTextOverlay == i
+                                                      ? Border.all(color: accent, width: 1.5)
+                                                      : null,
+                                                ),
+                                                child: Text(
+                                                  textOverlays[i].text,
+                                                  textAlign: TextAlign.center,
+                                                  style: TextStyle(
+                                                    color: _overlayColor(textOverlays[i].color),
+                                                    fontSize: (textOverlays[i].fontSize * bounds.maxHeight / 1080).clamp(10.0, 80.0),
+                                                    fontWeight: textOverlays[i].bold ? FontWeight.w800 : FontWeight.w400,
+                                                    shadows: const [Shadow(color: Colors.black87, blurRadius: 5, offset: Offset(1, 2))],
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                     if (previewTransitionOverlay.opacity > 0)
                                       Positioned.fill(child: IgnorePointer(child: ColoredBox(color: previewTransitionOverlay.color.withValues(alpha: previewTransitionOverlay.opacity)))),
                                     if (_playheadInGap)
@@ -2835,7 +3594,57 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         _adjustmentSlider('Размер', pht.scale, 0.1, 5, (v) => setState(() { pht.scale = v; projectDirty = true; })),
         _adjustmentSlider('Поворот', pht.rotation, -180, 180, (v) => setState(() { pht.rotation = v; projectDirty = true; })),
         _adjustmentSlider('Прозрачность', pht.opacity, 0.05, 1, (v) => setState(() { pht.opacity = v; projectDirty = true; })),
+        _adjustmentSlider('Начало', pht.start, 0, math.max(0.05, timelineSeconds - 0.05), (v) => setState(() {
+          pht.start = v;
+          pht.end = math.max(pht.end, pht.start + 0.05).toDouble();
+          projectDirty = true;
+        })),
+        _adjustmentSlider('Конец', pht.end, pht.start + 0.05, math.max(pht.start + 0.05, timelineSeconds), (v) => setState(() {
+          pht.end = v;
+          projectDirty = true;
+        })),
         TextButton.icon(onPressed: deleteSelectedTimelineItem, icon: const Icon(Icons.delete_outline), label: const Text('Удалить фото')),
+        const Divider(),
+      ]);
+    }
+    if (selectedTextOverlay >= 0 && selectedTextOverlay < textOverlays.length) {
+      final text = textOverlays[selectedTextOverlay];
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('НАСТРОЙКИ ТЕКСТА', style: TextStyle(color: muted, fontSize: 10, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        TextFormField(
+          key: ValueKey('text-overlay-editor-$selectedTextOverlay'),
+          initialValue: text.text,
+          maxLines: 3,
+          decoration: const InputDecoration(labelText: 'Содержание', isDense: true, border: OutlineInputBorder()),
+          onChanged: (value) => setState(() { text.text = value; projectDirty = true; }),
+        ),
+        const SizedBox(height: 8),
+        _adjustmentSlider('Размер шрифта', text.fontSize, 12, 120, (value) => setState(() { text.fontSize = value; projectDirty = true; })),
+        DropdownButtonFormField<String>(
+          isExpanded: true,
+          initialValue: text.color,
+          decoration: const InputDecoration(labelText: 'Цвет', isDense: true, border: OutlineInputBorder()),
+          items: const [
+            DropdownMenuItem(value: '#FFFFFF', child: Text('Белый')),
+            DropdownMenuItem(value: '#FFD166', child: Text('Жёлтый')),
+            DropdownMenuItem(value: '#FF6B6B', child: Text('Красный')),
+            DropdownMenuItem(value: '#7AE7C7', child: Text('Мятный')),
+            DropdownMenuItem(value: '#9B6DFF', child: Text('Фиолетовый')),
+          ],
+          onChanged: (value) => setState(() { text.color = value ?? '#FFFFFF'; projectDirty = true; }),
+        ),
+        SwitchListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Жирный шрифт', style: TextStyle(fontSize: 12)),
+          value: text.bold,
+          onChanged: (value) => setState(() { text.bold = value; projectDirty = true; }),
+        ),
+        _adjustmentSlider('Прозрачность', text.opacity, 0, 1, (value) => setState(() { text.opacity = value; projectDirty = true; })),
+        property('Начало', '${text.start.toStringAsFixed(2)} с'),
+        property('Конец', '${text.end.toStringAsFixed(2)} с'),
+        TextButton.icon(onPressed: deleteSelectedTimelineItem, icon: const Icon(Icons.delete_outline), label: const Text('Удалить текст')),
         const Divider(),
       ]);
     }
@@ -2866,9 +3675,14 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
         child: SingleChildScrollView(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if ((_selectedLibraryEffect != null || _selectedLibraryTransition != null) &&
+                selectedEffectClipIndex < 0 && selectedTransitionIndex < 0 &&
+                selectedPhotoOverlay < 0 && selectedTextOverlay < 0 && !selectedAudioClip)
+              _selectedLibraryItemInspector(),
             if ((selectedTransitionIndex >= 0 && selectedTransitionIndex < timelineTransitions.length) ||
                 (selectedEffectClipIndex >= 0 && selectedEffectClipIndex < effectClips.length) ||
-                (selectedPhotoOverlay >= 0 && selectedPhotoOverlay < photoOverlays.length) || selectedAudioClip ||
+                (selectedPhotoOverlay >= 0 && selectedPhotoOverlay < photoOverlays.length) ||
+                (selectedTextOverlay >= 0 && selectedTextOverlay < textOverlays.length) || selectedAudioClip ||
                 (videoClips.isNotEmpty && _selectedCanvasObject == 'video' && selectedClipIndex < videoClips.length))
               _selectedItemSettings(),
             Row(children: [
@@ -3097,7 +3911,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                     IconButton(
                       tooltip: 'Удалить выбранный элемент',
                       visualDensity: VisualDensity.compact,
-                      onPressed: videoClips.isEmpty && effectClips.isEmpty && timelineTransitions.isEmpty && audioPath == null && photoOverlays.isEmpty
+                      onPressed: videoClips.isEmpty && effectClips.isEmpty && timelineTransitions.isEmpty && audioPath == null && photoOverlays.isEmpty && textOverlays.isEmpty
                           ? null
                           : deleteSelectedTimelineItem,
                       icon: const Icon(Icons.delete_outline_rounded, size: 17),
@@ -3172,7 +3986,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                     SizedBox(
                       height: 32,
                       child: Row(children: [
-                        Container(width: _timelineLabelWidth, padding: const EdgeInsets.only(left: 14), alignment: Alignment.centerLeft, color: const Color(0xFF171820), child: const Text('ВРЕМЯ', style: TextStyle(color: muted, fontSize: 9, letterSpacing: 1.1, fontWeight: FontWeight.w800))),
+                        const SizedBox.shrink(),
                         SizedBox(width: timelineWidth, child: CustomPaint(painter: RulerPainter(seconds: timelineSeconds, pixelsPerSecond: zoom), child: const SizedBox.expand())),
                       ]),
                     ),
@@ -3191,6 +4005,10 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                       const SizedBox(height: 5),
                       photoTrackRow(),
                     ],
+                    if (textOverlays.isNotEmpty) ...[
+                      const SizedBox(height: 5),
+                      textTrackRow(),
+                    ],
                   ]),
                   ),
                 ),
@@ -3205,23 +4023,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         width: _timelineLabelWidth + timelineWidth,
         height: 54,
         child: Row(children: [
-          Container(
-            width: _timelineLabelWidth, height: 54, padding: const EdgeInsets.symmetric(horizontal: 9),
-            decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
-            child: Row(children: [
-              const Icon(Icons.auto_awesome_outlined, size: 16, color: Color(0xFFB18CFF)),
-              const SizedBox(width: 6),
-              const Expanded(child: Text('Эффекты', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700))),
-              IconButton(
-                tooltip: 'Добавить эффект на таймлайн',
-                visualDensity: VisualDensity.compact,
-                constraints: const BoxConstraints.tightFor(width: 28, height: 30),
-                padding: EdgeInsets.zero,
-                onPressed: busy || videoClips.isEmpty ? null : addTimelineEffect,
-                icon: const Icon(Icons.add, size: 16),
-              ),
-            ]),
-          ),
+          const SizedBox.shrink(),
           SizedBox(
             width: timelineWidth, height: 54,
             child: Stack(clipBehavior: Clip.hardEdge, children: [
@@ -3326,23 +4128,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         width: _timelineLabelWidth + timelineWidth,
         height: 42,
         child: Row(children: [
-          Container(
-            width: _timelineLabelWidth, height: 42, padding: const EdgeInsets.symmetric(horizontal: 9),
-            decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
-            child: Row(children: [
-              const Icon(Icons.compare_arrows, size: 16, color: Color(0xFFFFC56B)),
-              const SizedBox(width: 6),
-              const Expanded(child: Text('Переходы', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700))),
-              IconButton(
-                tooltip: 'Добавить переход на ближайший стык',
-                visualDensity: VisualDensity.compact,
-                constraints: const BoxConstraints.tightFor(width: 28, height: 28),
-                padding: EdgeInsets.zero,
-                onPressed: busy || videoClips.length < 2 ? null : addTimelineTransition,
-                icon: const Icon(Icons.add, size: 16),
-              ),
-            ]),
-          ),
+          const SizedBox.shrink(),
           SizedBox(
             width: timelineWidth, height: 42,
             child: Stack(clipBehavior: Clip.hardEdge, children: [
@@ -3377,31 +4163,79 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           ),
         ]),
       );
+  void _startOverlayLaneMove(int index, {required bool text}) {
+    final count = text ? textOverlays.length : photoOverlays.length;
+    if (index < 0 || index >= count || _timelinePanPointer != null) return;
+    final itemStart = text ? textOverlays[index].start : photoOverlays[index].start;
+    final itemEnd = text ? textOverlays[index].end : photoOverlays[index].end;
+    _overlayLaneMoveIndex = index;
+    _overlayLaneMoveIsText = text;
+    _overlayLaneMoveStart = itemStart;
+    _overlayLaneMoveDuration = itemEnd - itemStart;
+    _overlayLaneMovePointerX = 0;
+    setState(() {
+      selectedPhotoOverlay = text ? -1 : index;
+      selectedTextOverlay = text ? index : -1;
+      selectedAudioClip = false;
+      selectedEffectClipIndex = -1;
+      selectedTransitionIndex = -1;
+      _selectedCanvasObject = text ? 'text' : 'photo';
+    });
+  }
+
+  void _updateOverlayLaneMove(DragUpdateDetails details) {
+    if (_overlayLaneMoveIndex < 0 || _timelinePanPointer != null) return;
+    _overlayLaneMovePointerX += details.delta.dx;
+    final maxStart = math.max(0.0, timelineSeconds - _overlayLaneMoveDuration).toDouble();
+    final nextStart = (_overlayLaneMoveStart + _overlayLaneMovePointerX / zoom)
+        .clamp(0.0, maxStart).toDouble();
+    setState(() {
+      if (_overlayLaneMoveIsText) {
+        textOverlays[_overlayLaneMoveIndex]
+          ..start = nextStart
+          ..end = nextStart + _overlayLaneMoveDuration;
+      } else {
+        photoOverlays[_overlayLaneMoveIndex]
+          ..start = nextStart
+          ..end = nextStart + _overlayLaneMoveDuration;
+      }
+      projectDirty = true;
+    });
+  }
+
+  void _finishOverlayLaneMove() {
+    if (_overlayLaneMoveIndex < 0) return;
+    setState(() {
+      status = 'Клип слоя перемещён по таймлайну.';
+      projectDirty = true;
+    });
+    _overlayLaneMoveIndex = -1;
+    _overlayLaneMovePointerX = 0;
+  }
+
   Widget photoTrackRow() => SizedBox(
         width: _timelineLabelWidth + timelineWidth,
         height: 54,
         child: Row(children: [
-          Container(
-            width: _timelineLabelWidth, height: 54, padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
-            child: const Row(children: [
-              Icon(Icons.image_outlined, size: 17, color: Color(0xFFB18CFF)),
-              SizedBox(width: 8),
-              Expanded(child: Text('Фото / оверлеи', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700))),
-            ]),
-          ),
+          const SizedBox.shrink(),
           SizedBox(
             width: timelineWidth, height: 54,
             child: Stack(children: [
               Positioned.fill(child: CustomPaint(painter: TimelineGridPainter(seconds: timelineSeconds, pixelsPerSecond: zoom))),
               for (var i = 0; i < photoOverlays.length; i++)
                 Positioned(
-                  left: 4, top: 5 + i * 2.0, bottom: 5,
-                  width: math.max(20.0, timelineWidth - 8).toDouble(),
+                  left: photoOverlays[i].start * zoom + 4,
+                  top: 5 + i * 2.0,
+                  bottom: 5,
+                  width: math.max(20.0, (photoOverlays[i].end - photoOverlays[i].start) * zoom - 4).toDouble(),
                   child: GestureDetector(
-                    onTapDown: (d) => seekTimeline(d.localPosition.dx),
+                    onTapDown: (d) => seekTimeline(photoOverlays[i].start * zoom + d.localPosition.dx),
+                    onHorizontalDragStart: (_) => _startOverlayLaneMove(i, text: false),
+                    onHorizontalDragUpdate: _updateOverlayLaneMove,
+                    onHorizontalDragEnd: (_) => _finishOverlayLaneMove(),
                     onTap: () => setState(() {
                       selectedPhotoOverlay = i;
+                      selectedTextOverlay = -1;
                       selectedAudioClip = false;
                       selectedEffectClipIndex = -1;
                       selectedTransitionIndex = -1;
@@ -3423,30 +4257,67 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         ]),
       );
 
+  Widget textTrackRow() => SizedBox(
+        width: _timelineLabelWidth + timelineWidth,
+        height: 54,
+        child: Row(children: [
+          const SizedBox.shrink(),
+          SizedBox(
+            width: timelineWidth,
+            height: 54,
+            child: Stack(children: [
+              Positioned.fill(child: CustomPaint(painter: TimelineGridPainter(seconds: timelineSeconds, pixelsPerSecond: zoom))),
+              for (var i = 0; i < textOverlays.length; i++)
+                Positioned(
+                  left: textOverlays[i].start * zoom + 4,
+                  top: 5 + i * 2.0,
+                  bottom: 5,
+                  width: math.max(24.0, (textOverlays[i].end - textOverlays[i].start) * zoom - 4).toDouble(),
+                  child: GestureDetector(
+                    key: ValueKey('text-timeline-clip-$i'),
+                    onTapDown: (details) => seekTimeline(textOverlays[i].start * zoom + details.localPosition.dx),
+                    onHorizontalDragStart: (_) => _startOverlayLaneMove(i, text: true),
+                    onHorizontalDragUpdate: _updateOverlayLaneMove,
+                    onHorizontalDragEnd: (_) => _finishOverlayLaneMove(),
+                    onTap: () => setState(() {
+                      selectedTextOverlay = i;
+                      selectedPhotoOverlay = -1;
+                      selectedAudioClip = false;
+                      selectedEffectClipIndex = -1;
+                      selectedTransitionIndex = -1;
+                      inspectorTab = 'text';
+                      _selectedCanvasObject = 'text';
+                    }),
+                    child: Container(
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xAA8A6935),
+                        borderRadius: BorderRadius.circular(5),
+                        border: Border.all(color: selectedTextOverlay == i ? Colors.white : const Color(0xFFFFD38A), width: selectedTextOverlay == i ? 2 : 1),
+                      ),
+                      child: Row(children: [
+                        const Icon(Icons.title, size: 13, color: Colors.white),
+                        const SizedBox(width: 5),
+                        Flexible(child: Text(textOverlays[i].text, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.w700))),
+                      ]),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+        ]),
+      );
+
   Widget trackRow({required bool audio}) {
     final path = audio ? audioPath : videoPath;
-    final color = audio ? audioGreen : videoBlue;
     final playhead = (position.inMilliseconds / 1000 * zoom).clamp(0.0, timelineWidth - 2).toDouble();
 
     return SizedBox(
       width: _timelineLabelWidth + timelineWidth,
       height: 63,
       child: Row(children: [
-        Container(
-          width: _timelineLabelWidth,
-          height: 63,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
-          child: Row(children: [
-            Icon(audio ? Icons.graphic_eq : Icons.movie_outlined, size: 17, color: color),
-            const SizedBox(width: 8),
-            Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(audio ? 'Аудио 1' : 'Видео 1', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 2),
-              Text(audio ? 'Звуковая дорожка' : 'Видеодорожка', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9, color: muted)),
-            ])),
-          ]),
-        ),
+        const SizedBox.shrink(),
         SizedBox(
           width: timelineWidth,
           height: 63,
@@ -4186,6 +5057,16 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       });
       return;
     }
+    if (selectedTextOverlay >= 0 && selectedTextOverlay < textOverlays.length) {
+      setState(() {
+        textOverlays.removeAt(selectedTextOverlay);
+        selectedTextOverlay = -1;
+        _selectedCanvasObject = 'video';
+        projectDirty = true;
+        status = 'Выбранный текстовый клип удалён.';
+      });
+      return;
+    }
     if (selectedAudioClip && audioPath != null) {
       _performTimelineEdit(() {
         audioPath = null;
@@ -4641,15 +5522,23 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           'pad=$outputWidth:$outputHeight:(ow-iw)/2:(oh-ih)/2:color=black@0',
           'setsar=1',
         ].join(',');
-        final graph = <String>[
-          '[0:v]split=2[fitSource][backdropSource]',
-          '[backdropSource]scale=$outputWidth:$outputHeight:force_original_aspect_ratio=increase,'
-              'crop=$outputWidth:$outputHeight,gblur=sigma=18,'
-              "lutrgb=r='clip(val*0.62,0,255)':g='clip(val*0.62,0,255)':b='clip(val*0.62,0,255)',"
-              'hue=s=0.82[backdrop]',
-          '[fitSource]$effectPrefix$foregroundTransforms[foreground]',
-          '[backdrop][foreground]overlay=(W-w)/2:(H-h)/2:shortest=1[base0]',
-        ];
+        final graph = <String>[];
+        if (canvasBackgroundBlurEnabled) {
+          graph.add('[0:v]split=2[fitSource][backdropSource]');
+          graph.add(
+            '[backdropSource]scale=$outputWidth:$outputHeight:force_original_aspect_ratio=increase,'
+            'crop=$outputWidth:$outputHeight,gblur=sigma=18,'
+            "lutrgb=r='clip(val*0.62,0,255)':g='clip(val*0.62,0,255)':b='clip(val*0.62,0,255)',"
+            'hue=s=0.82[backdrop]',
+          );
+        } else {
+          graph.add('[0:v]null[fitSource]');
+          graph.add(
+            'color=c=black:s=${outputWidth}x$outputHeight:r=${frameRate.toStringAsFixed(3)}:d=${clip.length.toStringAsFixed(3)}[backdrop]',
+          );
+        }
+        graph.add('[fitSource]$effectPrefix$foregroundTransforms[foreground]');
+        graph.add('[backdrop][foreground]overlay=(W-w)/2:(H-h)/2:shortest=1[base0]');
         var previous = 'base0';
         for (var overlayIndex = 0;
             overlayIndex < photoOverlays.length;
@@ -4660,15 +5549,53 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           final outputLabel = 'base${overlayIndex + 1}';
           final width = (360 * overlay.scale).round().clamp(24, 1800);
           final angle = (overlay.rotation * math.pi / 180).toStringAsFixed(5);
+          final overlapStart = math.max(overlay.start, clip.timelineStart).toDouble();
+          final overlapEnd = math.min(overlay.end, clip.timelineEnd).toDouble();
+          if (overlapEnd <= overlapStart) continue;
+          final localStart = (overlapStart - clip.timelineStart).toStringAsFixed(3);
+          final localEnd = (overlapEnd - clip.timelineStart).toStringAsFixed(3);
           graph.add(
             '[$inputIndex:v]scale=$width:-1,format=rgba,rotate=$angle:c=none,'
                 'colorchannelmixer=aa=${overlay.opacity.toStringAsFixed(3)}[$overlayLabel]',
           );
           graph.add(
             '[$previous][$overlayLabel]overlay=x=(W-w)/2+(${overlay.x.toStringAsFixed(4)})*W:'
-                'y=(H-h)/2+(${overlay.y.toStringAsFixed(4)})*H:shortest=1[$outputLabel]',
+                'y=(H-h)/2+(${overlay.y.toStringAsFixed(4)})*H:shortest=1:'
+                'enable=between(t\\,$localStart\\,$localEnd)[$outputLabel]',
           );
           previous = outputLabel;
+        }
+        for (var textIndex = 0; textIndex < textOverlays.length; textIndex++) {
+          final overlay = textOverlays[textIndex];
+          final overlapStart = math.max(overlay.start, clip.timelineStart).toDouble();
+          final overlapEnd = math.min(overlay.end, clip.timelineEnd).toDouble();
+          if (overlapEnd <= overlapStart) continue;
+          final localStart = (overlapStart - clip.timelineStart).toStringAsFixed(3);
+          final localEnd = (overlapEnd - clip.timelineStart).toStringAsFixed(3);
+          final textFile = File(p.join(
+            temp.path,
+            'text_${i}_$textIndex.txt',
+          ));
+          await textFile.writeAsString(overlay.text);
+          final safeTextPath = textFile.absolute.path
+              .replaceAll(String.fromCharCode(92), '/')
+              .replaceAll(':', r'\:')
+              .replaceAll("'", r"\'");
+          final fontSize = (overlay.fontSize * int.parse(outputHeight) / 1080)
+              .round()
+              .clamp(10, 220);
+          final fontColor = '0x${overlay.color.replaceFirst('#', '')}@${overlay.opacity.toStringAsFixed(3)}';
+          final textOutput = 'textBase${textIndex}_$i';
+          graph.add(
+            '[$previous]drawtext=fontfile=C\\:/Windows/Fonts/${overlay.bold ? 'arialbd' : 'arial'}.ttf:'
+            "textfile='$safeTextPath':reload=0:"
+            'fontcolor=$fontColor:fontsize=$fontSize:'
+            'x=(w-text_w)/2+(${overlay.x.toStringAsFixed(4)})*w:'
+            'y=(h-text_h)/2+(${overlay.y.toStringAsFixed(4)})*h:'
+            'shadowcolor=black@0.8:shadowx=2:shadowy=2:'
+            'enable=between(t\\,$localStart\\,$localEnd)[$textOutput]',
+          );
+          previous = textOutput;
         }
         graph.add('[$previous]setsar=1,format=yuv420p[vout]');
         args.addAll([
@@ -4957,7 +5884,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           const SizedBox(width: 8),
           Expanded(child: Text(status, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFFB9BAC8), fontSize: 10))),
           const SizedBox(width: 10),
-          const Text('GifCut $appVersion · Windows', style: TextStyle(color: Color(0xFF676A7A), fontSize: 9)),
+          const Text('GifCut v$appVersion · Windows', style: TextStyle(color: Color(0xFF676A7A), fontSize: 9)),
         ]),
       );
 }

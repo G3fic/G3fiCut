@@ -70,11 +70,33 @@ jobs:
         with:
           channel: stable
           flutter-version: '3.47.9'
-          cache: true
+          cache: false
+          pub-cache: true
 
       - name: Generate Windows platform scaffolding
         shell: pwsh
         run: flutter create --no-pub --platforms=windows --project-name gifcut .
+
+      - name: Set GifCut Windows title and version metadata
+        shell: pwsh
+        run: |
+          $runnerMain = Join-Path $PWD 'windows/runner/main.cpp'
+          $runnerSource = Get-Content -Path $runnerMain -Raw
+          $oldWindowTitle = 'window.Create(L"gifcut"'
+          if (-not $runnerSource.Contains($oldWindowTitle)) {
+            throw 'Could not locate the generated Windows window title.'
+          }
+          $newWindowTitle = 'window.Create(L"GifCut v' + $env:GIFCUT_VERSION + '"'
+          $runnerSource = $runnerSource.Replace($oldWindowTitle, $newWindowTitle)
+          Set-Content -Path $runnerMain -Value $runnerSource -Encoding utf8
+
+          $runnerResource = Join-Path $PWD 'windows/runner/Runner.rc'
+          $resourceSource = Get-Content -Path $runnerResource -Raw
+          $fileDescriptionReplacement = '${1}"GifCut v' + $env:GIFCUT_VERSION + '"'
+          $resourceSource = [regex]::Replace($resourceSource, '(?m)(VALUE\s+"FileDescription",\s*)"[^"]*"', $fileDescriptionReplacement)
+          $resourceSource = [regex]::Replace($resourceSource, '(?m)(VALUE\s+"ProductName",\s*)"[^"]*"', '${1}"GifCut"')
+          $resourceSource = [regex]::Replace($resourceSource, '(?m)(VALUE\s+"InternalName",\s*)"[^"]*"', '${1}"GifCut"')
+          Set-Content -Path $runnerResource -Value $resourceSource -Encoding utf8
 
       - name: Apply GifCut Windows app icon
         shell: pwsh
@@ -124,7 +146,7 @@ jobs:
         run: |
           $ffmpeg = Join-Path $PWD 'build/windows/x64/runner/Release/ffmpeg.exe'
           $filters = & $ffmpeg -hide_banner -filters 2>&1 | Out-String
-          foreach ($filter in @('xfade', 'lut3d', 'noise', 'chromashift', 'rgbashift', 'vignette', 'unsharp', 'colorchannelmixer', 'colorbalance', 'hue', 'lutrgb')) {
+          foreach ($filter in @('xfade', 'drawtext', 'lut3d', 'noise', 'chromashift', 'rgbashift', 'vignette', 'unsharp', 'colorchannelmixer', 'colorbalance', 'hue', 'lutrgb')) {
             if ($filters -notmatch "(?m)\b$filter\b") {
               Write-Output $filters
               throw "The bundled FFmpeg build does not include required filter: $filter"
@@ -189,6 +211,17 @@ jobs:
             & $ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=64x64:rate=30' -vf $filter -frames:v 1 -f null NUL
             if ($LASTEXITCODE -ne 0) { throw "FFmpeg effect smoke test failed: $filter" }
           }
+
+          $font = Join-Path $env:WINDIR 'Fonts/arial.ttf'
+          $font = $font -replace '\\', '/'
+          $font = $font -replace ':', '\:'
+          $textFile = Join-Path $env:RUNNER_TEMP 'gifcut-drawtext-smoke.txt'
+          Set-Content -Path $textFile -Value 'GifCut text overlay' -Encoding utf8
+          $normalizedTextFile = $textFile -replace '\\', '/'
+          $normalizedTextFile = $normalizedTextFile -replace ':', '\:'
+          $drawTextFilter = "drawtext=fontfile='$font':textfile='$normalizedTextFile':fontsize=12:fontcolor=white"
+          & $ffmpeg -hide_banner -loglevel error -f lavfi -i 'color=c=black:s=128x128:d=1' -vf $drawTextFilter -frames:v 1 -f null NUL
+          if ($LASTEXITCODE -ne 0) { throw 'FFmpeg drawtext smoke test failed.' }
 
           $canvasGraph = "[0:v]split=2[fitSource][backdropSource];[backdropSource]scale=64:96:force_original_aspect_ratio=increase,crop=64:96,gblur=sigma=18,lutrgb=r='clip(val*0.62,0,255)':g='clip(val*0.62,0,255)':b='clip(val*0.62,0,255)',hue=s=0.82[backdrop];[fitSource]scale=64:96:force_original_aspect_ratio=decrease,format=rgba,pad=64:96:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1[foreground];[backdrop][foreground]overlay=(W-w)/2:(H-h)/2:shortest=1,setsar=1,format=yuv420p[out]"
           & $ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=96x64:rate=30:duration=1' -filter_complex $canvasGraph -map '[out]' -frames:v 1 -f null NUL
