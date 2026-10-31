@@ -3448,6 +3448,12 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       audioPath: before.audioPath,
       audioClipStart: before.audioClipStart,
       audioClipEnd: before.audioClipEnd,
+      effectClips: effectClips.map((effect) => TimelineEffectRange(
+        effect.type, effect.start, effect.end,
+      )).toList(),
+      transitions: timelineTransitions.map((transition) => TimelineTransitionRange(
+        transition.type, transition.at, transition.duration,
+      )).toList(),
     );
     setState(() {
       _replaceClipRanges(next);
