@@ -2,7 +2,7 @@ name: Build GifCut for Windows
 
 on:
   push:
-    branches: [main, master, 'feature/**', 'feat/**']
+    branches: [main, master, 'feature/**', 'feat/**', 'release/**']
     tags: ['v*']
   pull_request:
   workflow_dispatch:
@@ -124,7 +124,7 @@ jobs:
         run: |
           $ffmpeg = Join-Path $PWD 'build/windows/x64/runner/Release/ffmpeg.exe'
           $filters = & $ffmpeg -hide_banner -filters 2>&1 | Out-String
-          foreach ($filter in @('xfade', 'lut3d', 'noise', 'chromashift', 'rgbashift', 'vignette', 'unsharp', 'colorchannelmixer', 'colorbalance', 'hue', 'lutrgb')) {
+          foreach ($filter in @('drawtext', 'xfade', 'lut3d', 'noise', 'chromashift', 'rgbashift', 'vignette', 'unsharp', 'colorchannelmixer', 'colorbalance', 'hue', 'lutrgb')) {
             if ($filters -notmatch "(?m)\b$filter\b") {
               Write-Output $filters
               throw "The bundled FFmpeg build does not include required filter: $filter"
@@ -169,7 +169,7 @@ jobs:
           ) -join [Environment]::NewLine
           Set-Content -Path (Join-Path $lutDirectory 'ATTRIBUTION.txt') -Value $attribution -Encoding utf8
 
-      - name: Smoke-test LUTs, effects and blurred aspect-ratio canvas
+      - name: Smoke-test effects, text rendering and both canvas backgrounds
         shell: pwsh
         run: |
           $ffmpeg = Join-Path $PWD 'build/windows/x64/runner/Release/ffmpeg.exe'
@@ -190,9 +190,20 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "FFmpeg effect smoke test failed: $filter" }
           }
 
-          $canvasGraph = "[0:v]split=2[fitSource][backdropSource];[backdropSource]scale=64:96:force_original_aspect_ratio=increase,crop=64:96,gblur=sigma=18,lutrgb=r='clip(val*0.62,0,255)':g='clip(val*0.62,0,255)':b='clip(val*0.62,0,255)',hue=s=0.82[backdrop];[fitSource]scale=64:96:force_original_aspect_ratio=decrease,format=rgba,pad=64:96:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1[foreground];[backdrop][foreground]overlay=(W-w)/2:(H-h)/2:shortest=1,setsar=1,format=yuv420p[out]"
-          & $ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=96x64:rate=30:duration=1' -filter_complex $canvasGraph -map '[out]' -frames:v 1 -f null NUL
-          if ($LASTEXITCODE -ne 0) { throw 'Blurred aspect-ratio canvas composition smoke test failed.' }
+          $blackCanvasGraph = '[0:v]scale=64:96:force_original_aspect_ratio=decrease,format=rgba,pad=64:96:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format=yuv420p[out]'
+          & $ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=96x64:rate=30:duration=1' -filter_complex $blackCanvasGraph -map '[out]' -frames:v 1 -f null NUL
+          if ($LASTEXITCODE -ne 0) { throw 'Black aspect-ratio canvas composition smoke test failed.' }
+
+          $blurredCanvasGraph = "[0:v]split=2[fitSource][backdropSource];[backdropSource]scale=64:96:force_original_aspect_ratio=increase,crop=64:96,gblur=sigma=18,lutrgb=r='clip(val*0.62,0,255)':g='clip(val*0.62,0,255)':b='clip(val*0.62,0,255)',hue=s=0.82[backdrop];[fitSource]scale=64:96:force_original_aspect_ratio=decrease,format=rgba,pad=64:96:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1[foreground];[backdrop][foreground]overlay=(W-w)/2:(H-h)/2:shortest=1,setsar=1,format=yuv420p[out]"
+          & $ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=96x64:rate=30:duration=1' -filter_complex $blurredCanvasGraph -map '[out]' -frames:v 1 -f null NUL
+          if ($LASTEXITCODE -ne 0) { throw 'Optional blurred canvas composition smoke test failed.' }
+
+          $textFile = Join-Path $env:RUNNER_TEMP 'gifcut-text-smoke.txt'
+          Set-Content -Path $textFile -Value 'GifCut 0.3.80' -Encoding utf8
+          $textFileFilterPath = $textFile -replace '\\', '/' -replace ':', '\:'
+          $textGraph = "[0:v]drawtext=textfile='$textFileFilterPath':expansion=none:fontcolor=white:fontsize=12:x=(w-text_w)/2:y=(h-text_h)/2:enable='between(t,0,1)',format=yuv420p[out]"
+          & $ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=96x64:rate=30:duration=1' -filter_complex $textGraph -map '[out]' -frames:v 1 -f null NUL
+          if ($LASTEXITCODE -ne 0) { throw 'FFmpeg text overlay smoke test failed.' }
 
           $transitionGraph = '[0:v]settb=AVTB,setpts=PTS-STARTPTS,fps=30,format=yuv420p[a];[1:v]settb=AVTB,setpts=PTS-STARTPTS,fps=30,format=yuv420p[b];[a][b]xfade=transition=radial:duration=0.3:offset=0.5[out]'
           & $ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=64x64:rate=30:duration=1' -f lavfi -i 'smptebars=size=64x64:rate=30:duration=1' -filter_complex $transitionGraph -map '[out]' -frames:v 1 -f null NUL
