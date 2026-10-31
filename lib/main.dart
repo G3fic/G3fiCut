@@ -326,9 +326,12 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     final type = transition.type;
 
     if (type == 'Смахивание влево' ||
+        type == 'Скольжение влево' ||
         type == 'Покрытие слева' ||
         type == 'Открытие справа') {
-      final align = type == 'Смахивание влево' || type == 'Покрытие слева'
+      final align = type == 'Смахивание влево' ||
+              type == 'Скольжение влево' ||
+              type == 'Покрытие слева'
           ? Alignment.centerLeft
           : Alignment.centerRight;
       return Align(
