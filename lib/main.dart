@@ -202,6 +202,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   int selectedClipIndex = 0;
   double audioClipStart = 0;
   double audioClipEnd = 0;
+  List<double> audioWaveform = const [];
   String status = 'Импортируйте видео, чтобы начать монтаж.';
 
   double get _timelineEndSeconds => videoClips.isEmpty
@@ -826,6 +827,11 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         playing = false;
         status = 'Проект открыт: ${p.basename(selectedPath)}';
       });
+      if (document.audioPath != null) {
+        unawaited(_readWaveform(document.audioPath!).then((wave) {
+          if (mounted && audioPath == document.audioPath) setState(() => audioWaveform = wave);
+        }));
+      }
       try {
         await seek(restoredPosition);
       } catch (e) {
@@ -867,6 +873,37 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     } catch (e) { setStatus('Не удалось импортировать фото: $e'); }
   }
 
+  Future<List<double>> _readWaveform(String path, {int buckets = 1800}) async {
+    final bytes = await File(path).readAsBytes();
+    if (bytes.length < 44 || String.fromCharCodes(bytes.sublist(0, 4)) != 'RIFF') return const [];
+    final dataOffset = 12 + 8;
+    final channels = ByteData.sublistView(bytes).getUint16(22, Endian.little);
+    final bitsPerSample = ByteData.sublistView(bytes).getUint16(34, Endian.little);
+    final dataSize = ByteData.sublistView(bytes).getUint32(40, Endian.little);
+    if (bitsPerSample != 16 || channels < 1) return const [];
+    final sampleCount = math.min((bytes.length - dataOffset) ~/ 2, dataSize ~/ 2);
+    if (sampleCount <= 0) return const [];
+    final frames = sampleCount ~/ channels;
+    final count = math.min(buckets, frames);
+    final data = ByteData.sublistView(bytes);
+    final result = <double>[];
+    for (var bucket = 0; bucket < count; bucket++) {
+      final first = (bucket * frames / count).floor();
+      final last = math.max(first + 1, ((bucket + 1) * frames / count).floor());
+      var peak = 0.0;
+      for (var frame = first; frame < last; frame++) {
+        for (var channel = 0; channel < channels; channel++) {
+          final index = dataOffset + (frame * channels + channel) * 2;
+          if (index + 1 >= bytes.length) break;
+          final sample = data.getInt16(index, Endian.little).abs() / 32768.0;
+          if (sample > peak) peak = sample;
+        }
+      }
+      result.add(peak);
+    }
+    return result;
+  }
+
   Future<void> extractAudio() async {
     final video = videoPath;
     if (video == null || busy) return;
@@ -891,8 +928,10 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         }
         throw Exception('FFmpeg не смог обработать видео.');
       }
+      final waveform = await _readWaveform(output);
       if (!mounted) return;
       _performTimelineEdit(() {
+        audioWaveform = waveform;
         audioPath = output;
         audioDuration = duration;
         audioClipStart = 0;
@@ -2232,6 +2271,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           break;
         case 'audioDelete':
           audioPath = null;
+          audioWaveform = const [];
           audioClipStart = 0;
           audioClipEnd = 0;
           status = 'Звуковой клип удалён. Видеоклипы не изменены.';
@@ -2841,7 +2881,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   Widget audioClip(String path) => ClipRRect(
         borderRadius: BorderRadius.circular(6),
         child: CustomPaint(
-          painter: const WaveformPainter(color: audioGreen),
+          painter: WaveformPainter(color: audioGreen, samples: audioWaveform),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 9),
             decoration: BoxDecoration(border: Border.all(color: audioGreen), borderRadius: BorderRadius.circular(6), color: const Color(0x66205E51)),
@@ -2951,21 +2991,22 @@ class VideoStripPainter extends CustomPainter {
 }
 
 class WaveformPainter extends CustomPainter {
-  const WaveformPainter({required this.color});
+  const WaveformPainter({required this.color, required this.samples});
   final Color color;
+  final List<double> samples;
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFF163E37));
-    final count = (size.width / 5).floor();
-    final paint = Paint()..color = color.withValues(alpha: 0.92)..strokeWidth = 2..strokeCap = StrokeCap.round;
+    final count = samples.isEmpty ? 0 : math.min(samples.length, (size.width / 2.5).floor());
+    final paint = Paint()..color = color.withValues(alpha: 0.92)..strokeWidth = 1.8..strokeCap = StrokeCap.round;
     final center = size.height / 2;
     for (var i = 0; i < count; i++) {
-      final wave = (math.sin(i * 0.47) * 0.48 + math.cos(i * 0.19) * 0.3 + math.sin(i * 0.09) * 0.22).abs();
-      final h = math.max(3.0, wave * size.height * 0.72);
-      final x = i * 5.0 + 2;
+      final sampleIndex = (i * samples.length / count).floor().clamp(0, samples.length - 1);
+      final h = math.max(1.5, samples[sampleIndex] * size.height * 0.88);
+      final x = i * size.width / count + 1;
       canvas.drawLine(Offset(x, center - h / 2), Offset(x, center + h / 2), paint);
     }
   }
   @override
-  bool shouldRepaint(covariant WaveformPainter old) => old.color != color;
+  bool shouldRepaint(covariant WaveformPainter old) => old.color != color || !identical(old.samples, samples);
 }
