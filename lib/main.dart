@@ -2598,6 +2598,10 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                   trackRow(audio: false),
                   const SizedBox(height: 5),
                   trackRow(audio: true),
+                  const SizedBox(height: 5),
+                  effectTrackRow(),
+                  const SizedBox(height: 4),
+                  transitionTrackRow(),
                   if (photoOverlays.isNotEmpty) ...[
                     const SizedBox(height: 5),
                     photoTrackRow(),
@@ -2610,6 +2614,112 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         ]),
       );
 
+  Widget effectTrackRow() => SizedBox(
+        width: 140 + timelineWidth,
+        height: 54,
+        child: Row(children: [
+          Container(
+            width: 140, height: 54, padding: const EdgeInsets.symmetric(horizontal: 9),
+            decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
+            child: Row(children: [
+              const Icon(Icons.auto_awesome_outlined, size: 16, color: Color(0xFFB18CFF)),
+              const SizedBox(width: 6),
+              const Expanded(child: Text('Эффекты', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700))),
+              IconButton(
+                tooltip: 'Добавить эффект на таймлайн',
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints.tightFor(width: 28, height: 30),
+                padding: EdgeInsets.zero,
+                onPressed: busy || videoClips.isEmpty ? null : addTimelineEffect,
+                icon: const Icon(Icons.add, size: 16),
+              ),
+            ]),
+          ),
+          SizedBox(
+            width: timelineWidth, height: 54,
+            child: Stack(clipBehavior: Clip.hardEdge, children: [
+              Positioned.fill(child: CustomPaint(painter: TimelineGridPainter(seconds: timelineSeconds, pixelsPerSecond: zoom))),
+              for (var i = 0; i < effectClips.length; i++)
+                Positioned(
+                  left: effectClips[i].start * zoom + 3,
+                  top: 5, bottom: 5,
+                  width: math.max(28.0, effectClips[i].duration * zoom - 2).toDouble(),
+                  child: GestureDetector(
+                    onTap: () => setState(() { selectedEffectClipIndex = i; selectedTransitionIndex = -1; }),
+                    onSecondaryTapDown: (details) => showEffectClipMenu(details.globalPosition, i),
+                    onPanStart: (_) => _startEffectClipMove(i),
+                    onPanUpdate: _updateEffectClipMove,
+                    onPanEnd: (_) => _finishEffectClipMove(),
+                    child: Container(
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xAA7651B8),
+                        borderRadius: BorderRadius.circular(5),
+                        border: Border.all(
+                          color: selectedEffectClipIndex == i ? Colors.white : const Color(0xFFD2B9FF),
+                          width: selectedEffectClipIndex == i ? 2 : 1,
+                        ),
+                      ),
+                      child: Row(children: [
+                        const Icon(Icons.auto_awesome, size: 11, color: Colors.white),
+                        const SizedBox(width: 4),
+                        Flexible(child: Text(effectClips[i].type, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.w700))),
+                      ]),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+        ]),
+      );
+
+  Widget transitionTrackRow() => SizedBox(
+        width: 140 + timelineWidth,
+        height: 42,
+        child: Row(children: [
+          Container(
+            width: 140, height: 42, padding: const EdgeInsets.symmetric(horizontal: 9),
+            decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
+            child: Row(children: [
+              const Icon(Icons.compare_arrows, size: 16, color: Color(0xFFFFC56B)),
+              const SizedBox(width: 6),
+              const Expanded(child: Text('Переходы', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700))),
+              IconButton(
+                tooltip: 'Добавить переход на ближайший стык',
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+                padding: EdgeInsets.zero,
+                onPressed: busy || videoClips.length < 2 ? null : addTimelineTransition,
+                icon: const Icon(Icons.add, size: 16),
+              ),
+            ]),
+          ),
+          SizedBox(
+            width: timelineWidth, height: 42,
+            child: Stack(clipBehavior: Clip.hardEdge, children: [
+              Positioned.fill(child: CustomPaint(painter: TimelineGridPainter(seconds: timelineSeconds, pixelsPerSecond: zoom))),
+              for (var i = 0; i < timelineTransitions.length; i++)
+                Positioned(
+                  left: (timelineTransitions[i].at * zoom - 24).clamp(0.0, math.max(0.0, timelineWidth - 48)).toDouble(),
+                  top: 3, bottom: 3, width: 48,
+                  child: GestureDetector(
+                    onTap: () => setState(() { selectedTransitionIndex = i; selectedEffectClipIndex = -1; }),
+                    onSecondaryTapDown: (details) => showTimelineTransitionMenu(details.globalPosition, i),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xCC9A7138),
+                        borderRadius: BorderRadius.circular(5),
+                        border: Border.all(color: selectedTransitionIndex == i ? Colors.white : const Color(0xFFFFD28D), width: selectedTransitionIndex == i ? 2 : 1),
+                      ),
+                      child: const Center(child: Icon(Icons.compare_arrows, size: 17, color: Colors.white)),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+        ]),
+      );
   Widget photoTrackRow() => SizedBox(
         width: 140 + timelineWidth,
         height: 54,
