@@ -3379,12 +3379,27 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     if (filtersEnabled) {
       filters.add('eq=brightness=${brightness.toStringAsFixed(3)}:contrast=${contrast.toStringAsFixed(3)}:saturation=${saturation.toStringAsFixed(3)}');
     }
-    if (videoEffect != 'Оригинал' && _exportEffectFilter != 'null') filters.add(_exportEffectFilter);    if (motionBlurEnabled) filters.add('tmix=frames=3:weights=1 1 1');
+    if (videoEffect != 'Оригинал' && _exportEffectFilter != 'null') filters.add(_exportEffectFilter);
+    if (motionBlurEnabled) filters.add('tmix=frames=3:weights=1 1 1');
+
+    for (final effect in effectClips) {
+      final overlapStart = math.max(effect.start, clip.timelineStart).toDouble();
+      final overlapEnd = math.min(effect.end, clip.timelineEnd).toDouble();
+      if (overlapEnd <= overlapStart) continue;
+      final localStart = (overlapStart - clip.timelineStart).clamp(0.0, clip.length).toDouble();
+      final localEnd = (overlapEnd - clip.timelineStart).clamp(0.0, clip.length).toDouble();
+      final filter = _effectExportFilter(effect.type);
+      if (filter != 'null') {
+        filters.add("$filter:enable='between(t,${localStart.toStringAsFixed(3)},${localEnd.toStringAsFixed(3)})'");
+      }
+    }
     if (transitionEffect != 'Нет' && videoClips.length > 1) {
       final durationForClip = math.min(transitionDuration, math.max(0.1, clip.length / 2)).toDouble();
       final color = transitionEffect == 'Белая вспышка' ? 'white' : 'black';
-      if (index > 0) filters.add('fade=t=in:st=0:d=${durationForClip.toStringAsFixed(2)}:color=$color');
-      if (index < videoClips.length - 1) {
+      final hasIncomingOverride = timelineTransitions.any((value) => (value.at - clip.timelineStart).abs() <= 0.025);
+      final hasOutgoingOverride = timelineTransitions.any((value) => (value.at - clip.timelineEnd).abs() <= 0.025);
+      if (index > 0 && !hasIncomingOverride) filters.add('fade=t=in:st=0:d=${durationForClip.toStringAsFixed(2)}:color=$color');
+      if (index < videoClips.length - 1 && !hasOutgoingOverride) {
         final start = math.max(0, clip.length - durationForClip).toDouble();
         filters.add('fade=t=out:st=${start.toStringAsFixed(2)}:d=${durationForClip.toStringAsFixed(2)}:color=$color');
       }
@@ -3442,6 +3457,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       temp = await Directory.systemTemp.createTemp('gifcut-export-');
       final listFile = File(p.join(temp.path, 'concat.txt'));
       final lines = <String>[];
+      final exportSegments = <ExportTimelineSegment>[];
       final orderedClips = List<TimelineClip>.of(videoClips)
         ..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
 
@@ -3532,6 +3548,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           );
         }
         lines.add("file '${gapPath.replaceAll('\\', '/')}'");
+        exportSegments.add(ExportTimelineSegment(path: gapPath, start: sequenceCursor, end: sequenceCursor + gapSeconds, isGap: true));
       }
 
       for (var i = 0; i < orderedClips.length; i++) {
@@ -3642,6 +3659,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         }
 
         lines.add("file '${segmentPath.replaceAll('\\', '/')}'");
+        exportSegments.add(ExportTimelineSegment(path: segmentPath, start: clip.timelineStart, end: clip.timelineEnd, isGap: false));
         sequenceCursor = clip.timelineEnd;
         if (mounted) {
           setState(() {
