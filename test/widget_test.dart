@@ -179,18 +179,51 @@ void main() {
     await tester.pump();
 
     expect(find.text('СТАНДАРТНЫЕ ЭФФЕКТЫ'), findsOneWidget);
-    expect(find.text('СТАНДАРТНЫЕ ПЕРЕХОДЫ'), findsOneWidget);
     expect(find.text('Чёрно-белый'), findsOneWidget);
-    expect(find.text('Растворение'), findsOneWidget);
+    expect(find.text('СТАНДАРТНЫЕ ПЕРЕХОДЫ'), findsNothing);
     expect(
       find.byKey(const ValueKey('hover-preview-effect:Чёрно-белый')),
       findsOneWidget,
     );
+
+    await tester.tap(find.byKey(const ValueKey('media-library-transitions')));
+    await tester.pump();
+    expect(find.text('ПЕРЕХОДЫ МЕЖДУ КЛИПАМИ'), findsOneWidget);
+    expect(find.text('Растворение'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('hover-preview-transition:Растворение')),
       findsOneWidget,
     );
+
+    await tester.tap(find.byKey(const ValueKey('media-library-text')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('add-text-overlay')), findsOneWidget);
+
     expect(find.byTooltip('Проверить обновления'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+
+  testWidgets('audio, stickers and caption libraries are separate tabs', (tester) async {
+    await tester.pumpWidget(const GifCutApp());
+    await tester.pump();
+
+    for (final tab in const ['audio', 'stickers', 'captions', 'filters']) {
+      expect(find.byKey(ValueKey('media-library-$tab')), findsOneWidget);
+    }
+
+    await tester.tap(find.byKey(const ValueKey('media-library-audio')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('import-audio-file')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('media-library-stickers')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('sticker-⭐')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('media-library-captions')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('import-captions-file')), findsOneWidget);
+
     expect(tester.takeException(), isNull);
   });
 
