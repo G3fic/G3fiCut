@@ -3442,19 +3442,6 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         clip.end == moving.end &&
         (clip.timelineStart - requestedStart).abs() < 0.001);
     if (selected < 0) selected = 0;
-    final after = TimelineSnapshot(
-      videoClips: next,
-      selectedClipIndex: selected,
-      audioPath: before.audioPath,
-      audioClipStart: before.audioClipStart,
-      audioClipEnd: before.audioClipEnd,
-      effectClips: effectClips.map((effect) => TimelineEffectRange(
-        effect.type, effect.start, effect.end,
-      )).toList(),
-      transitions: timelineTransitions.map((transition) => TimelineTransitionRange(
-        transition.type, transition.at, transition.duration,
-      )).toList(),
-    );
     setState(() {
       _replaceClipRanges(next);
       _reconcileTimelineAnnotations();
@@ -3464,7 +3451,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       projectDirty = true;
       status = 'Клип перемещён. Ctrl+Z — отменить.';
     });
-    _timelineHistory.record(before: before, after: after);
+    _timelineHistory.record(before: before, after: _captureTimelineSnapshot());
     _clipMoveBefore = null;
     _clipMoveIndex = -1;
     // Re-evaluate the playhead against the new clip positions immediately:
