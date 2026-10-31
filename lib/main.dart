@@ -1601,7 +1601,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             _railAction(Icons.save_as_outlined, 'Сохранить как', () => unawaited(saveProject(saveAs: true)), disabled: videoPath == null || busy),
             const Divider(height: 14),
             _railAction(Icons.video_call_outlined, 'Импорт видео', pickVideo, disabled: busy, color: accent),
-            _railAction(Icons.add_photo_alternate_outlined, 'Добавить фото', importPhotoOverlay, disabled: busy || videoPath == null),
+            _railAction(Icons.add_photo_alternate_outlined, 'Добавить фото', importPhotoOverlay, disabled: busy, color: const Color(0xFFB18CFF)),
             _railAction(Icons.graphic_eq, 'Извлечь звук', extractAudio, disabled: busy || videoPath == null),
             const Divider(height: 14),
             _railAction(Icons.tune_rounded, 'Цвет', showColorAdjustments, disabled: busy || videoClips.isEmpty),
@@ -1860,16 +1860,16 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                                       cursor: SystemMouseCursors.move,
                                                       child: ContinuousPointerDrag(
                                                         key: const ValueKey('video-canvas-drag-surface'),
-                                                        onStart: () => setState(() { _selectedCanvasObject = 'video'; selectedPhotoOverlay = -1; }),
+                                                        onStart: _selectVideoAtPlayhead,
                                                         onDelta: (screenDelta) => setState(() {
                                                           var nextX = videoOffsetX + screenDelta.dx / math.max(1, bounds.maxWidth);
                                                           var nextY = videoOffsetY + screenDelta.dy / math.max(1, bounds.maxHeight);
-                                                          _showVerticalSnapGuide = nextX.abs() < 0.035;
-                                                          _showHorizontalSnapGuide = nextY.abs() < 0.035;
-                                                          if (nextX.abs() < 0.035) nextX *= 0.72;
-                                                          if (nextY.abs() < 0.035) nextY *= 0.72;
-                                                          if (nextX.abs() < 0.002) nextX = 0;
-                                                          if (nextY.abs() < 0.002) nextY = 0;
+                                                          _showVerticalSnapGuide = nextX.abs() < 0.012;
+                                                          _showHorizontalSnapGuide = nextY.abs() < 0.012;
+                                                          nextX = _softAxisSnap(nextX);
+                                                          nextY = _softAxisSnap(nextY);
+                                                          if (nextX.abs() < 0.0005) nextX = 0;
+                                                          if (nextY.abs() < 0.0005) nextY = 0;
                                                           videoOffsetX = nextX; videoOffsetY = nextY;
                                                           projectDirty = true;
                                                         }),
@@ -1936,7 +1936,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                                           var delta = (angle - _videoRotateStartAngle) * 180 / math.pi;
                                                           if (delta > 180) delta -= 360;
                                                           if (delta < -180) delta += 360;
-                                                          setState(() { videoRotation = (_videoRotateStartRotation + delta) % 360; projectDirty = true; });
+                                                          setState(() { videoRotation = _softAngleSnap(_videoRotateStartRotation + delta); projectDirty = true; });
                                                         },
                                                         child: Container(
                                                           decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white, width: 1.5), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 4)]),
@@ -1965,12 +1965,12 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                           onPanUpdate: (d) => setState(() {
                                             var nextX = (photoOverlays[i].x + d.delta.dx / bounds.maxWidth).clamp(-1.5, 1.5).toDouble();
                                             var nextY = (photoOverlays[i].y + d.delta.dy / bounds.maxHeight).clamp(-1.5, 1.5).toDouble();
-                                            _showVerticalSnapGuide = nextX.abs() < 0.022;
-                                            _showHorizontalSnapGuide = nextY.abs() < 0.022;
-                                            if (nextX.abs() < 0.035) nextX *= 0.72;
-                                            if (nextY.abs() < 0.035) nextY *= 0.72;
-                                            if (nextX.abs() < 0.002) nextX = 0;
-                                            if (nextY.abs() < 0.002) nextY = 0;
+                                            _showVerticalSnapGuide = nextX.abs() < 0.012;
+                                            _showHorizontalSnapGuide = nextY.abs() < 0.012;
+                                            nextX = _softAxisSnap(nextX);
+                                            nextY = _softAxisSnap(nextY);
+                                            if (nextX.abs() < 0.0005) nextX = 0;
+                                            if (nextY.abs() < 0.0005) nextY = 0;
                                             photoOverlays[i].x = nextX;
                                             photoOverlays[i].y = nextY;
                                             projectDirty = true;
@@ -2016,7 +2016,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                                             if (delta > 180) delta -= 360;
                                                             if (delta < -180) delta += 360;
                                                             setState(() {
-                                                              photoOverlays[i].rotation = ((_photoRotateStartRotations[i] ?? photoOverlays[i].rotation) + delta) % 360;
+                                                              photoOverlays[i].rotation = _softAngleSnap((_photoRotateStartRotations[i] ?? photoOverlays[i].rotation) + delta);
                                                               projectDirty = true;
                                                             });
                                                           },
@@ -2189,7 +2189,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               const SizedBox(height: 8),
               Row(children: [
                 const Expanded(child: Text('ФОТО ПОВЕРХ ВИДЕО', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800))),
-                IconButton(tooltip: 'Добавить фото', visualDensity: VisualDensity.compact, onPressed: busy || videoPath == null ? null : importPhotoOverlay, icon: const Icon(Icons.add_photo_alternate_outlined, size: 18)),
+                IconButton(tooltip: 'Добавить фото', visualDensity: VisualDensity.compact, onPressed: busy ? null : importPhotoOverlay, icon: const Icon(Icons.add_photo_alternate_outlined, size: 18)),
               ]),
               for (var i = 0; i < photoOverlays.length; i++)
                 ListTile(
@@ -2405,7 +2405,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                   width: math.max(20.0, timelineWidth - 8).toDouble(),
                   child: GestureDetector(
                     onTapDown: (d) => seekTimeline(d.localPosition.dx),
-                    onTap: () => setState(() => selectedPhotoOverlay = i),
+                    onTap: () => setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; }),
                     child: Container(
                       decoration: BoxDecoration(color: const Color(0x443D2C69), borderRadius: BorderRadius.circular(5), border: Border.all(color: selectedPhotoOverlay == i ? Colors.white : const Color(0xFFB18CFF), width: selectedPhotoOverlay == i ? 2 : 1)),
                       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -2479,7 +2479,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                     width: math.max(12.0, videoClips[i].length * zoom - 2).toDouble(),
                     child: GestureDetector(
                       onTapDown: (d) => seekTimeline(videoClips[i].timelineStart * zoom + d.localPosition.dx),
-                      onTap: () => setState(() { selectedClipIndex = i; selectedPhotoOverlay = -1; _selectedCanvasObject = 'video'; projectDirty = true; }),
+                      onTap: () => _selectVideoClip(i),
                       onSecondaryTapDown: (details) => showClipMenu(details.globalPosition, i),
                       onHorizontalDragStart: (_) => _startClipMove(i),
                       onHorizontalDragUpdate: _updateClipMove,
@@ -2491,8 +2491,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                           DecoratedBox(
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: selectedClipIndex == i ? const Color(0xFFFFFFFF) : videoBlue, width: selectedClipIndex == i ? 2 : 1),
-                              boxShadow: selectedClipIndex == i ? [BoxShadow(color: videoBlue.withValues(alpha: .2), blurRadius: 8)] : null,
+                              border: Border.all(color: _selectedCanvasObject == 'video' && selectedClipIndex == i ? const Color(0xFFB69CFF) : videoBlue, width: _selectedCanvasObject == 'video' && selectedClipIndex == i ? 3 : 1),
+                              boxShadow: _selectedCanvasObject == 'video' && selectedClipIndex == i ? [BoxShadow(color: accent.withValues(alpha: .50), blurRadius: 12, spreadRadius: 1)] : null,
                             ),
                             child: ClipRRect(borderRadius: BorderRadius.circular(5), child: Stack(children: [
                               Positioned.fill(child: _videoThumbnailStrip(videoClips[i], math.max(12.0, videoClips[i].length * zoom - 2).toDouble())),
@@ -2512,7 +2512,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                               ),
                             ])),
                           ),
-                          if (selectedClipIndex == i) ...[
+                          if (_selectedCanvasObject == 'video' && selectedClipIndex == i) ...[
                             Positioned(
                               left: 0, top: 0, bottom: 0, width: 9,
                               child: MouseRegion(
@@ -2779,6 +2779,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     _clipMovePointerX = 0;
     setState(() {
       selectedClipIndex = index;
+      selectedPhotoOverlay = -1;
+      _selectedCanvasObject = 'video';
       _timelineSnapAt = null;
     });
   }
