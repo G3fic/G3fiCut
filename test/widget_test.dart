@@ -210,4 +210,16 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('workspace keeps the preview left of the right-hand inspector', (tester) async {
+    await tester.pumpWidget(const GifCutApp());
+    await tester.pump();
+
+    final preview = find.byKey(const ValueKey('preview-panel'));
+    final inspector = find.byKey(const ValueKey('right-inspector-panel'));
+    expect(preview, findsOneWidget);
+    expect(inspector, findsOneWidget);
+    expect(tester.getTopLeft(preview).dx, lessThan(tester.getTopLeft(inspector).dx));
+    expect(tester.takeException(), isNull);
+  });
+
 }
