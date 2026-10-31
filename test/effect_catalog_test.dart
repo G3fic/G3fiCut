@@ -26,6 +26,12 @@ void main() {
       expect(builtinEffectTypes.length, greaterThanOrEqualTo(20));
     });
 
+    test('effect export filters do not depend on the unavailable eq filter', () {
+      for (final entry in builtinEffectExportFilters.entries) {
+        expect(entry.value, isNot(contains('eq=')), reason: entry.key);
+      }
+    });
+
     test('all bundled LUT presets have preview matrices and files', () {
       expect(builtinLutFiles.keys, lutPreviewMatrices.keys);
       expect(builtinLutFiles.length, 5);
