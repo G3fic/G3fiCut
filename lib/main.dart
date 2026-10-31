@@ -1983,17 +1983,18 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                                       cursor: SystemMouseCursors.move,
                                                       child: ContinuousPointerDrag(
                                                         key: const ValueKey('video-canvas-drag-surface'),
-                                                        onStart: _selectVideoAtPlayhead,
+                                                        onStart: _startVideoCanvasDrag,
                                                         onDelta: (screenDelta) => setState(() {
-                                                          var nextX = videoOffsetX + screenDelta.dx / math.max(1, bounds.maxWidth);
-                                                          var nextY = videoOffsetY + screenDelta.dy / math.max(1, bounds.maxHeight);
-                                                          _showVerticalSnapGuide = nextX.abs() < 0.012;
-                                                          _showHorizontalSnapGuide = nextY.abs() < 0.012;
-                                                          nextX = _softAxisSnap(nextX);
-                                                          nextY = _softAxisSnap(nextY);
-                                                          if (nextX.abs() < 0.0005) nextX = 0;
-                                                          if (nextY.abs() < 0.0005) nextY = 0;
-                                                          videoOffsetX = nextX; videoOffsetY = nextY;
+                                                          _videoDragRawX += screenDelta.dx / math.max(1, bounds.maxWidth);
+                                                          _videoDragRawY += screenDelta.dy / math.max(1, bounds.maxHeight);
+                                                          final snapX = _snapToCenterAxis(_videoDragRawX, bounds.maxWidth, _videoSnapXActive);
+                                                          final snapY = _snapToCenterAxis(_videoDragRawY, bounds.maxHeight, _videoSnapYActive);
+                                                          _videoSnapXActive = snapX.snapped;
+                                                          _videoSnapYActive = snapY.snapped;
+                                                          _showVerticalSnapGuide = snapX.snapped;
+                                                          _showHorizontalSnapGuide = snapY.snapped;
+                                                          videoOffsetX = snapX.value;
+                                                          videoOffsetY = snapY.value;
                                                           projectDirty = true;
                                                         }),
                                                         onEnd: () => setState(() {
@@ -2084,21 +2085,33 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                         height: shortSide * .36 * photoOverlays[i].scale,
                                         child: GestureDetector(
                                           onTap: () => setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; }),
-                                          onPanStart: (_) => setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; }),
+                                          onPanStart: (_) {
+                                            _photoDragRawOffsets[i] = Offset(photoOverlays[i].x, photoOverlays[i].y);
+                                            _photoSnapXActive.remove(i);
+                                            _photoSnapYActive.remove(i);
+                                            setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; });
+                                          },
                                           onPanUpdate: (d) => setState(() {
-                                            var nextX = (photoOverlays[i].x + d.delta.dx / bounds.maxWidth).clamp(-1.5, 1.5).toDouble();
-                                            var nextY = (photoOverlays[i].y + d.delta.dy / bounds.maxHeight).clamp(-1.5, 1.5).toDouble();
-                                            _showVerticalSnapGuide = nextX.abs() < 0.012;
-                                            _showHorizontalSnapGuide = nextY.abs() < 0.012;
-                                            nextX = _softAxisSnap(nextX);
-                                            nextY = _softAxisSnap(nextY);
-                                            if (nextX.abs() < 0.0005) nextX = 0;
-                                            if (nextY.abs() < 0.0005) nextY = 0;
-                                            photoOverlays[i].x = nextX;
-                                            photoOverlays[i].y = nextY;
+                                            final raw = _photoDragRawOffsets[i] ?? Offset(photoOverlays[i].x, photoOverlays[i].y);
+                                            final rawX = (raw.dx + d.delta.dx / bounds.maxWidth).clamp(-1.5, 1.5).toDouble();
+                                            final rawY = (raw.dy + d.delta.dy / bounds.maxHeight).clamp(-1.5, 1.5).toDouble();
+                                            final snapX = _snapToCenterAxis(rawX, bounds.maxWidth, _photoSnapXActive.contains(i));
+                                            final snapY = _snapToCenterAxis(rawY, bounds.maxHeight, _photoSnapYActive.contains(i));
+                                            _photoDragRawOffsets[i] = Offset(rawX, rawY);
+                                            if (snapX.snapped) { _photoSnapXActive.add(i); } else { _photoSnapXActive.remove(i); }
+                                            if (snapY.snapped) { _photoSnapYActive.add(i); } else { _photoSnapYActive.remove(i); }
+                                            _showVerticalSnapGuide = snapX.snapped;
+                                            _showHorizontalSnapGuide = snapY.snapped;
+                                            photoOverlays[i].x = snapX.value;
+                                            photoOverlays[i].y = snapY.value;
                                             projectDirty = true;
                                           }),
-                                          onPanEnd: (_) => setState(() { _showVerticalSnapGuide = false; _showHorizontalSnapGuide = false; }),
+                                          onPanEnd: (_) {
+                                            _photoDragRawOffsets.remove(i);
+                                            _photoSnapXActive.remove(i);
+                                            _photoSnapYActive.remove(i);
+                                            setState(() { _showVerticalSnapGuide = false; _showHorizontalSnapGuide = false; });
+                                          },
                                           child: Transform.rotate(
                                             angle: photoOverlays[i].rotation * math.pi / 180,
                                             child: Opacity(
