@@ -2809,32 +2809,89 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               for (var i = 0; i < effectClips.length; i++)
                 Positioned(
                   left: effectClips[i].start * zoom + 3,
-                  top: 5, bottom: 5,
-                  width: math.max(28.0, effectClips[i].duration * zoom - 2).toDouble(),
-                  child: GestureDetector(
-                    onTap: () => setState(() { selectedEffectClipIndex = i; selectedTransitionIndex = -1; }),
-                    onSecondaryTapDown: (details) => showEffectClipMenu(details.globalPosition, i),
-                    onPanStart: (_) => _startEffectClipMove(i),
-                    onPanUpdate: _updateEffectClipMove,
-                    onPanEnd: (_) => _finishEffectClipMove(),
-                    child: Container(
-                      alignment: Alignment.centerLeft,
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      decoration: BoxDecoration(
-                        color: const Color(0xAA7651B8),
-                        borderRadius: BorderRadius.circular(5),
-                        border: Border.all(
-                          color: selectedEffectClipIndex == i ? Colors.white : const Color(0xFFD2B9FF),
-                          width: selectedEffectClipIndex == i ? 2 : 1,
+                  top: 5,
+                  bottom: 5,
+                  width: math.max(34.0, effectClips[i].duration * zoom - 2).toDouble(),
+                  child: Stack(children: [
+                    Positioned.fill(
+                      child: GestureDetector(
+                        onTap: () => setState(() {
+                          selectedEffectClipIndex = i;
+                          selectedTransitionIndex = -1;
+                          selectedAudioClip = false;
+                          selectedPhotoOverlay = -1;
+                          _selectedCanvasObject = 'timeline-effect';
+                        }),
+                        onSecondaryTapUp: (details) {
+                          if (!_timelinePanMoved) showEffectClipMenu(details.globalPosition, i);
+                        },
+                        onPanStart: (_) => _startEffectClipMove(i),
+                        onPanUpdate: _updateEffectClipMove,
+                        onPanEnd: (_) => _finishEffectClipMove(),
+                        child: Container(
+                          alignment: Alignment.centerLeft,
+                          padding: const EdgeInsets.symmetric(horizontal: 11),
+                          decoration: BoxDecoration(
+                            color: const Color(0xAA7651B8),
+                            borderRadius: BorderRadius.circular(5),
+                            border: Border.all(
+                              color: selectedEffectClipIndex == i ? Colors.white : const Color(0xFFD2B9FF),
+                              width: selectedEffectClipIndex == i ? 2 : 1,
+                            ),
+                          ),
+                          child: Row(children: [
+                            const Icon(Icons.auto_awesome, size: 11, color: Colors.white),
+                            const SizedBox(width: 4),
+                            Flexible(child: Text(effectClips[i].type, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.w700))),
+                          ]),
                         ),
                       ),
-                      child: Row(children: [
-                        const Icon(Icons.auto_awesome, size: 11, color: Colors.white),
-                        const SizedBox(width: 4),
-                        Flexible(child: Text(effectClips[i].type, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.w700))),
-                      ]),
                     ),
-                  ),
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: 10,
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.resizeLeftRight,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onHorizontalDragStart: (_) => _startEffectResize(i, fromLeft: true),
+                          onHorizontalDragUpdate: _updateEffectResize,
+                          onHorizontalDragEnd: (_) => _finishEffectResize(),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: selectedEffectClipIndex == i ? Colors.white : const Color(0x88FFFFFF),
+                              borderRadius: const BorderRadius.horizontal(left: Radius.circular(5)),
+                            ),
+                            child: const Center(child: SizedBox(width: 2, height: 15, child: ColoredBox(color: Color(0xFF7651B8)))),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: 10,
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.resizeLeftRight,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onHorizontalDragStart: (_) => _startEffectResize(i, fromLeft: false),
+                          onHorizontalDragUpdate: _updateEffectResize,
+                          onHorizontalDragEnd: (_) => _finishEffectResize(),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: selectedEffectClipIndex == i ? Colors.white : const Color(0x88FFFFFF),
+                              borderRadius: const BorderRadius.horizontal(right: Radius.circular(5)),
+                            ),
+                            child: const Center(child: SizedBox(width: 2, height: 15, child: ColoredBox(color: Color(0xFF7651B8)))),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ]),
                 ),
             ]),
           ),
@@ -3081,6 +3138,39 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                             ),
                           ],
                         ],
+                      ),
+                    ),
+                  ),
+              if (!audio)
+                for (var i = 0; i < timelineTransitions.length; i++)
+                  Positioned(
+                    left: (timelineTransitions[i].at - timelineTransitions[i].duration / 2) * zoom + 4,
+                    top: 9,
+                    bottom: 9,
+                    width: math.max(16.0, timelineTransitions[i].duration * zoom - 1).toDouble(),
+                    child: GestureDetector(
+                      onTap: () => setState(() {
+                        selectedTransitionIndex = i;
+                        selectedEffectClipIndex = -1;
+                        selectedAudioClip = false;
+                        selectedPhotoOverlay = -1;
+                        _selectedCanvasObject = 'timeline-transition';
+                      }),
+                      onSecondaryTapUp: (details) {
+                        if (!_timelinePanMoved) showTimelineTransitionMenu(details.globalPosition, i);
+                      },
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: const Color(0x66FFFFFF),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: selectedTransitionIndex == i ? Colors.white : const Color(0xCCFFFFFF),
+                            width: selectedTransitionIndex == i ? 2 : 1,
+                          ),
+                        ),
+                        child: const Center(
+                          child: Icon(Icons.compare_arrows, size: 12, color: Colors.white),
+                        ),
                       ),
                     ),
                   ),
