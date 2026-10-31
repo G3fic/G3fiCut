@@ -1479,7 +1479,11 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           key: const ValueKey('timeline-panel-splitter'),
           behavior: HitTestBehavior.opaque,
           onVerticalDragUpdate: (details) => setState(() {
-            _timelinePanelHeight = (_timelinePanelHeight - details.delta.dy).clamp(160.0, 520.0).toDouble();
+            final screenHeight = MediaQuery.sizeOf(context).height;
+            final maxTimelineHeight = (screenHeight - 56 - 8 - 1 - 40 - 180)
+                .clamp(160.0, 520.0).toDouble();
+            _timelinePanelHeight = (_timelinePanelHeight - details.delta.dy)
+                .clamp(160.0, maxTimelineHeight).toDouble();
           }),
           child: SizedBox(height: 8, child: Center(child: Container(width: double.infinity, height: 1, color: const Color(0xFF343744)))),
         ),
