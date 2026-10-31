@@ -1,5 +1,12 @@
 # Changelog
 
+## GifCut v0.3.79 — 2026-11-01
+
+- Make the preview canvas black by default instead of filling unused canvas space with a continuously blurred duplicate of the video.
+- Add a separate preview-background blur toggle; the clip's own blur effect remains independent.
+- Bump the Windows application and installer version to 0.3.79.
+
+
 ## GifCut v0.3.78 — 2026-10-31
 
 - Add a larger library of FFmpeg crossfade transitions, including radial, diagonal, slice, wind, cover, reveal, squeeze and zoom variants.

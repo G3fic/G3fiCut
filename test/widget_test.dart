@@ -194,4 +194,32 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('preview uses a black background by default and blur is an explicit toggle', (tester) async {
+    await tester.pumpWidget(const GifCutApp());
+    await tester.pump();
+
+    final backgroundToggle = find.byKey(const ValueKey('canvas-background-blur-toggle'));
+    expect(backgroundToggle, findsOneWidget);
+    expect(find.byKey(const ValueKey('canvas-blurred-background')), findsNothing);
+    expect(find.byTooltip('Включить размытие фона предпросмотра'), findsOneWidget);
+
+    await tester.tap(backgroundToggle);
+    await tester.pump();
+
+    expect(find.byTooltip('Отключить размытие фона предпросмотра'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('workspace keeps the preview left of the right-hand inspector', (tester) async {
+    await tester.pumpWidget(const GifCutApp());
+    await tester.pump();
+
+    final preview = find.byKey(const ValueKey('preview-panel'));
+    final inspector = find.byKey(const ValueKey('right-inspector-panel'));
+    expect(preview, findsOneWidget);
+    expect(inspector, findsOneWidget);
+    expect(tester.getTopLeft(preview).dx, lessThan(tester.getTopLeft(inspector).dx));
+    expect(tester.takeException(), isNull);
+  });
+
 }
