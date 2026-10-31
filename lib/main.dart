@@ -19,6 +19,7 @@ import 'package:path_provider/path_provider.dart';
 import 'timeline_history.dart';
 import 'timeline_editing.dart';
 import 'project_document.dart';
+import 'canvas_snapping.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -141,8 +142,35 @@ class PhotoOverlay {
   double x, y, scale, rotation, opacity;
 }
 
+class TimelineEffectClip {
+  TimelineEffectClip({required this.type, required this.start, required this.end});
+  String type;
+  double start, end;
+  double get duration => end - start;
+}
+
+class TimelineTransition {
+  TimelineTransition({required this.type, required this.at, required this.duration});
+  String type;
+  double at, duration;
+}
+
+class ExportTimelineSegment {
+  const ExportTimelineSegment({
+    required this.path,
+    required this.start,
+    required this.end,
+    required this.isGap,
+  });
+  final String path;
+  final double start;
+  final double end;
+  final bool isGap;
+  double get duration => end - start;
+}
+
 class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.70');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.71');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -188,6 +216,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   double _videoRotateStartRotation = 0;
   final Map<int, double> _photoRotateStartAngles = {};
   final Map<int, double> _photoRotateStartRotations = {};
+  double _videoDragRawX = 0;
+  double _videoDragRawY = 0;
+  bool _videoSnapXActive = false;
+  bool _videoSnapYActive = false;
+  final Map<int, Offset> _photoDragRawOffsets = {};
+  final Set<int> _photoSnapXActive = {};
+  final Set<int> _photoSnapYActive = {};
   int _gapNextClipIndex = -1;
   bool _gapResumePending = false;
   bool _suppressPlayerStateEvents = false;
@@ -199,6 +234,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   bool snappingEnabled = true;
   double? _timelineSnapAt;
   final ScrollController timelineScrollController = ScrollController();
+  final ScrollController timelineVerticalScrollController = ScrollController();
   int _clipMoveIndex = -1;
   double _clipMoveOriginalStart = 0;
   double _clipMovePointerX = 0;
@@ -209,6 +245,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   String videoEffect = 'Оригинал';
   String transitionEffect = 'Нет';
   double transitionDuration = 0.4;
+  static const _timelineEffectTypes = ProjectEffectClip.supportedTypes;
+  static const _timelineTransitionTypes = ProjectTransition.supportedTypes;
 
   double get previewAspectRatio => const {
     '16:9': 16 / 9,
@@ -240,21 +278,36 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   }[videoEffect] ?? const <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0];
 
   ({Color color, double opacity}) get previewTransitionOverlay {
-    if (transitionEffect == 'Нет' || videoClips.length < 2) {
-      return (color: Colors.black, opacity: 0);
-    }
     final seconds = position.inMilliseconds / 1000;
     var opacity = 0.0;
-    for (var i = 0; i < videoClips.length; i++) {
-      final clip = videoClips[i];
-      if (i > 0 && seconds >= clip.timelineStart && seconds < clip.timelineStart + transitionDuration) {
-        opacity = math.max(opacity, 1 - (seconds - clip.timelineStart) / transitionDuration).toDouble();
-      }
-      if (i < videoClips.length - 1 && seconds > clip.timelineEnd - transitionDuration && seconds <= clip.timelineEnd) {
-        opacity = math.max(opacity, (seconds - (clip.timelineEnd - transitionDuration)) / transitionDuration).toDouble();
+    var color = Colors.black;
+    for (final transition in timelineTransitions) {
+      final half = transition.duration / 2;
+      final progress = 1 - (seconds - transition.at).abs() / math.max(0.05, half);
+      if (progress <= 0) continue;
+      if (transition.type == 'Белая вспышка') color = Colors.white;
+      if (transition.type == 'Затемнение' || transition.type == 'Растворение') color = Colors.black;
+      if (transition.type == 'Белая вспышка' ||
+          transition.type == 'Затемнение' ||
+          transition.type == 'Растворение') {
+        opacity = math.max(opacity, progress.clamp(0.0, 1.0)).toDouble();
       }
     }
-    return (color: transitionEffect == 'Белая вспышка' ? Colors.white : Colors.black, opacity: opacity.clamp(0.0, 1.0).toDouble());
+    // Keep the legacy inspector transition as a fallback for projects that
+    // use the global transition setting but have no per-cut transition clips.
+    if (timelineTransitions.isEmpty && transitionEffect != 'Нет' && videoClips.length > 1) {
+      for (var i = 0; i < videoClips.length; i++) {
+        final clip = videoClips[i];
+        if (i > 0 && seconds >= clip.timelineStart && seconds < clip.timelineStart + transitionDuration) {
+          opacity = math.max(opacity, 1 - (seconds - clip.timelineStart) / transitionDuration).toDouble();
+        }
+        if (i < videoClips.length - 1 && seconds > clip.timelineEnd - transitionDuration && seconds <= clip.timelineEnd) {
+          opacity = math.max(opacity, (seconds - (clip.timelineEnd - transitionDuration)) / transitionDuration).toDouble();
+        }
+      }
+      color = transitionEffect == 'Белая вспышка' ? Colors.white : Colors.black;
+    }
+    return (color: color, opacity: opacity.clamp(0.0, 1.0).toDouble());
   }
   String inspectorTab = 'video';
   List<String> videoThumbnails = [];
@@ -274,6 +327,14 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   final List<TimelineClip> videoClips = [];
   final TimelineHistory _timelineHistory = TimelineHistory();
   int selectedClipIndex = 0;
+  final List<TimelineEffectClip> effectClips = [];
+  final List<TimelineTransition> timelineTransitions = [];
+  int selectedEffectClipIndex = -1;
+  int selectedTransitionIndex = -1;
+  int _effectClipMoveIndex = -1;
+  double _effectClipMoveStart = 0;
+  double _effectClipMovePointerX = 0;
+  TimelineSnapshot? _effectClipMoveBefore;
   double audioClipStart = 0;
   double audioClipEnd = 0;
   List<double> audioWaveform = const [];
@@ -578,6 +639,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     positionSub?.cancel();
     playingSub?.cancel();
     timelineScrollController.dispose();
+    timelineVerticalScrollController.dispose();
     final activePlayer = player;
     if (activePlayer != null) unawaited(activePlayer.dispose());
     super.dispose();
@@ -777,6 +839,16 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         audioClipEnd: audioClipEnd,
         timelineZoom: zoom,
         playheadMs: position.inMilliseconds.clamp(0, timelineDuration.inMilliseconds).toInt(),
+        effectClips: effectClips.map((effect) => ProjectEffectClip(
+          type: effect.type,
+          start: effect.start,
+          end: effect.end,
+        )).toList(),
+        transitions: timelineTransitions.map((transition) => ProjectTransition(
+          type: transition.type,
+          at: transition.at,
+          duration: transition.duration,
+        )).toList(),
       );
       await File(targetPath).writeAsString(document.encode(), flush: true);
       if (!mounted) return true;
@@ -898,6 +970,22 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         audioClipStart = document.audioClipStart;
         audioClipEnd = document.audioClipEnd;
         zoom = document.timelineZoom;
+        effectClips
+          ..clear()
+          ..addAll(document.effectClips.map((effect) => TimelineEffectClip(
+            type: effect.type,
+            start: effect.start,
+            end: effect.end,
+          )));
+        timelineTransitions
+          ..clear()
+          ..addAll(document.transitions.map((transition) => TimelineTransition(
+            type: transition.type,
+            at: transition.at,
+            duration: transition.duration,
+          )));
+        selectedEffectClipIndex = -1;
+        selectedTransitionIndex = -1;
         position = restoredPosition;
         projectFilePath = selectedPath;
         projectDirty = false;
@@ -1023,12 +1111,25 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     return result;
   }
 
-  double _softAxisSnap(double value) {
-    const range = 0.012;
-    const strength = 0.12;
-    final proximity = 1 - value.abs() / range;
-    if (proximity <= 0) return value;
-    return value * (1 - strength * proximity);
+  ({double value, bool snapped}) _snapToCenterAxis(
+    double rawOffset,
+    double canvasExtent,
+    bool wasSnapped,
+  ) {
+    final result = const CenterAxisSnapper().update(
+      rawOffset: rawOffset,
+      canvasExtent: canvasExtent,
+      wasSnapped: wasSnapped,
+    );
+    return (value: result.offset, snapped: result.isSnapped);
+  }
+
+  void _startVideoCanvasDrag() {
+    _videoDragRawX = videoOffsetX;
+    _videoDragRawY = videoOffsetY;
+    _videoSnapXActive = false;
+    _videoSnapYActive = false;
+    _selectVideoAtPlayhead();
   }
 
   double _softAngleSnap(double degrees) {
@@ -1359,15 +1460,16 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   void _finishEdgeDrag() {
     if (_edgeDragIndex < 0) return;
     final before = _edgeDragBefore;
-    if (before != null) _timelineHistory.record(before: before, after: _captureTimelineSnapshot());
-    _edgeDragBefore = null;
-    _edgeDragIndex = -1;
     if (mounted) {
       setState(() {
+        _reconcileTimelineAnnotations();
         _timelineSnapAt = null;
         status = 'Длина клипа изменена. Ctrl+Z — отменить.';
       });
     }
+    if (before != null) _timelineHistory.record(before: before, after: _captureTimelineSnapshot());
+    _edgeDragBefore = null;
+    _edgeDragIndex = -1;
   }
 
   void setTimelineZoom(double next) {
@@ -1847,6 +1949,57 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildPreviewVideo() {
+    Widget result = Video(
+      controller: videoController!,
+      controls: NoVideoControls,
+      fit: BoxFit.cover,
+    );
+    final activeEffects = effectClips.where((effect) =>
+        playheadSeconds >= effect.start && playheadSeconds < effect.end);
+    for (final effect in activeEffects) {
+      if (effect.type == 'Размытие') {
+        result = ImageFiltered(
+          imageFilter: ui.ImageFilter.blur(sigmaX: 5.5, sigmaY: 5.5),
+          child: result,
+        );
+      } else {
+        result = ColorFiltered(
+          colorFilter: ColorFilter.matrix(_timelineEffectColorMatrix(effect.type)),
+          child: result,
+        );
+      }
+    }
+    return result;
+  }
+
+  List<double> _timelineEffectColorMatrix(String type) => const {
+    'Чёрно-белый': <double>[0.213,0.715,0.072,0,0, 0.213,0.715,0.072,0,0, 0.213,0.715,0.072,0,0, 0,0,0,1,0],
+    'Сепия': <double>[0.393,0.769,0.189,0,0, 0.349,0.686,0.168,0,0, 0.272,0.534,0.131,0,0, 0,0,0,1,0],
+    'Негатив': <double>[-1,0,0,0,255, 0,-1,0,0,255, 0,0,-1,0,255, 0,0,0,1,0],
+    'Тёплый тон': <double>[1.12,0,0,0,0, 0,1,0,0,0, 0,0,0.94,0,0, 0,0,0,1,0],
+    'Холодный тон': <double>[0.96,0,0,0,0, 0,1,0,0,0, 0,0,1.12,0,0, 0,0,0,1,0],
+    'Высокий контраст': <double>[1.45,0,0,0,-56, 0,1.45,0,0,-56, 0,0,1.45,0,-56, 0,0,0,1,0],
+  }[type] ?? const <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0];
+
+  String _effectExportFilter(String type) => const {
+    'Чёрно-белый': 'hue=s=0',
+    'Сепия': 'colorchannelmixer=.393:.769:.189:0:0:.349:.686:.168:0:0:.272:.534:.131:0:0',
+    'Негатив': 'negate',
+    'Тёплый тон': 'colorbalance=rs=0.12:bs=-0.06',
+    'Холодный тон': 'colorbalance=rs=-0.04:bs=0.12',
+    'Размытие': 'gblur=sigma=5.5',
+    'Высокий контраст': 'eq=contrast=1.65:saturation=1.15',
+  }[type] ?? 'null';
+
+  String _transitionFilterName(String type) => const {
+    'Затемнение': 'fadeblack',
+    'Белая вспышка': 'fadewhite',
+    'Растворение': 'dissolve',
+    'Смахивание влево': 'wipeleft',
+    'Смахивание вправо': 'wiperight',
+  }[type] ?? 'fadeblack';
+
   Widget previewPanel() => Container(
         color: const Color(0xFF101217),
         child: Column(children: [
@@ -1923,17 +2076,18 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                                       cursor: SystemMouseCursors.move,
                                                       child: ContinuousPointerDrag(
                                                         key: const ValueKey('video-canvas-drag-surface'),
-                                                        onStart: _selectVideoAtPlayhead,
+                                                        onStart: _startVideoCanvasDrag,
                                                         onDelta: (screenDelta) => setState(() {
-                                                          var nextX = videoOffsetX + screenDelta.dx / math.max(1, bounds.maxWidth);
-                                                          var nextY = videoOffsetY + screenDelta.dy / math.max(1, bounds.maxHeight);
-                                                          _showVerticalSnapGuide = nextX.abs() < 0.012;
-                                                          _showHorizontalSnapGuide = nextY.abs() < 0.012;
-                                                          nextX = _softAxisSnap(nextX);
-                                                          nextY = _softAxisSnap(nextY);
-                                                          if (nextX.abs() < 0.0005) nextX = 0;
-                                                          if (nextY.abs() < 0.0005) nextY = 0;
-                                                          videoOffsetX = nextX; videoOffsetY = nextY;
+                                                          _videoDragRawX += screenDelta.dx / math.max(1, bounds.maxWidth);
+                                                          _videoDragRawY += screenDelta.dy / math.max(1, bounds.maxHeight);
+                                                          final snapX = _snapToCenterAxis(_videoDragRawX, bounds.maxWidth, _videoSnapXActive);
+                                                          final snapY = _snapToCenterAxis(_videoDragRawY, bounds.maxHeight, _videoSnapYActive);
+                                                          _videoSnapXActive = snapX.snapped;
+                                                          _videoSnapYActive = snapY.snapped;
+                                                          _showVerticalSnapGuide = snapX.snapped;
+                                                          _showHorizontalSnapGuide = snapY.snapped;
+                                                          videoOffsetX = snapX.value;
+                                                          videoOffsetY = snapY.value;
                                                           projectDirty = true;
                                                         }),
                                                         onEnd: () => setState(() {
@@ -1950,7 +2104,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                                                   sigmaX: (videoEffect == 'Мягкое размытие' ? 2.0 : 0.0) + (motionBlurEnabled ? 1.2 : 0.0),
                                                                   sigmaY: (videoEffect == 'Мягкое размытие' ? 2.0 : 0.0) + (motionBlurEnabled ? 1.2 : 0.0),
                                                                 ),
-                                                                child: Video(controller: videoController!, controls: NoVideoControls, fit: BoxFit.cover),
+                                                                child: _buildPreviewVideo(),
                                                               ),
                                                             ),
                                                           ),
@@ -2024,21 +2178,33 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                         height: shortSide * .36 * photoOverlays[i].scale,
                                         child: GestureDetector(
                                           onTap: () => setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; }),
-                                          onPanStart: (_) => setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; }),
+                                          onPanStart: (_) {
+                                            _photoDragRawOffsets[i] = Offset(photoOverlays[i].x, photoOverlays[i].y);
+                                            _photoSnapXActive.remove(i);
+                                            _photoSnapYActive.remove(i);
+                                            setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; });
+                                          },
                                           onPanUpdate: (d) => setState(() {
-                                            var nextX = (photoOverlays[i].x + d.delta.dx / bounds.maxWidth).clamp(-1.5, 1.5).toDouble();
-                                            var nextY = (photoOverlays[i].y + d.delta.dy / bounds.maxHeight).clamp(-1.5, 1.5).toDouble();
-                                            _showVerticalSnapGuide = nextX.abs() < 0.012;
-                                            _showHorizontalSnapGuide = nextY.abs() < 0.012;
-                                            nextX = _softAxisSnap(nextX);
-                                            nextY = _softAxisSnap(nextY);
-                                            if (nextX.abs() < 0.0005) nextX = 0;
-                                            if (nextY.abs() < 0.0005) nextY = 0;
-                                            photoOverlays[i].x = nextX;
-                                            photoOverlays[i].y = nextY;
+                                            final raw = _photoDragRawOffsets[i] ?? Offset(photoOverlays[i].x, photoOverlays[i].y);
+                                            final rawX = (raw.dx + d.delta.dx / bounds.maxWidth).clamp(-1.5, 1.5).toDouble();
+                                            final rawY = (raw.dy + d.delta.dy / bounds.maxHeight).clamp(-1.5, 1.5).toDouble();
+                                            final snapX = _snapToCenterAxis(rawX, bounds.maxWidth, _photoSnapXActive.contains(i));
+                                            final snapY = _snapToCenterAxis(rawY, bounds.maxHeight, _photoSnapYActive.contains(i));
+                                            _photoDragRawOffsets[i] = Offset(rawX, rawY);
+                                            if (snapX.snapped) { _photoSnapXActive.add(i); } else { _photoSnapXActive.remove(i); }
+                                            if (snapY.snapped) { _photoSnapYActive.add(i); } else { _photoSnapYActive.remove(i); }
+                                            _showVerticalSnapGuide = snapX.snapped;
+                                            _showHorizontalSnapGuide = snapY.snapped;
+                                            photoOverlays[i].x = snapX.value;
+                                            photoOverlays[i].y = snapY.value;
                                             projectDirty = true;
                                           }),
-                                          onPanEnd: (_) => setState(() { _showVerticalSnapGuide = false; _showHorizontalSnapGuide = false; }),
+                                          onPanEnd: (_) {
+                                            _photoDragRawOffsets.remove(i);
+                                            _photoSnapXActive.remove(i);
+                                            _photoSnapYActive.remove(i);
+                                            setState(() { _showVerticalSnapGuide = false; _showHorizontalSnapGuide = false; });
+                                          },
                                           child: Transform.rotate(
                                             angle: photoOverlays[i].rotation * math.pi / 180,
                                             child: Opacity(
@@ -2399,22 +2565,34 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           Expanded(
             child: Listener(
               onPointerSignal: (event) {
-                if (event is! PointerScrollEvent || !timelineScrollController.hasClients) return;
-                final controller = timelineScrollController;
-                if (HardwareKeyboard.instance.isControlPressed) {
+                if (event is! PointerScrollEvent) return;
+                final horizontalController = timelineScrollController;
+                final verticalController = timelineVerticalScrollController;
+                if (HardwareKeyboard.instance.isControlPressed && horizontalController.hasClients) {
                   final pointerX = event.localPosition.dx;
-                  final anchorSeconds = ((controller.offset + pointerX - 140) / zoom)
+                  final anchorSeconds = ((horizontalController.offset + pointerX - 140) / zoom)
                       .clamp(0.0, timelineSeconds).toDouble();
                   setTimelineZoom(event.scrollDelta.dy < 0 ? zoom + 4 : zoom - 4);
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (!controller.hasClients) return;
+                    if (!horizontalController.hasClients) return;
                     final nextOffset = anchorSeconds * zoom + 140 - pointerX;
-                    controller.jumpTo(nextOffset.clamp(0.0, controller.position.maxScrollExtent).toDouble());
+                    horizontalController.jumpTo(nextOffset.clamp(0.0, horizontalController.position.maxScrollExtent).toDouble());
                   });
-                } else {
-                  final delta = event.scrollDelta.dx != 0 ? event.scrollDelta.dx : event.scrollDelta.dy;
-                  controller.jumpTo((controller.offset + delta)
-                      .clamp(0.0, controller.position.maxScrollExtent).toDouble());
+                } else if (event.scrollDelta.dx != 0 && horizontalController.hasClients) {
+                  horizontalController.jumpTo(
+                    (horizontalController.offset + event.scrollDelta.dx)
+                        .clamp(0.0, horizontalController.position.maxScrollExtent).toDouble(),
+                  );
+                } else if (verticalController.hasClients && verticalController.position.maxScrollExtent > 0) {
+                  verticalController.jumpTo(
+                    (verticalController.offset + event.scrollDelta.dy)
+                        .clamp(0.0, verticalController.position.maxScrollExtent).toDouble(),
+                  );
+                } else if (horizontalController.hasClients) {
+                  horizontalController.jumpTo(
+                    (horizontalController.offset + event.scrollDelta.dy)
+                        .clamp(0.0, horizontalController.position.maxScrollExtent).toDouble(),
+                  );
                 }
               },
               child: SingleChildScrollView(
@@ -2422,22 +2600,31 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               scrollDirection: Axis.horizontal,
               child: SizedBox(
                 width: 140 + timelineWidth,
-                child: Column(children: [
-                  SizedBox(
-                    height: 32,
-                    child: Row(children: [
-                      Container(width: 140, padding: const EdgeInsets.only(left: 14), alignment: Alignment.centerLeft, color: const Color(0xFF171820), child: const Text('ВРЕМЯ', style: TextStyle(color: muted, fontSize: 9, letterSpacing: 1.1, fontWeight: FontWeight.w800))),
-                      SizedBox(width: timelineWidth, child: CustomPaint(painter: RulerPainter(seconds: timelineSeconds, pixelsPerSecond: zoom), child: const SizedBox.expand())),
-                    ]),
-                  ),
-                  trackRow(audio: false),
-                  const SizedBox(height: 5),
-                  trackRow(audio: true),
-                  if (photoOverlays.isNotEmpty) ...[
+                child: SingleChildScrollView(
+                  controller: timelineVerticalScrollController,
+                  primary: false,
+                  scrollDirection: Axis.vertical,
+                  child: Column(children: [
+                    SizedBox(
+                      height: 32,
+                      child: Row(children: [
+                        Container(width: 140, padding: const EdgeInsets.only(left: 14), alignment: Alignment.centerLeft, color: const Color(0xFF171820), child: const Text('ВРЕМЯ', style: TextStyle(color: muted, fontSize: 9, letterSpacing: 1.1, fontWeight: FontWeight.w800))),
+                        SizedBox(width: timelineWidth, child: CustomPaint(painter: RulerPainter(seconds: timelineSeconds, pixelsPerSecond: zoom), child: const SizedBox.expand())),
+                      ]),
+                    ),
+                    trackRow(audio: false),
                     const SizedBox(height: 5),
-                    photoTrackRow(),
-                  ],
-                ]),
+                    trackRow(audio: true),
+                    const SizedBox(height: 5),
+                    effectTrackRow(),
+                    const SizedBox(height: 4),
+                    transitionTrackRow(),
+                    if (photoOverlays.isNotEmpty) ...[
+                      const SizedBox(height: 5),
+                      photoTrackRow(),
+                    ],
+                  ]),
+                ),
               ),
               ),
             ),
@@ -2445,6 +2632,112 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         ]),
       );
 
+  Widget effectTrackRow() => SizedBox(
+        width: 140 + timelineWidth,
+        height: 54,
+        child: Row(children: [
+          Container(
+            width: 140, height: 54, padding: const EdgeInsets.symmetric(horizontal: 9),
+            decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
+            child: Row(children: [
+              const Icon(Icons.auto_awesome_outlined, size: 16, color: Color(0xFFB18CFF)),
+              const SizedBox(width: 6),
+              const Expanded(child: Text('Эффекты', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700))),
+              IconButton(
+                tooltip: 'Добавить эффект на таймлайн',
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints.tightFor(width: 28, height: 30),
+                padding: EdgeInsets.zero,
+                onPressed: busy || videoClips.isEmpty ? null : addTimelineEffect,
+                icon: const Icon(Icons.add, size: 16),
+              ),
+            ]),
+          ),
+          SizedBox(
+            width: timelineWidth, height: 54,
+            child: Stack(clipBehavior: Clip.hardEdge, children: [
+              Positioned.fill(child: CustomPaint(painter: TimelineGridPainter(seconds: timelineSeconds, pixelsPerSecond: zoom))),
+              for (var i = 0; i < effectClips.length; i++)
+                Positioned(
+                  left: effectClips[i].start * zoom + 3,
+                  top: 5, bottom: 5,
+                  width: math.max(28.0, effectClips[i].duration * zoom - 2).toDouble(),
+                  child: GestureDetector(
+                    onTap: () => setState(() { selectedEffectClipIndex = i; selectedTransitionIndex = -1; }),
+                    onSecondaryTapDown: (details) => showEffectClipMenu(details.globalPosition, i),
+                    onPanStart: (_) => _startEffectClipMove(i),
+                    onPanUpdate: _updateEffectClipMove,
+                    onPanEnd: (_) => _finishEffectClipMove(),
+                    child: Container(
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xAA7651B8),
+                        borderRadius: BorderRadius.circular(5),
+                        border: Border.all(
+                          color: selectedEffectClipIndex == i ? Colors.white : const Color(0xFFD2B9FF),
+                          width: selectedEffectClipIndex == i ? 2 : 1,
+                        ),
+                      ),
+                      child: Row(children: [
+                        const Icon(Icons.auto_awesome, size: 11, color: Colors.white),
+                        const SizedBox(width: 4),
+                        Flexible(child: Text(effectClips[i].type, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.w700))),
+                      ]),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+        ]),
+      );
+
+  Widget transitionTrackRow() => SizedBox(
+        width: 140 + timelineWidth,
+        height: 42,
+        child: Row(children: [
+          Container(
+            width: 140, height: 42, padding: const EdgeInsets.symmetric(horizontal: 9),
+            decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
+            child: Row(children: [
+              const Icon(Icons.compare_arrows, size: 16, color: Color(0xFFFFC56B)),
+              const SizedBox(width: 6),
+              const Expanded(child: Text('Переходы', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700))),
+              IconButton(
+                tooltip: 'Добавить переход на ближайший стык',
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+                padding: EdgeInsets.zero,
+                onPressed: busy || videoClips.length < 2 ? null : addTimelineTransition,
+                icon: const Icon(Icons.add, size: 16),
+              ),
+            ]),
+          ),
+          SizedBox(
+            width: timelineWidth, height: 42,
+            child: Stack(clipBehavior: Clip.hardEdge, children: [
+              Positioned.fill(child: CustomPaint(painter: TimelineGridPainter(seconds: timelineSeconds, pixelsPerSecond: zoom))),
+              for (var i = 0; i < timelineTransitions.length; i++)
+                Positioned(
+                  left: (timelineTransitions[i].at * zoom - 24).clamp(0.0, math.max(0.0, timelineWidth - 48)).toDouble(),
+                  top: 3, bottom: 3, width: 48,
+                  child: GestureDetector(
+                    onTap: () => setState(() { selectedTransitionIndex = i; selectedEffectClipIndex = -1; }),
+                    onSecondaryTapDown: (details) => showTimelineTransitionMenu(details.globalPosition, i),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xCC9A7138),
+                        borderRadius: BorderRadius.circular(5),
+                        border: Border.all(color: selectedTransitionIndex == i ? Colors.white : const Color(0xFFFFD28D), width: selectedTransitionIndex == i ? 2 : 1),
+                      ),
+                      child: const Center(child: Icon(Icons.compare_arrows, size: 17, color: Colors.white)),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+        ]),
+      );
   Widget photoTrackRow() => SizedBox(
         width: 140 + timelineWidth,
         height: 54,
@@ -2642,6 +2935,12 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         audioPath: audioPath,
         audioClipStart: audioClipStart,
         audioClipEnd: audioClipEnd,
+        effectClips: effectClips.map((effect) => TimelineEffectRange(
+          effect.type, effect.start, effect.end,
+        )).toList(),
+        transitions: timelineTransitions.map((transition) => TimelineTransitionRange(
+          transition.type, transition.at, transition.duration,
+        )).toList(),
       );
 
   void _restoreTimelineSnapshot(TimelineSnapshot snapshot) {
@@ -2660,12 +2959,53 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     audioPath = snapshot.audioPath;
     audioClipStart = snapshot.audioClipStart;
     audioClipEnd = snapshot.audioClipEnd;
+    effectClips
+      ..clear()
+      ..addAll(snapshot.effectClips.map((effect) => TimelineEffectClip(
+        type: effect.type, start: effect.start, end: effect.end,
+      )));
+    timelineTransitions
+      ..clear()
+      ..addAll(snapshot.transitions.map((transition) => TimelineTransition(
+        type: transition.type, at: transition.at, duration: transition.duration,
+      )));
+    selectedEffectClipIndex = selectedEffectClipIndex < effectClips.length
+        ? selectedEffectClipIndex : -1;
+    selectedTransitionIndex = selectedTransitionIndex < timelineTransitions.length
+        ? selectedTransitionIndex : -1;
+  }
+
+  void _reconcileTimelineAnnotations() {
+    if (videoClips.isEmpty) {
+      effectClips.clear();
+      timelineTransitions.clear();
+      selectedEffectClipIndex = -1;
+      selectedTransitionIndex = -1;
+      return;
+    }
+
+    final end = _timelineEndSeconds;
+    effectClips.removeWhere((effect) => effect.start >= end - 0.001);
+    for (final effect in effectClips) {
+      if (effect.end > end) effect.end = end;
+    }
+    effectClips.removeWhere((effect) => effect.end <= effect.start + 0.05);
+
+    timelineTransitions.removeWhere((transition) {
+      final maximum = _maxTransitionDurationAt(transition.at);
+      if (maximum < 0.1) return true;
+      if (transition.duration > maximum) transition.duration = maximum;
+      return false;
+    });
+    if (selectedEffectClipIndex >= effectClips.length) selectedEffectClipIndex = -1;
+    if (selectedTransitionIndex >= timelineTransitions.length) selectedTransitionIndex = -1;
   }
 
   void _performTimelineEdit(VoidCallback update) {
     final before = _captureTimelineSnapshot();
     setState(() {
       update();
+      _reconcileTimelineAnnotations();
       projectDirty = true;
     });
     _timelineHistory.record(before: before, after: _captureTimelineSnapshot());
@@ -2760,6 +3100,200 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
   double get playheadSeconds =>
       (position.inMilliseconds / 1000).clamp(0.0, timelineSeconds).toDouble();
+  Future<void> addTimelineEffect() async {
+    if (videoClips.isEmpty || busy) {
+      setStatus('Сначала добавьте видео на таймлайн.');
+      return;
+    }
+    final type = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: const Text('Добавить эффект на таймлайн'),
+        children: [
+          for (final value in _timelineEffectTypes)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(dialogContext).pop(value),
+              child: Text(value),
+            ),
+        ],
+      ),
+    );
+    if (!mounted || type == null) return;
+    final start = playheadSeconds.clamp(0.0, math.max(0.0, timelineSeconds - 0.25)).toDouble();
+    final end = math.min(timelineSeconds, start + 2.0).toDouble();
+    _performTimelineEdit(() {
+      effectClips.add(TimelineEffectClip(type: type, start: start, end: end));
+      selectedEffectClipIndex = effectClips.length - 1;
+      selectedTransitionIndex = -1;
+      status = 'Эффект «$type» добавлен на дорожку эффектов.';
+    });
+  }
+
+  Future<void> addTimelineTransition() async {
+    if (videoClips.length < 2 || busy) {
+      setStatus('Для перехода нужны два видеоклипа на таймлайне.');
+      return;
+    }
+    final clips = List<TimelineClip>.of(videoClips)..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
+    final joins = <({double at, TimelineClip left, TimelineClip right})>[];
+    for (var i = 1; i < clips.length; i++) {
+      final previous = clips[i - 1];
+      final next = clips[i];
+      if ((previous.timelineEnd - next.timelineStart).abs() <= 0.025) {
+        joins.add((at: next.timelineStart, left: previous, right: next));
+      }
+    }
+    if (joins.isEmpty) {
+      setStatus('Переход можно поставить только на стык двух клипов без разрыва.');
+      return;
+    }
+    joins.sort((a, b) => (a.at - playheadSeconds).abs().compareTo((b.at - playheadSeconds).abs()));
+    final join = joins.first;
+    final type = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: Text('Переход на ${time(Duration(milliseconds: (join.at * 1000).round()))}'),
+        children: [
+          for (final value in _timelineTransitionTypes)
+            SimpleDialogOption(onPressed: () => Navigator.of(dialogContext).pop(value), child: Text(value)),
+        ],
+      ),
+    );
+    if (!mounted || type == null) return;
+    final limit = math.min(join.left.length / 2, join.right.length / 2);
+    if (limit < 0.1) {
+      setStatus('Эти клипы слишком короткие для перехода. Увеличьте их длину.');
+      return;
+    }
+    final length = math.min(0.6, limit).toDouble();
+    _performTimelineEdit(() {
+      final existing = timelineTransitions.indexWhere((item) => (item.at - join.at).abs() <= 0.025);
+      final transition = TimelineTransition(type: type, at: join.at, duration: length);
+      if (existing >= 0) {
+        timelineTransitions[existing] = transition;
+        selectedTransitionIndex = existing;
+      } else {
+        timelineTransitions.add(transition);
+        selectedTransitionIndex = timelineTransitions.length - 1;
+      }
+      selectedEffectClipIndex = -1;
+      status = 'Переход «$type» добавлен между видеоклипами.';
+    });
+  }
+
+  double _maxTransitionDurationAt(double at) {
+    final ordered = List<TimelineClip>.of(videoClips)..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
+    for (var i = 1; i < ordered.length; i++) {
+      final left = ordered[i - 1];
+      final right = ordered[i];
+      if ((left.timelineEnd - at).abs() <= 0.025 && (right.timelineStart - at).abs() <= 0.025) {
+        return math.min(5.0, math.min(left.length / 2, right.length / 2)).toDouble();
+      }
+    }
+    return 0.0;
+  }
+
+  Future<void> showEffectClipMenu(Offset position, int index) async {
+    if (index < 0 || index >= effectClips.length) return;
+    setState(() { selectedEffectClipIndex = index; selectedTransitionIndex = -1; });
+    final action = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx + 1, position.dy + 1),
+      items: const [
+        PopupMenuItem(value: 'longer', child: Text('Увеличить на 1 секунду')),
+        PopupMenuItem(value: 'shorter', child: Text('Уменьшить на 1 секунду')),
+        PopupMenuDivider(),
+        PopupMenuItem(value: 'delete', child: Text('Удалить эффект')),
+      ],
+    );
+    if (!mounted || action == null || index >= effectClips.length) return;
+    _performTimelineEdit(() {
+      final effect = effectClips[index];
+      if (action == 'delete') {
+        effectClips.removeAt(index);
+        selectedEffectClipIndex = -1;
+        status = 'Эффект удалён с таймлайна.';
+      } else if (action == 'longer') {
+        effect.end = math.min(timelineSeconds, effect.end + 1).toDouble();
+        status = 'Длительность эффекта увеличена.';
+      } else {
+        effect.end = math.max(effect.start + 0.25, effect.end - 1).toDouble();
+        status = 'Длительность эффекта уменьшена.';
+      }
+    });
+  }
+
+  Future<void> showTimelineTransitionMenu(Offset position, int index) async {
+    if (index < 0 || index >= timelineTransitions.length) return;
+    setState(() { selectedTransitionIndex = index; selectedEffectClipIndex = -1; });
+    final action = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx + 1, position.dy + 1),
+      items: const [
+        PopupMenuItem(value: 'change', child: Text('Изменить переход')),
+        PopupMenuItem(value: 'shorter', child: Text('Короче')),
+        PopupMenuItem(value: 'longer', child: Text('Длиннее')),
+        PopupMenuDivider(),
+        PopupMenuItem(value: 'delete', child: Text('Удалить переход')),
+      ],
+    );
+    if (!mounted || action == null || index >= timelineTransitions.length) return;
+    if (action == 'change') {
+      final type = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => SimpleDialog(
+          title: const Text('Тип перехода'),
+          children: [
+            for (final value in _timelineTransitionTypes)
+              SimpleDialogOption(onPressed: () => Navigator.of(dialogContext).pop(value), child: Text(value)),
+          ],
+        ),
+      );
+      if (!mounted || type == null) return;
+      _performTimelineEdit(() { timelineTransitions[index].type = type; status = 'Тип перехода изменён на «$type».'; });
+      return;
+    }
+    _performTimelineEdit(() {
+      if (action == 'delete') {
+        timelineTransitions.removeAt(index);
+        selectedTransitionIndex = -1;
+        status = 'Переход удалён.';
+      } else {
+        final transition = timelineTransitions[index];
+        final maxDuration = _maxTransitionDurationAt(transition.at);
+        transition.duration = action == 'longer'
+            ? math.min(maxDuration, transition.duration + 0.1).toDouble()
+            : math.max(0.1, transition.duration - 0.1).toDouble();
+        status = 'Длительность перехода изменена.';
+      }
+    });
+  }
+
+  void _startEffectClipMove(int index) {
+    if (index < 0 || index >= effectClips.length) return;
+    _effectClipMoveBefore = _captureTimelineSnapshot();
+    _effectClipMoveIndex = index;
+    _effectClipMoveStart = effectClips[index].start;
+    _effectClipMovePointerX = 0;
+    setState(() { selectedEffectClipIndex = index; selectedTransitionIndex = -1; });
+  }
+
+  void _updateEffectClipMove(DragUpdateDetails details) {
+    if (_effectClipMoveIndex < 0 || _effectClipMoveIndex >= effectClips.length) return;
+    _effectClipMovePointerX += details.delta.dx;
+    final effect = effectClips[_effectClipMoveIndex];
+    final length = effect.duration;
+    final maxStart = math.max(0.0, timelineSeconds - length).toDouble();
+    final nextStart = (_effectClipMoveStart + _effectClipMovePointerX / zoom).clamp(0.0, maxStart).toDouble();
+    setState(() { effect.start = nextStart; effect.end = nextStart + length; projectDirty = true; });
+  }
+
+  void _finishEffectClipMove() {
+    final before = _effectClipMoveBefore;
+    if (before != null) _timelineHistory.record(before: before, after: _captureTimelineSnapshot());
+    _effectClipMoveBefore = null;
+    _effectClipMoveIndex = -1;
+  }
 
   int _nearestClipIndexToPlayhead() {
     final active = _clipIndexAtTimelineTime(playheadSeconds);
@@ -2927,22 +3461,16 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         clip.end == moving.end &&
         (clip.timelineStart - requestedStart).abs() < 0.001);
     if (selected < 0) selected = 0;
-    final after = TimelineSnapshot(
-      videoClips: next,
-      selectedClipIndex: selected,
-      audioPath: before.audioPath,
-      audioClipStart: before.audioClipStart,
-      audioClipEnd: before.audioClipEnd,
-    );
     setState(() {
       _replaceClipRanges(next);
+      _reconcileTimelineAnnotations();
       selectedClipIndex = selected;
       _activePlaybackClipIndex = selected;
       _timelineSnapAt = null;
       projectDirty = true;
       status = 'Клип перемещён. Ctrl+Z — отменить.';
     });
-    _timelineHistory.record(before: before, after: after);
+    _timelineHistory.record(before: before, after: _captureTimelineSnapshot());
     _clipMoveBefore = null;
     _clipMoveIndex = -1;
     // Re-evaluate the playhead against the new clip positions immediately:
@@ -3005,12 +3533,27 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     if (filtersEnabled) {
       filters.add('eq=brightness=${brightness.toStringAsFixed(3)}:contrast=${contrast.toStringAsFixed(3)}:saturation=${saturation.toStringAsFixed(3)}');
     }
-    if (videoEffect != 'Оригинал' && _exportEffectFilter != 'null') filters.add(_exportEffectFilter);    if (motionBlurEnabled) filters.add('tmix=frames=3:weights=1 1 1');
+    if (videoEffect != 'Оригинал' && _exportEffectFilter != 'null') filters.add(_exportEffectFilter);
+    if (motionBlurEnabled) filters.add('tmix=frames=3:weights=1 1 1');
+
+    for (final effect in effectClips) {
+      final overlapStart = math.max(effect.start, clip.timelineStart).toDouble();
+      final overlapEnd = math.min(effect.end, clip.timelineEnd).toDouble();
+      if (overlapEnd <= overlapStart) continue;
+      final localStart = (overlapStart - clip.timelineStart).clamp(0.0, clip.length).toDouble();
+      final localEnd = (overlapEnd - clip.timelineStart).clamp(0.0, clip.length).toDouble();
+      final filter = _effectExportFilter(effect.type);
+      if (filter != 'null') {
+        filters.add("$filter:enable='between(t,${localStart.toStringAsFixed(3)},${localEnd.toStringAsFixed(3)})'");
+      }
+    }
     if (transitionEffect != 'Нет' && videoClips.length > 1) {
       final durationForClip = math.min(transitionDuration, math.max(0.1, clip.length / 2)).toDouble();
       final color = transitionEffect == 'Белая вспышка' ? 'white' : 'black';
-      if (index > 0) filters.add('fade=t=in:st=0:d=${durationForClip.toStringAsFixed(2)}:color=$color');
-      if (index < videoClips.length - 1) {
+      final hasIncomingOverride = timelineTransitions.any((value) => (value.at - clip.timelineStart).abs() <= 0.025);
+      final hasOutgoingOverride = timelineTransitions.any((value) => (value.at - clip.timelineEnd).abs() <= 0.025);
+      if (index > 0 && !hasIncomingOverride) filters.add('fade=t=in:st=0:d=${durationForClip.toStringAsFixed(2)}:color=$color');
+      if (index < videoClips.length - 1 && !hasOutgoingOverride) {
         final start = math.max(0, clip.length - durationForClip).toDouble();
         filters.add('fade=t=out:st=${start.toStringAsFixed(2)}:d=${durationForClip.toStringAsFixed(2)}:color=$color');
       }
@@ -3068,6 +3611,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       temp = await Directory.systemTemp.createTemp('gifcut-export-');
       final listFile = File(p.join(temp.path, 'concat.txt'));
       final lines = <String>[];
+      final exportSegments = <ExportTimelineSegment>[];
       final orderedClips = List<TimelineClip>.of(videoClips)
         ..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
 
@@ -3158,6 +3702,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           );
         }
         lines.add("file '${gapPath.replaceAll('\\', '/')}'");
+        exportSegments.add(ExportTimelineSegment(path: gapPath, start: sequenceCursor, end: sequenceCursor + gapSeconds, isGap: true));
       }
 
       for (var i = 0; i < orderedClips.length; i++) {
@@ -3268,6 +3813,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         }
 
         lines.add("file '${segmentPath.replaceAll('\\', '/')}'");
+        exportSegments.add(ExportTimelineSegment(path: segmentPath, start: clip.timelineStart, end: clip.timelineEnd, isGap: false));
         sequenceCursor = clip.timelineEnd;
         if (mounted) {
           setState(() {
@@ -3280,23 +3826,127 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       final joinedVideo = audioPath == null
           ? savePath
           : p.join(temp.path, 'joined_video.mp4');
-      final concatResult = await Process.run(ffmpeg, [
-        '-hide_banner',
-        '-y',
-        '-f',
-        'concat',
-        '-safe',
-        '0',
-        '-i',
-        listFile.path,
-        '-c',
-        'copy',
-        '-movflags',
-        '+faststart',
-        joinedVideo,
-      ]);
-      if (concatResult.exitCode != 0) {
-        throw Exception(concatResult.stderr.toString().split('\n').last);
+      final useTransitionGraph = timelineTransitions.isNotEmpty && exportSegments.length > 1;
+      if (!useTransitionGraph) {
+        final concatResult = await Process.run(ffmpeg, [
+          '-hide_banner',
+          '-y',
+          '-f',
+          'concat',
+          '-safe',
+          '0',
+          '-i',
+          listFile.path,
+          '-c',
+          'copy',
+          '-movflags',
+          '+faststart',
+          joinedVideo,
+        ]);
+        if (concatResult.exitCode != 0) {
+          throw Exception(concatResult.stderr.toString().split('\n').last);
+        }
+      } else {
+        final graph = <String>[];
+        final args = <String>['-hide_banner', '-y'];
+        for (var i = 0; i < exportSegments.length; i++) {
+          args.addAll(['-i', exportSegments[i].path]);
+          graph.add(
+            '[$i:v]settb=AVTB,setpts=PTS-STARTPTS,fps=${frameRate.toStringAsFixed(3)},format=yuv420p[v$i]',
+          );
+          if (sourceHasAudio) graph.add('[$i:a]asetpts=PTS-STARTPTS[a$i]');
+        }
+
+        var activeVideo = 'v0';
+        var activeAudio = 'a0';
+        var accumulatedDuration = exportSegments.first.duration;
+        for (var i = 1; i < exportSegments.length; i++) {
+          final previousSegment = exportSegments[i - 1];
+          final currentSegment = exportSegments[i];
+          TimelineTransition? transition;
+          if (!previousSegment.isGap &&
+              !currentSegment.isGap &&
+              (previousSegment.end - currentSegment.start).abs() <= 0.025) {
+            for (final candidate in timelineTransitions) {
+              if ((candidate.at - currentSegment.start).abs() <= 0.025) {
+                transition = candidate;
+                break;
+              }
+            }
+          }
+
+          final durationForTransition = transition == null
+              ? 0.0
+              : math.min(
+                  transition.duration,
+                  math.min(previousSegment.duration / 2, currentSegment.duration / 2),
+                ).toDouble();
+          final canTransition = transition != null && durationForTransition >= 0.05;
+          final videoOutput = 'vjoin$i';
+          final audioOutput = 'ajoin$i';
+          if (canTransition) {
+            final name = _transitionFilterName(transition.type);
+            final offset = math.max(0.0, accumulatedDuration - durationForTransition).toDouble();
+            graph.add(
+              '[$activeVideo][v$i]xfade=transition=$name:duration=${durationForTransition.toStringAsFixed(3)}:offset=${offset.toStringAsFixed(3)}[$videoOutput]',
+            );
+            if (sourceHasAudio) {
+              graph.add(
+                '[$activeAudio][a$i]acrossfade=d=${durationForTransition.toStringAsFixed(3)}:c1=tri:c2=tri[$audioOutput]',
+              );
+            }
+            accumulatedDuration += currentSegment.duration - durationForTransition;
+          } else {
+            graph.add('[$activeVideo][v$i]concat=n=2:v=1:a=0[$videoOutput]');
+            if (sourceHasAudio) {
+              graph.add('[$activeAudio][a$i]concat=n=2:v=0:a=1[$audioOutput]');
+            }
+            accumulatedDuration += currentSegment.duration;
+          }
+          activeVideo = videoOutput;
+          if (sourceHasAudio) activeAudio = audioOutput;
+        }
+
+        final graphOutputArgs = <String>[
+          ...args,
+          '-filter_complex',
+          graph.join(';'),
+          '-map',
+          '[$activeVideo]',
+          if (sourceHasAudio) ...[
+            '-map',
+            '[$activeAudio]',
+            '-c:a',
+            'aac',
+            '-b:a',
+            '192k',
+            '-ac',
+            '2',
+            '-ar',
+            '44100',
+          ],
+          '-r',
+          frameRate.toStringAsFixed(3),
+        ];
+        var joinResult = await Process.run(ffmpeg, [
+          ...graphOutputArgs,
+          ..._videoEncoderArguments(encoder),
+          '-movflags',
+          '+faststart',
+          joinedVideo,
+        ]);
+        if (joinResult.exitCode != 0 && encoder != 'libx264') {
+          joinResult = await Process.run(ffmpeg, [
+            ...graphOutputArgs,
+            ..._videoEncoderArguments('libx264'),
+            '-movflags',
+            '+faststart',
+            joinedVideo,
+          ]);
+        }
+        if (joinResult.exitCode != 0 || !await File(joinedVideo).exists()) {
+          throw Exception(joinResult.stderr.toString().split('\n').last);
+        }
       }
 
       // Detached audio replaces source audio at its own trim range.

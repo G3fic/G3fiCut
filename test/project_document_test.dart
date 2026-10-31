@@ -20,6 +20,8 @@ ProjectDocument makeProject({
   double audioClipEnd = 9.5,
   double timelineZoom = 40,
   int playheadMs = 6200,
+  List<ProjectEffectClip> effectClips = const [],
+  List<ProjectTransition> transitions = const [],
 }) =>
     ProjectDocument(
       format: format,
@@ -35,6 +37,8 @@ ProjectDocument makeProject({
       audioClipEnd: audioClipEnd,
       timelineZoom: timelineZoom,
       playheadMs: playheadMs,
+      effectClips: effectClips,
+      transitions: transitions,
     );
 
 void main() {
@@ -90,6 +94,72 @@ void main() {
       expect(decoded.videoClips[1].start, 0);
       expect(decoded.videoClips[1].timelineStart, 4);
       expect(decoded.playheadMs, 6500);
+    });
+
+    test('roundtrip preserves timeline effect blocks and per-cut transitions', () {
+      final original = makeProject(
+        videoClips: const [
+          ProjectClipRange(0, 4, timelineStart: 0),
+          ProjectClipRange(5, 9, timelineStart: 4),
+        ],
+        selectedClipIndex: 1,
+        playheadMs: 4500,
+        effectClips: const [
+          ProjectEffectClip(type: 'Сепия', start: 1.5, end: 3.25),
+          ProjectEffectClip(type: 'Размытие', start: 6, end: 8),
+        ],
+        transitions: const [
+          ProjectTransition(type: 'Растворение', at: 4, duration: 0.5),
+        ],
+      );
+
+      final decoded = ProjectDocument.decode(original.encode());
+
+      expect(decoded.effectClips, original.effectClips);
+      expect(decoded.transitions, original.transitions);
+    });
+
+    test('schema v2 projects migrate without timeline annotations', () {
+      final legacy = makeProject(schemaVersion: 2).toJson()
+        ..remove('effectClips')
+        ..remove('transitions');
+
+      final migrated = ProjectDocument.decode(jsonEncode(legacy));
+
+      expect(migrated.schemaVersion, ProjectDocument.currentSchemaVersion);
+      expect(migrated.effectClips, isEmpty);
+      expect(migrated.transitions, isEmpty);
+    });
+
+    test('rejects unsupported effect types and transitions not attached to a cut', () {
+      expect(
+        () => makeProject(
+          effectClips: const [
+            ProjectEffectClip(type: 'Unknown', start: 1, end: 2),
+          ],
+        ),
+        throwsFormatException,
+      );
+      expect(
+        () => makeProject(
+          transitions: const [
+            ProjectTransition(type: 'Затемнение', at: 4, duration: 0.5),
+          ],
+        ),
+        throwsFormatException,
+      );
+      expect(
+        () => makeProject(
+          videoClips: const [
+            ProjectClipRange(0, 4, timelineStart: 0),
+            ProjectClipRange(5, 9, timelineStart: 4),
+          ],
+          transitions: const [
+            ProjectTransition(type: 'Unknown', at: 4, duration: 0.5),
+          ],
+        ),
+        throwsFormatException,
+      );
     });
 
     test('rejects an unknown format and an unsupported schema version', () {

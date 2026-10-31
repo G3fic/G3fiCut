@@ -7,6 +7,8 @@ TimelineSnapshot snapshot({
   String? audioPath,
   double audioStart = 0,
   double audioEnd = 0,
+  List<TimelineEffectRange> effectClips = const [],
+  List<TimelineTransitionRange> transitions = const [],
 }) =>
     TimelineSnapshot(
       videoClips: clips,
@@ -14,6 +16,8 @@ TimelineSnapshot snapshot({
       audioPath: audioPath,
       audioClipStart: audioStart,
       audioClipEnd: audioEnd,
+      effectClips: effectClips,
+      transitions: transitions,
     );
 
 void main() {
@@ -45,6 +49,32 @@ void main() {
       history.record(before: before, after: after);
       expect(history.canUndo, isTrue);
       expect(history.undo(after)?.videoClips.single.timelineStart, 0);
+    });
+
+    test('undo and redo preserve effect clips and transitions', () {
+      final history = TimelineHistory();
+      final before = snapshot(
+        clips: [
+          const TimelineClipRange(0, 4, timelineStart: 0),
+          const TimelineClipRange(4, 8, timelineStart: 4),
+        ],
+      );
+      final after = snapshot(
+        clips: [
+          const TimelineClipRange(0, 4, timelineStart: 0),
+          const TimelineClipRange(4, 8, timelineStart: 4),
+        ],
+        effectClips: const [
+          TimelineEffectRange('Сепия', 0.5, 3.5),
+        ],
+        transitions: const [
+          TimelineTransitionRange('Растворение', 4, 0.5),
+        ],
+      );
+
+      history.record(before: before, after: after);
+      expect(history.undo(after)?.sameContentAs(before), isTrue);
+      expect(history.redo(before)?.sameContentAs(after), isTrue);
     });
 
     test('does not record a no-op edit', () {
