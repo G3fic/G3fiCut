@@ -15,6 +15,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 
 import 'timeline_history.dart';
 import 'timeline_editing.dart';
@@ -139,9 +140,36 @@ class TimelineClip {
 }
 
 class PhotoOverlay {
-  PhotoOverlay({required this.path, this.x = 0, this.y = 0, this.scale = 1, this.rotation = 0, this.opacity = 1});
+  PhotoOverlay({
+    required this.path,
+    this.x = 0,
+    this.y = 0,
+    this.scale = 1,
+    this.rotation = 0,
+    this.opacity = 1,
+    this.start = 0,
+    this.end = 3,
+  });
   final String path;
-  double x, y, scale, rotation, opacity;
+  double x, y, scale, rotation, opacity, start, end;
+}
+
+class TextOverlay {
+  TextOverlay({
+    required this.text,
+    required this.start,
+    required this.end,
+    this.x = 0,
+    this.y = 0.28,
+    this.fontSize = 42,
+    this.color = '#FFFFFF',
+    this.bold = true,
+    this.opacity = 1,
+  });
+  String text;
+  double start, end, x, y, fontSize, opacity;
+  String color;
+  bool bold;
 }
 
 class TimelineEffectClip {
@@ -206,7 +234,10 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   double previewZoom = 1.0;
   double videoScaleX = 1.0, videoScaleY = 1.0, videoRotation = 0, videoOffsetX = 0, videoOffsetY = 0;
   final List<PhotoOverlay> photoOverlays = [];
+  final List<TextOverlay> textOverlays = [];
   int selectedPhotoOverlay = -1;
+  int selectedTextOverlay = -1;
+  bool _isExternalDragOver = false;
   bool _playheadInGap = false;
   int _activePlaybackClipIndex = -1;
   Timer? _gapPlaybackTimer;
@@ -958,6 +989,27 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           at: transition.at,
           duration: transition.duration,
         )).toList(),
+        photoOverlays: photoOverlays.map((overlay) => ProjectPhotoOverlay(
+          path: overlay.path,
+          x: overlay.x,
+          y: overlay.y,
+          scale: overlay.scale,
+          rotation: overlay.rotation,
+          opacity: overlay.opacity,
+          start: overlay.start,
+          end: overlay.end,
+        )).toList(),
+        textOverlays: textOverlays.map((overlay) => ProjectTextOverlay(
+          text: overlay.text,
+          start: overlay.start,
+          end: overlay.end,
+          x: overlay.x,
+          y: overlay.y,
+          fontSize: overlay.fontSize,
+          color: overlay.color,
+          bold: overlay.bold,
+          opacity: overlay.opacity,
+        )).toList(),
       );
       await File(targetPath).writeAsString(document.encode(), flush: true);
       if (!mounted) return true;
@@ -1003,6 +1055,11 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       final audio = document.audioPath;
       if (audio != null && !await File(audio).exists()) {
         throw FileSystemException('Файл аудио проекта не найден.', audio);
+      }
+      for (final overlay in document.photoOverlays) {
+        if (!await File(overlay.path).exists()) {
+          throw FileSystemException('Изображение проекта не найдено.', overlay.path);
+        }
       }
     } catch (e) {
       setStatus('Не удалось прочитать проект: $e');
@@ -1093,6 +1150,33 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             at: transition.at,
             duration: transition.duration,
           )));
+        photoOverlays
+          ..clear()
+          ..addAll(document.photoOverlays.map((overlay) => PhotoOverlay(
+            path: overlay.path,
+            x: overlay.x,
+            y: overlay.y,
+            scale: overlay.scale,
+            rotation: overlay.rotation,
+            opacity: overlay.opacity,
+            start: overlay.start,
+            end: overlay.end,
+          )));
+        textOverlays
+          ..clear()
+          ..addAll(document.textOverlays.map((overlay) => TextOverlay(
+            text: overlay.text,
+            start: overlay.start,
+            end: overlay.end,
+            x: overlay.x,
+            y: overlay.y,
+            fontSize: overlay.fontSize,
+            color: overlay.color,
+            bold: overlay.bold,
+            opacity: overlay.opacity,
+          )));
+        selectedPhotoOverlay = -1;
+        selectedTextOverlay = -1;
         selectedEffectClipIndex = -1;
         selectedTransitionIndex = -1;
         position = restoredPosition;
