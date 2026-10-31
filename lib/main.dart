@@ -5529,17 +5529,17 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           ));
           await textFile.writeAsString(overlay.text);
           final safeTextPath = textFile.absolute.path
-              .replaceAll('\\\\', '/')
-              .replaceAll(':', r'\\:')
-              .replaceAll("'", r"\\'");
+              .replaceAll(r'\', '/')
+              .replaceAll(':', r'\:')
+              .replaceAll("'", r"\'");
           final fontSize = (overlay.fontSize * int.parse(outputHeight) / 1080)
               .round()
               .clamp(10, 220);
           final fontColor = '0x${overlay.color.replaceFirst('#', '')}@${overlay.opacity.toStringAsFixed(3)}';
           final textOutput = 'textBase${textIndex}_${i}';
           graph.add(
-            '[$previous]drawtext=fontfile=C\\\\:/Windows/Fonts/${overlay.bold ? 'arialbd' : 'arial'}.ttf:'
-            'textfile=$safeTextPath:reload=0:'
+            '[$previous]drawtext=fontfile=C\\:/Windows/Fonts/${overlay.bold ? 'arialbd' : 'arial'}.ttf:'
+            "textfile='$safeTextPath':reload=0:"
             'fontcolor=$fontColor:fontsize=$fontSize:'
             'x=(w-text_w)/2+(${overlay.x.toStringAsFixed(4)})*w:'
             'y=(h-text_h)/2+(${overlay.y.toStringAsFixed(4)})*h:'
