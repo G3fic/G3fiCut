@@ -167,27 +167,14 @@ jobs:
           name: GifCut-Windows-Installer
           path: release-assets
 
-      - name: Check whether release already exists
-        id: release-check
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: v${{ needs.windows.outputs.release_version }}
-        run: |
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "Release $RELEASE_TAG already exists; skipping publication."
-          else
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Publish GitHub Release
-        if: steps.release-check.outputs.publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.windows.outputs.release_version }}
           target_commitish: ${{ github.sha }}
           name: GifCut v${{ needs.windows.outputs.release_version }}
           generate_release_notes: true
+          overwrite_files: true
           files: |
             release-assets/GifCut-Setup-${{ needs.windows.outputs.release_version }}.exe
             release-assets/G3fiCut-Setup-${{ needs.windows.outputs.release_version }}.exe
