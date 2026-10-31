@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:g3ficut/timeline_editing.dart';
-import 'package:g3ficut/timeline_history.dart';
+import 'package:gifcut/timeline_editing.dart';
+import 'package:gifcut/timeline_history.dart';
 
 void main() {
   group('TimelineEditing', () {
@@ -36,6 +36,23 @@ void main() {
         const TimelineClipRange(0, 4, timelineStart: 4),
         const TimelineClipRange(4, 8, timelineStart: 8),
       ]);
+    });
+
+    test('move never changes the source in/out points or clip duration', () {
+      final clips = [
+        const TimelineClipRange(12, 18, timelineStart: 2),
+        const TimelineClipRange(30, 34, timelineStart: 8),
+      ];
+
+      final moved = TimelineEditing.moveInsert(clips, 0, 7);
+
+      expect(moved.first.start, 12);
+      expect(moved.first.end, 18);
+      expect(moved.first.length, 6);
+      expect(moved.first.timelineStart, 7);
+      expect(moved.last.start, 30);
+      expect(moved.last.end, 34);
+      expect(moved.last.length, 4);
     });
 
     test('ripple trim start shifts following clips left', () {

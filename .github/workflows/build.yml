@@ -1,8 +1,8 @@
-name: Build G3fiCut for Windows
+name: Build GifCut for Windows
 
 on:
   push:
-    branches: [main, master, 'feature/**']
+    branches: [main, master, 'feature/**', 'feat/**']
     tags: ['v*']
   pull_request:
   workflow_dispatch:
@@ -14,7 +14,7 @@ on:
         default: ''
 
 concurrency:
-  group: g3ficut-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: gifcut-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -56,14 +56,14 @@ jobs:
             } else {
               throw 'Release tags must use vMAJOR.MINOR.PATCH, for example v0.2.2.'
             }
-          } elseif ($env:GITHUB_EVENT_NAME -eq 'push' -and $env:GITHUB_REF -eq 'refs/heads/main' -and $env:RELEASE_COMMIT_MESSAGE -like 'Release G3fiCut v*') {
-            if ($env:RELEASE_COMMIT_MESSAGE -match '^Release G3fiCut v(\d+\.\d+\.\d+)(:|\r?\n|$)') {
+          } elseif ($env:GITHUB_EVENT_NAME -eq 'push' -and $env:GITHUB_REF -eq 'refs/heads/main' -and $env:RELEASE_COMMIT_MESSAGE -like 'Release GifCut v*') {
+            if ($env:RELEASE_COMMIT_MESSAGE -match '^Release GifCut v(\d+\.\d+\.\d+)(:|\r?\n|$)') {
               $version = $Matches[1]
             } else {
-              throw 'Release commits must start with: Release G3fiCut vMAJOR.MINOR.PATCH:'
+              throw 'Release commits must start with: Release GifCut vMAJOR.MINOR.PATCH:'
             }
           }
-          "G3FICUT_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "GIFCUT_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - uses: subosito/flutter-action@v2
@@ -74,7 +74,7 @@ jobs:
 
       - name: Generate Windows platform scaffolding
         shell: pwsh
-        run: flutter create --no-pub --platforms=windows --project-name g3ficut .
+        run: flutter create --no-pub --platforms=windows --project-name gifcut .
 
       - name: Apply GifCut Windows app icon
         shell: pwsh
@@ -96,7 +96,7 @@ jobs:
 
       - name: Build Windows release
         shell: pwsh
-        run: flutter build windows --release "--dart-define=APP_VERSION=$env:G3FICUT_VERSION"
+        run: flutter build windows --release "--dart-define=APP_VERSION=$env:GIFCUT_VERSION"
 
       - name: Add FFmpeg runtime
         shell: pwsh
@@ -111,7 +111,7 @@ jobs:
           $release = Join-Path $PWD 'build/windows/x64/runner/Release'
           Copy-Item -Path $ffmpeg.FullName -Destination (Join-Path $release 'ffmpeg.exe') -Force
           $notice = @(
-            'G3fiCut bundles the FFmpeg LGPL build for Windows.'
+            'GifCut bundles the FFmpeg LGPL build for Windows.'
             'Upstream project: https://ffmpeg.org/'
             'Binary provider: https://github.com/BtbN/FFmpeg-Builds'
             'FFmpeg source and licensing information: https://ffmpeg.org/legal.html'
@@ -128,17 +128,19 @@ jobs:
         run: |
           $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $compiler)) { throw "Inno Setup compiler not found: $compiler" }
-          & $compiler "/DMyAppVersion=$env:G3FICUT_VERSION" installer\ClipForge.iss
+          & $compiler "/DMyAppVersion=$env:GIFCUT_VERSION" installer\ClipForge.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
-          # Keep a legacy filename so already-installed ClipForge-branded updaters can find the new installer.
-          Copy-Item "build/installer/G3fiCut-Setup-$env:G3FICUT_VERSION.exe" "build/installer/ClipForge-Setup-$env:G3FICUT_VERSION.exe" -Force
+          # Keep legacy asset names so older G3fiCut and ClipForge updaters can install this build.
+          Copy-Item "build/installer/GifCut-Setup-$env:GIFCUT_VERSION.exe" "build/installer/G3fiCut-Setup-$env:GIFCUT_VERSION.exe" -Force
+          Copy-Item "build/installer/GifCut-Setup-$env:GIFCUT_VERSION.exe" "build/installer/ClipForge-Setup-$env:GIFCUT_VERSION.exe" -Force
 
       - uses: actions/upload-artifact@v4
         with:
-          name: G3fiCut-Windows-Installer
+          name: GifCut-Windows-Installer
           path: |
-            build/installer/G3fiCut-Setup-${{ env.G3FICUT_VERSION }}.exe
-            build/installer/ClipForge-Setup-${{ env.G3FICUT_VERSION }}.exe
+            build/installer/GifCut-Setup-${{ env.GIFCUT_VERSION }}.exe
+            build/installer/G3fiCut-Setup-${{ env.GIFCUT_VERSION }}.exe
+            build/installer/ClipForge-Setup-${{ env.GIFCUT_VERSION }}.exe
           if-no-files-found: error
           retention-days: 30
 
@@ -152,7 +154,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: G3fiCut-Windows-Installer
+          name: GifCut-Windows-Installer
           path: release-assets
 
       - name: Check whether release already exists
@@ -174,9 +176,10 @@ jobs:
         with:
           tag_name: v${{ needs.windows.outputs.release_version }}
           target_commitish: ${{ github.sha }}
-          name: G3fiCut v${{ needs.windows.outputs.release_version }}
+          name: GifCut v${{ needs.windows.outputs.release_version }}
           generate_release_notes: true
           files: |
+            release-assets/GifCut-Setup-${{ needs.windows.outputs.release_version }}.exe
             release-assets/G3fiCut-Setup-${{ needs.windows.outputs.release_version }}.exe
             release-assets/ClipForge-Setup-${{ needs.windows.outputs.release_version }}.exe
           fail_on_unmatched_files: true

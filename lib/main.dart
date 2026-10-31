@@ -20,11 +20,12 @@ import 'timeline_history.dart';
 import 'timeline_editing.dart';
 import 'project_document.dart';
 import 'canvas_snapping.dart';
+import 'release_assets.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
-  runApp(const G3fiCutApp());
+  runApp(const GifCutApp());
 }
 
 class _ShortcutRow extends StatelessWidget {
@@ -98,8 +99,8 @@ class _ContinuousPointerDragState extends State<ContinuousPointerDrag> {
       );
 }
 
-class G3fiCutApp extends StatelessWidget {
-  const G3fiCutApp({super.key});
+class GifCutApp extends StatelessWidget {
+  const GifCutApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
         title: 'GifCut',
@@ -170,7 +171,7 @@ class ExportTimelineSegment {
 }
 
 class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.71');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.72');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -310,6 +311,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     return (color: color, opacity: opacity.clamp(0.0, 1.0).toDouble());
   }
   String inspectorTab = 'video';
+  String mediaPanelTab = 'media';
   List<String> videoThumbnails = [];
   String? thumbnailDirectory;
   bool busy = false;
@@ -456,7 +458,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 30)
       ..idleTimeout = const Duration(seconds: 30)
-      ..userAgent = 'G3fiCut/$appVersion';
+      ..userAgent = 'GifCut/$appVersion';
     try {
       final responseBody = await _fetchLatestRelease(client);
       final decoded = jsonDecode(responseBody);
@@ -467,6 +469,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         throw const FormatException('В ответе GitHub не найдена версия релиза.');
       }
       final latestVersion = latestTag.replaceFirst(RegExp(r'^[vV]'), '');
+      if (!isNumericSemanticVersion(latestVersion)) {
+        throw FormatException('Некорректный номер версии GitHub Release: $latestTag. Ожидается формат 0.3.72.');
+      }
       if (!isVersionNewer(latestVersion, appVersion)) {
         if (showNoUpdateMessage && mounted) setStatus('Установлена последняя версия GifCut $appVersion.');
         return;
@@ -474,15 +479,12 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
       final assets = decoded['assets'];
       if (assets is! List) throw const FormatException('В релизе не найден список файлов.');
-      Map<String, dynamic>? installerAsset;
-      final expectedName = 'G3fiCut-Setup-$latestVersion.exe';
-      for (final item in assets) {
-        if (item is Map<String, dynamic> && item['name'] == expectedName) {
-          installerAsset = item;
-          break;
-        }      }
+      final installerAsset = findReleaseInstallerAsset(assets, latestVersion);
       if (installerAsset == null) {
-        throw StateError('В релизе $latestTag нет установщика $expectedName.');
+        throw StateError(
+          'В релизе $latestTag не найден установщик GifCut. '
+          'Проверены имена GifCut-Setup, G3fiCut-Setup и ClipForge-Setup.',
+        );
       }
 
       final rawUrl = installerAsset['browser_download_url'] as String?;
@@ -490,7 +492,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       if (downloadUri == null ||
           downloadUri.scheme != 'https' ||
           downloadUri.host != 'github.com' ||
-          !downloadUri.path.startsWith('/G3fic/G3fiCut/releases/download/')) {
+          !(downloadUri.path.startsWith('/G3fic/G3fiCut/releases/download/') ||
+            downloadUri.path.startsWith('/G3fic/GifCut/releases/download/'))) {
         throw const FormatException('Ссылка на установщик не принадлежит официальным GitHub Releases GifCut.');
       }
 
@@ -498,7 +501,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       if (digest == null || !digest.startsWith('sha256:')) {
         throw StateError('GitHub не предоставил SHA-256 установщика. Обновление не будет запущено без проверки целостности.');
       }
-      if (mounted) setStatus('Доступно обновление v$latestVersion.');
+      if (mounted) setStatus('Доступно обновление $latestVersion.');
       if (!mounted) return;
       final shouldUpdate = await showDialog<bool>(
         context: context,
@@ -531,7 +534,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   Future<void> _downloadAndRunInstaller(Uri uri, String version, String? expectedDigest) async {
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 20)
-      ..userAgent = 'G3fiCut/$appVersion';
+      ..userAgent = 'GifCut/$appVersion';
     File? installer;
     try {
       if (mounted) setStatus('Скачиваю обновление v$version…');
@@ -1132,18 +1135,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     _selectVideoAtPlayhead();
   }
 
-  double _softAngleSnap(double degrees) {
-    const step = 15.0;
-    const range = 3.0;
-    const strength = 0.30;
-    final nearest = (degrees / step).round() * step;
-    var difference = nearest - degrees;
-    if (difference > 180) difference -= 360;
-    if (difference < -180) difference += 360;
-    final proximity = 1 - difference.abs() / range;
-    if (proximity <= 0) return degrees;
-    return degrees + difference * strength * proximity;
-  }
+  double _softAngleSnap(double degrees) =>
+      const AngleSnapper(stepDegrees: 15, catchDistance: 3)
+          .snap(degrees, enabled: snappingEnabled);
 
   Future<void> extractAudio() async {
     final video = videoPath;
@@ -1729,7 +1723,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         child: Row(children: [
           Container(width: 34, height: 34, decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF9B6DFF), Color(0xFF7046C8)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(10), boxShadow: [BoxShadow(color: accent.withValues(alpha: .18), blurRadius: 12, offset: const Offset(0, 3))]), child: const Icon(Icons.movie_creation_outlined, color: Colors.white, size: 20)),
           const SizedBox(width: 10),
-          const Text('gifcut', style: TextStyle(fontSize: 18, letterSpacing: -.5, fontWeight: FontWeight.w900)),
+          const Text('GifCut', style: TextStyle(fontSize: 18, letterSpacing: -.5, fontWeight: FontWeight.w900)),
           const SizedBox(width: 10),
           const SizedBox(width: 10),
           Flexible(child: Text((projectFilePath == null ? 'Новый проект' : p.basenameWithoutExtension(projectFilePath!)) + (projectDirty ? ' •' : ''), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Color(0xFFD3D3DF)))),
@@ -1796,76 +1790,165 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
   Widget mediaPanel() => Container(
         color: panel,
-        padding: const EdgeInsets.fromLTRB(12, 15, 12, 12),
-        child: SingleChildScrollView(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('МЕДИА', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.4, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: LayoutBuilder(builder: (context, constraints) {
-                final compact = constraints.maxWidth < 170;
-                return Tooltip(
-                  message: 'Импортировать видео',
-                  child: OutlinedButton.icon(
-                    onPressed: busy ? null : pickVideo,
-                    icon: const Icon(Icons.video_call_outlined, size: 17),
-                    label: Text(
-                      compact ? 'Импорт' : 'Импортировать видео',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                );
-              }),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            _mediaPanelTabButton('media', 'Медиа', Icons.perm_media_outlined),
+            const SizedBox(width: 6),
+            _mediaPanelTabButton('effects', 'Эффекты', Icons.auto_awesome_outlined),
+          ]),
+          const SizedBox(height: 10),
+          Expanded(
+            child: SingleChildScrollView(
+              child: mediaPanelTab == 'media'
+                  ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      SizedBox(
+                        width: double.infinity,
+                        child: LayoutBuilder(builder: (context, constraints) {
+                          final compact = constraints.maxWidth < 170;
+                          return Tooltip(
+                            message: 'Импортировать видео',
+                            child: OutlinedButton.icon(
+                              onPressed: busy ? null : pickVideo,
+                              icon: const Icon(Icons.video_call_outlined, size: 17),
+                              label: Text(
+                                compact ? 'Импорт' : 'Импортировать видео',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          );
+                        }),
+                      ),
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: busy ? null : pickVideo,
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10),
+                          decoration: BoxDecoration(color: const Color(0xFF202630), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFF333542))),
+                          child: const Column(children: [
+                            Icon(Icons.video_call_outlined, color: accent, size: 30),
+                            SizedBox(height: 8),
+                            Text('Добавить видео', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                            SizedBox(height: 4),
+                            Text('MP4 · MOV · MKV и другие', style: TextStyle(fontSize: 10, color: muted), textAlign: TextAlign.center),
+                          ]),
+                        ),
+                      ),
+                      if (videoPath != null) ...[
+                        const SizedBox(height: 14),
+                        const Text('ФАЙЛЫ ПРОЕКТА', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.1, fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 8),
+                        mediaItem(Icons.movie_outlined, p.basename(videoPath!), 'Видео · исходник', videoBlue, imagePath: videoThumbnails.isNotEmpty ? videoThumbnails.first : null),
+                        if (audioPath != null) ...[
+                          const SizedBox(height: 7),
+                          mediaItem(Icons.graphic_eq, p.basename(audioPath!), 'Извлечённое аудио', audioGreen),
+                        ],
+                        if (photoOverlays.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          const Text('ФОТО', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.1, fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 7),
+                          for (var i = 0; i < photoOverlays.length; i++) ...[
+                            if (i > 0) const SizedBox(height: 6),
+                            mediaItem(Icons.image_outlined, p.basename(photoOverlays[i].path), 'Фото · слой \${i + 1}', accent,
+                              imagePath: photoOverlays[i].path,
+                              selected: selectedPhotoOverlay == i,
+                              onTap: () => setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; })),
+                          ],
+                        ],
+                      ],
+                      const SizedBox(height: 12),
+                      const Divider(),
+                      const SizedBox(height: 8),
+                      const Row(children: [Icon(Icons.tips_and_updates_outlined, color: muted, size: 15), SizedBox(width: 7), Text('Подсказка', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700))]),
+                      const SizedBox(height: 5),
+                      const Text('Извлеките звук, чтобы получить отдельный клип на аудиодорожке под видео.', style: TextStyle(color: muted, fontSize: 11, height: 1.4)),
+                    ])
+                  : _effectsLibraryPanel(),
             ),
-            const SizedBox(height: 8),
-            InkWell(
-              onTap: busy ? null : pickVideo,
-              borderRadius: BorderRadius.circular(10),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10),
-                decoration: BoxDecoration(color: const Color(0xFF202630), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFF333542))),
-                child: const Column(children: [
-                  Icon(Icons.video_call_outlined, color: accent, size: 30),
-                  SizedBox(height: 8),
-                  Text('Добавить видео', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                  SizedBox(height: 4),
-                  Text('MP4 · MOV · MKV и другие', style: TextStyle(fontSize: 10, color: muted), textAlign: TextAlign.center),
-                ]),
+          ),
+        ]),
+      );
+
+  Widget _mediaPanelTabButton(String id, String label, IconData icon) => Expanded(
+        child: InkWell(
+          key: ValueKey('media-library-$id'),
+          borderRadius: BorderRadius.circular(7),
+          onTap: () => setState(() => mediaPanelTab = id),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 5),
+            decoration: BoxDecoration(
+              color: mediaPanelTab == id ? const Color(0xFF303642) : const Color(0xFF20232B),
+              borderRadius: BorderRadius.circular(7),
+              border: Border.all(color: mediaPanelTab == id ? accent : const Color(0xFF343644)),
+            ),
+            child: Center(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon, size: 14, color: mediaPanelTab == id ? accent : muted),
+                    const SizedBox(width: 5),
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: mediaPanelTab == id ? Colors.white : muted,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            if (videoPath != null) ...[
-              const SizedBox(height: 14),
-              const Text('ФАЙЛЫ ПРОЕКТА', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.1, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-              mediaItem(Icons.movie_outlined, p.basename(videoPath!), 'Видео · исходник', videoBlue, imagePath: videoThumbnails.isNotEmpty ? videoThumbnails.first : null),
-              if (audioPath != null) ...[
-                const SizedBox(height: 7),
-                mediaItem(Icons.graphic_eq, p.basename(audioPath!), 'Извлечённое аудио', audioGreen),
-              ],
-              if (photoOverlays.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                const Text('ФОТО', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.1, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 7),
-                for (var i = 0; i < photoOverlays.length; i++) ...[
-                  if (i > 0) const SizedBox(height: 6),
-                  mediaItem(Icons.image_outlined, p.basename(photoOverlays[i].path), 'Фото · слой ${i + 1}', accent,
-                    imagePath: photoOverlays[i].path,
-                    selected: selectedPhotoOverlay == i,
-                    onTap: () => setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; })),
-                ],
-              ],
-            ],
-            const SizedBox(height: 12),
-            const Divider(),
-            const SizedBox(height: 8),
-            const Row(children: [Icon(Icons.tips_and_updates_outlined, color: muted, size: 15), SizedBox(width: 7), Text('Подсказка', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700))]),
-            const SizedBox(height: 5),
-            const Text('Извлеките звук, чтобы получить отдельный клип на аудиодорожке под видео.', style: TextStyle(color: muted, fontSize: 11, height: 1.4)),
-          ]),
+          ),
         ),
+      );
+
+  Widget _effectsLibraryPanel() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('СТАНДАРТНЫЕ ЭФФЕКТЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 7),
+          for (final type in (_timelineEffectTypes.toList()..sort()))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: busy || videoClips.isEmpty ? null : () => unawaited(addTimelineEffect(type)),
+                  icon: const Icon(Icons.add, size: 14),
+                  label: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 9)),
+                ),
+              ),
+            ),
+          const Divider(height: 22),
+          const Text('СТАНДАРТНЫЕ ПЕРЕХОДЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 7),
+          for (final type in (_timelineTransitionTypes.toList()..sort()))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: busy || videoClips.length < 2 ? null : () => unawaited(addTimelineTransition(type)),
+                  icon: const Icon(Icons.add, size: 14),
+                  label: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 9)),
+                ),
+              ),
+            ),
+          const SizedBox(height: 8),
+          const Text(
+            'Выберите эффект или переход, чтобы добавить его к текущему монтажу. Дорожки появятся на таймлайне после первого добавления.',
+            style: TextStyle(color: muted, fontSize: 10, height: 1.45),
+          ),
+        ],
       );
 
   Widget mediaItem(IconData icon, String name, String kind, Color color, {String? imagePath, bool selected = false, VoidCallback? onTap}) => InkWell(
@@ -1953,7 +2036,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     Widget result = Video(
       controller: videoController!,
       controls: NoVideoControls,
-      fit: BoxFit.cover,
+      fit: BoxFit.contain,
     );
     final activeEffects = effectClips.where((effect) =>
         playheadSeconds >= effect.start && playheadSeconds < effect.end);
@@ -2568,7 +2651,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                 if (event is! PointerScrollEvent) return;
                 final horizontalController = timelineScrollController;
                 final verticalController = timelineVerticalScrollController;
-                if (HardwareKeyboard.instance.isControlPressed && horizontalController.hasClients) {
+                if (event.scrollDelta.dy != 0 && horizontalController.hasClients) {
                   final pointerX = event.localPosition.dx;
                   final anchorSeconds = ((horizontalController.offset + pointerX - 140) / zoom)
                       .clamp(0.0, timelineSeconds).toDouble();
@@ -2615,10 +2698,14 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                     trackRow(audio: false),
                     const SizedBox(height: 5),
                     trackRow(audio: true),
-                    const SizedBox(height: 5),
-                    effectTrackRow(),
-                    const SizedBox(height: 4),
-                    transitionTrackRow(),
+                    if (effectClips.isNotEmpty) ...[
+                      const SizedBox(height: 5),
+                      effectTrackRow(),
+                    ],
+                    if (timelineTransitions.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      transitionTrackRow(),
+                    ],
                     if (photoOverlays.isNotEmpty) ...[
                       const SizedBox(height: 5),
                       photoTrackRow(),
@@ -3100,12 +3187,12 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
   double get playheadSeconds =>
       (position.inMilliseconds / 1000).clamp(0.0, timelineSeconds).toDouble();
-  Future<void> addTimelineEffect() async {
+  Future<void> addTimelineEffect([String? selectedType]) async {
     if (videoClips.isEmpty || busy) {
       setStatus('Сначала добавьте видео на таймлайн.');
       return;
     }
-    final type = await showDialog<String>(
+    final type = selectedType ?? await showDialog<String>(
       context: context,
       builder: (dialogContext) => SimpleDialog(
         title: const Text('Добавить эффект на таймлайн'),
@@ -3129,7 +3216,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     });
   }
 
-  Future<void> addTimelineTransition() async {
+  Future<void> addTimelineTransition([String? selectedType]) async {
     if (videoClips.length < 2 || busy) {
       setStatus('Для перехода нужны два видеоклипа на таймлайне.');
       return;
@@ -3149,7 +3236,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     }
     joins.sort((a, b) => (a.at - playheadSeconds).abs().compareTo((b.at - playheadSeconds).abs()));
     final join = joins.first;
-    final type = await showDialog<String>(
+    final type = selectedType ?? await showDialog<String>(
       context: context,
       builder: (dialogContext) => SimpleDialog(
         title: Text('Переход на ${time(Duration(milliseconds: (join.at * 1000).round()))}'),
@@ -3422,7 +3509,12 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   }
 
   void _updateClipMove(DragUpdateDetails details) {
-    if (_clipMoveIndex < 0 || _clipMoveIndex >= videoClips.length) return;
+    final before = _clipMoveBefore;
+    if (before == null || _clipMoveIndex < 0 ||
+        _clipMoveIndex >= videoClips.length ||
+        _clipMoveIndex >= before.videoClips.length) {
+      return;
+    }
     _clipMovePointerX += details.delta.dx;
     var candidate = math.max(0.0, _clipMoveOriginalStart + _clipMovePointerX / zoom).toDouble();
     double? snapTo;
@@ -3443,8 +3535,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       }
       if (snapTo != null) candidate = snapTo;
     }
+    final sourceRange = before.videoClips[_clipMoveIndex];
     setState(() {
-      videoClips[_clipMoveIndex].timelineStart = candidate;
+      final moving = videoClips[_clipMoveIndex];
+      moving
+        ..start = sourceRange.start
+        ..end = sourceRange.end
+        ..timelineStart = candidate;
       _timelineSnapAt = snapTo;
     });
   }
@@ -3524,8 +3621,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       }[aspectRatioPreset];
       if (dimensions != null) {
         final parts = dimensions.split(':');
-        filters.add('scale=${parts[0]}:${parts[1]}:force_original_aspect_ratio=increase');
-        filters.add('crop=${parts[0]}:${parts[1]}');
+        filters.add('scale=${parts[0]}:${parts[1]}:force_original_aspect_ratio=decrease');
+        filters.add('pad=${parts[0]}:${parts[1]}:(ow-iw)/2:(oh-ih)/2:black');
       }
     }
     if (videoScaleX != 1.0 || videoScaleY != 1.0) filters.add('scale=iw*${videoScaleX.toStringAsFixed(3)}:ih*${videoScaleY.toStringAsFixed(3)}');

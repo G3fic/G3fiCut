@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:g3ficut/timeline_history.dart';
+import 'package:gifcut/timeline_history.dart';
 
 TimelineSnapshot snapshot({
   List<TimelineClipRange> clips = const [],

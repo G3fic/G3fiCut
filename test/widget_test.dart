@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:g3ficut/main.dart';
+import 'package:gifcut/main.dart';
 
 void main() {
   testWidgets('GifCut editor opens with import and timeline controls', (tester) async {
-    await tester.pumpWidget(const G3fiCutApp());
+    await tester.pumpWidget(const GifCutApp());
     await tester.pump();
 
-    expect(find.text('gifcut'), findsOneWidget);
+    expect(find.text('GifCut'), findsOneWidget);
     expect(find.byTooltip('Импортировать видео'), findsOneWidget);
     expect(find.text('ТАЙМЛАЙН'), findsOneWidget);
     expect(find.text('Ваше видео появится здесь'), findsOneWidget);
@@ -23,7 +23,7 @@ void main() {
     expect(isVersionNewer('1.0.0', '0.99.99'), isTrue);
   });
   testWidgets('undo and redo controls are visible and disabled without edits', (tester) async {
-    await tester.pumpWidget(const G3fiCutApp());
+    await tester.pumpWidget(const GifCutApp());
     await tester.pump();
 
     // The editor now exposes undo/redo in the left tool rail and timeline.
@@ -47,7 +47,7 @@ void main() {
   });
 
   testWidgets('project controls are visible and save is disabled without media', (tester) async {
-    await tester.pumpWidget(const G3fiCutApp());
+    await tester.pumpWidget(const GifCutApp());
     await tester.pump();
 
     expect(find.byTooltip('Открыть проект'), findsOneWidget);
@@ -65,7 +65,7 @@ void main() {
   });
 
   testWidgets('desktop shortcut help is discoverable and opens', (tester) async {
-    await tester.pumpWidget(const G3fiCutApp());
+    await tester.pumpWidget(const GifCutApp());
     await tester.pump();
 
     expect(find.byKey(const ValueKey('keyboard-shortcuts')), findsOneWidget);
@@ -79,7 +79,7 @@ void main() {
   });
 
   testWidgets('timeline snapping toggle is visible and interactive', (tester) async {
-    await tester.pumpWidget(const G3fiCutApp());
+    await tester.pumpWidget(const GifCutApp());
     await tester.pump();
 
     final snapButton = find.byKey(const ValueKey('timeline-snap'));
@@ -136,7 +136,7 @@ void main() {
   });
 
   testWidgets('workspace panes can be resized with their splitters', (tester) async {
-    await tester.pumpWidget(const G3fiCutApp());
+    await tester.pumpWidget(const GifCutApp());
     await tester.pump();
 
     final mediaSplitter = find.byKey(const ValueKey('media-panel-splitter'));
@@ -157,7 +157,7 @@ void main() {
   });
 
   testWidgets('inspector switches render without Material or ink errors', (tester) async {
-    await tester.pumpWidget(const G3fiCutApp());
+    await tester.pumpWidget(const GifCutApp());
     await tester.pump();
 
     expect(find.byType(SwitchListTile), findsNWidgets(2));
@@ -166,6 +166,23 @@ void main() {
       isNull,
       reason: 'Inspector switch controls must render inside Material surfaces.',
     );
+  });
+
+  testWidgets('media and effects libraries are available in adjacent tabs', (tester) async {
+    await tester.pumpWidget(const GifCutApp());
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('media-library-media')), findsOneWidget);
+    final effectsTab = find.byKey(const ValueKey('media-library-effects'));
+    expect(effectsTab, findsOneWidget);
+    await tester.tap(effectsTab);
+    await tester.pump();
+
+    expect(find.text('СТАНДАРТНЫЕ ЭФФЕКТЫ'), findsOneWidget);
+    expect(find.text('СТАНДАРТНЫЕ ПЕРЕХОДЫ'), findsOneWidget);
+    expect(find.text('Чёрно-белый'), findsOneWidget);
+    expect(find.text('Растворение'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
 }
