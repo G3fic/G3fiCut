@@ -1137,6 +1137,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     final maxMs = timelineDuration.inMilliseconds;
     final ms = target.inMilliseconds.clamp(0, maxMs > 0 ? maxMs : duration.inMilliseconds).toInt();
     final sequenceSeconds = ms / 1000;
+    final resumeAfterGapSeek = _playheadInGap && playing;
     final index = _clipIndexAtTimelineTime(sequenceSeconds);
     if (index < 0) {
       _stopGapPlayback();
@@ -1163,8 +1164,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     _seekingAcrossCut = true;
     try {
       await activePlayer.seek(Duration(milliseconds: (sourceSeconds * 1000).round()));
+      if (resumeAfterGapSeek) {
+        _suppressPlayerStateEvents = false;
+        await activePlayer.play();
+      }
     } finally {
       _seekingAcrossCut = false;
+      _suppressPlayerStateEvents = false;
     }
   }
 
