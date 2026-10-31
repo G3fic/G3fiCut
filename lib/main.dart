@@ -1910,6 +1910,54 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         ),
       );
 
+  Widget _libraryPreviewIndicator(
+    String key, {
+    required Color color,
+    required IconData icon,
+    required bool transition,
+  }) {
+    final hovering = _hoveredLibraryPreview == key;
+    return AnimatedContainer(
+      key: ValueKey('hover-preview-$key'),
+      duration: const Duration(milliseconds: 220),
+      width: 58,
+      height: 27,
+      decoration: BoxDecoration(
+        color: hovering ? color.withValues(alpha: 0.22) : const Color(0xFF151720),
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(
+          color: hovering ? color.withValues(alpha: 0.9) : const Color(0xFF3A3D4A),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(children: [
+        Positioned.fill(
+          child: Row(children: [
+            Expanded(child: ColoredBox(color: color.withValues(alpha: hovering ? 0.32 : 0.12))),
+            Expanded(child: ColoredBox(color: Colors.white.withValues(alpha: hovering && transition ? 0.24 : 0.04))),
+          ]),
+        ),
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOutCubic,
+          left: hovering ? 34 : 3,
+          top: 2,
+          bottom: 2,
+          width: 18,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: transition
+                  ? Colors.white.withValues(alpha: hovering ? 0.94 : 0.45)
+                  : color.withValues(alpha: hovering ? 0.96 : 0.5),
+              borderRadius: BorderRadius.circular(3),
+            ),
+            child: Icon(icon, size: 12, color: hovering ? Colors.black87 : Colors.white),
+          ),
+        ),
+      ]),
+    );
+  }
+
   Widget _effectsLibraryPanel() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1920,11 +1968,32 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               padding: const EdgeInsets.only(bottom: 6),
               child: SizedBox(
                 width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: busy || videoClips.isEmpty ? null : () => unawaited(addTimelineEffect(type)),
-                  icon: const Icon(Icons.add, size: 14),
-                  label: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 9)),
+                child: MouseRegion(
+                  onEnter: (_) => setState(() => _hoveredLibraryPreview = 'effect:$type'),
+                  onExit: (_) {
+                    if (_hoveredLibraryPreview == 'effect:$type') {
+                      setState(() => _hoveredLibraryPreview = null);
+                    }
+                  },
+                  child: OutlinedButton(
+                    onPressed: busy || videoClips.isEmpty ? null : () => unawaited(addTimelineEffect(type)),
+                    style: OutlinedButton.styleFrom(
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    ),
+                    child: Row(children: [
+                      const Icon(Icons.add, size: 14),
+                      const SizedBox(width: 5),
+                      Expanded(child: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      const SizedBox(width: 4),
+                      _libraryPreviewIndicator(
+                        'effect:$type',
+                        color: const Color(0xFFB18CFF),
+                        icon: Icons.auto_awesome,
+                        transition: false,
+                      ),
+                    ]),
+                  ),
                 ),
               ),
             ),
@@ -1936,17 +2005,38 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               padding: const EdgeInsets.only(bottom: 6),
               child: SizedBox(
                 width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: busy || videoClips.length < 2 ? null : () => unawaited(addTimelineTransition(type)),
-                  icon: const Icon(Icons.add, size: 14),
-                  label: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 9)),
+                child: MouseRegion(
+                  onEnter: (_) => setState(() => _hoveredLibraryPreview = 'transition:$type'),
+                  onExit: (_) {
+                    if (_hoveredLibraryPreview == 'transition:$type') {
+                      setState(() => _hoveredLibraryPreview = null);
+                    }
+                  },
+                  child: OutlinedButton(
+                    onPressed: busy || videoClips.length < 2 ? null : () => unawaited(addTimelineTransition(type)),
+                    style: OutlinedButton.styleFrom(
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    ),
+                    child: Row(children: [
+                      const Icon(Icons.add, size: 14),
+                      const SizedBox(width: 5),
+                      Expanded(child: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      const SizedBox(width: 4),
+                      _libraryPreviewIndicator(
+                        'transition:$type',
+                        color: const Color(0xFFFFC56B),
+                        icon: Icons.compare_arrows,
+                        transition: true,
+                      ),
+                    ]),
+                  ),
                 ),
               ),
             ),
           const SizedBox(height: 8),
           const Text(
-            'Выберите эффект или переход, чтобы добавить его к текущему монтажу. Дорожки появятся на таймлайне после первого добавления.',
+            'Наведите курсор на карточку, чтобы увидеть анимированный образец. Добавляйте эффекты на свободные участки таймлайна.',
             style: TextStyle(color: muted, fontSize: 10, height: 1.45),
           ),
         ],
