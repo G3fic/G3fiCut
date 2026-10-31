@@ -84,8 +84,8 @@ class PhotoOverlay {
   double x, y, scale, rotation, opacity;
 }
 
-class _EditorPageState extends State<EditorPage> {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.63');
+class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.65');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -195,6 +195,7 @@ class _EditorPageState extends State<EditorPage> {
   double _edgeDragPointerX = 0;
   dynamic _edgeDragBefore;
   bool checkingForUpdates = false;
+  Timer? _updateCheckTimer;
   double zoom = 32;
   final List<TimelineClip> videoClips = [];
   final TimelineHistory _timelineHistory = TimelineHistory();
@@ -249,9 +250,26 @@ class _EditorPageState extends State<EditorPage> {
   void initState() {
     super.initState();
     if (kReleaseMode && Platform.isWindows) {
+      WidgetsBinding.instance.addObserver(this);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) unawaited(checkForUpdates());
       });
+      // Retry periodically while the editor remains open.
+      _updateCheckTimer = Timer.periodic(const Duration(hours: 6), (_) {
+        if (mounted && WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+          unawaited(checkForUpdates());
+        }
+      });
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        kReleaseMode &&
+        Platform.isWindows &&
+        mounted) {
+      unawaited(checkForUpdates());
     }
   }
 
@@ -365,8 +383,8 @@ class _EditorPageState extends State<EditorPage> {
         await _downloadAndRunInstaller(downloadUri, latestVersion, digest);
       }
     } catch (e) {
-      if (showNoUpdateMessage && mounted) {
-        setStatus('Не удалось проверить обновления: ${e.toString().replaceFirst('Bad state: ', '')}');
+      if (mounted) {
+        setStatus('Не удалось проверить обновления; повторим автоматически: ${e.toString().replaceFirst('Bad state: ', '')}');
       }
     } finally {
       client.close(force: true);
@@ -476,6 +494,8 @@ class _EditorPageState extends State<EditorPage> {
 
   @override
   void dispose() {
+    _updateCheckTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     durationSub?.cancel();
     positionSub?.cancel();
     playingSub?.cancel();
