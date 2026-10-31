@@ -53,3 +53,26 @@ void main() {
     });
   });
 }
+
+  group('findReleaseAppArchiveAsset', () {
+    test('finds the versioned portable Windows archive', () {
+      final asset = findReleaseAppArchiveAsset([
+        {'name': 'GifCut-0.3.72-win-x64.zip', 'id': 42},
+        {'name': 'GifCut-Setup-0.3.72.exe', 'id': 43},
+      ], '0.3.72');
+
+      expect(asset?['id'], 42);
+    });
+
+    test('rejects missing or invalid app archives', () {
+      expect(findReleaseAppArchiveAsset([], '0.3.72'), isNull);
+      expect(
+        findReleaseAppArchiveAsset([
+          {'name': 'GifCut-0.3.72-win-x64.zip'},
+        ], 'v0.3.72'),
+        isNull,
+      );
+    });
+  });
+
+}
