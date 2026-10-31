@@ -29,6 +29,85 @@ class ProjectClipRange {
   int get hashCode => Object.hash(start, end, timelineStart);
 }
 
+
+/// A standalone effect block placed on the effects timeline track.
+class ProjectEffectClip {
+  const ProjectEffectClip({
+    required this.type,
+    required this.start,
+    required this.end,
+  });
+
+  static const supportedTypes = <String>{
+    'Чёрно-белый',
+    'Сепия',
+    'Негатив',
+    'Тёплый тон',
+    'Холодный тон',
+    'Размытие',
+    'Высокий контраст',
+  };
+
+  final String type;
+  final double start;
+  final double end;
+
+  double get duration => end - start;
+
+  Map<String, Object> toJson() => <String, Object>{
+        'type': type,
+        'start': start,
+        'end': end,
+      };
+
+  @override
+  bool operator ==(Object other) =>
+      other is ProjectEffectClip &&
+      other.type == type &&
+      other.start == start &&
+      other.end == end;
+
+  @override
+  int get hashCode => Object.hash(type, start, end);
+}
+
+/// A transition attached to the cut at [at] seconds on the sequence timeline.
+class ProjectTransition {
+  const ProjectTransition({
+    required this.type,
+    required this.at,
+    required this.duration,
+  });
+
+  static const supportedTypes = <String>{
+    'Затемнение',
+    'Белая вспышка',
+    'Растворение',
+    'Смахивание влево',
+    'Смахивание вправо',
+  };
+
+  final String type;
+  final double at;
+  final double duration;
+
+  Map<String, Object> toJson() => <String, Object>{
+        'type': type,
+        'at': at,
+        'duration': duration,
+      };
+
+  @override
+  bool operator ==(Object other) =>
+      other is ProjectTransition &&
+      other.type == type &&
+      other.at == at &&
+      other.duration == duration;
+
+  @override
+  int get hashCode => Object.hash(type, at, duration);
+}
+
 /// Versioned, validated representation of a GifCut editing project.
 ///
 /// Media paths are deliberately persisted as local absolute paths for schema
@@ -48,12 +127,16 @@ class ProjectDocument {
     required this.audioClipEnd,
     required this.timelineZoom,
     required this.playheadMs,
-  }) : videoClips = List<ProjectClipRange>.unmodifiable(videoClips) {
+    List<ProjectEffectClip> effectClips = const [],
+    List<ProjectTransition> transitions = const [],
+  })  : videoClips = List<ProjectClipRange>.unmodifiable(videoClips),
+        effectClips = List<ProjectEffectClip>.unmodifiable(effectClips),
+        transitions = List<ProjectTransition>.unmodifiable(transitions) {
     _validate();
   }
 
   static const formatId = 'g3ficut-project';
-  static const currentSchemaVersion = 2;
+  static const currentSchemaVersion = 3;
 
   final String format;
   final int schemaVersion;
@@ -68,12 +151,14 @@ class ProjectDocument {
   final double audioClipEnd;
   final double timelineZoom;
   final int playheadMs;
+  final List<ProjectEffectClip> effectClips;
+  final List<ProjectTransition> transitions;
 
   void _validate() {
     if (format != formatId) {
       throw const FormatException('Неподдерживаемый формат файла проекта.');
     }
-    if (schemaVersion != 1 && schemaVersion != currentSchemaVersion) {
+    if (schemaVersion != 1 && schemaVersion != 2 && schemaVersion != currentSchemaVersion) {
       throw FormatException('Версия формата проекта $schemaVersion не поддерживается.');
     }
     if (appVersion.trim().isEmpty) {
@@ -112,6 +197,36 @@ class ProjectDocument {
       }
       if (videoDurationMs > 0 && clip.end * 1000 > videoDurationMs + 1) {
         throw FormatException('Видеоклип ${i + 1} выходит за длительность исходного видео.');
+      }
+    }
+
+    for (var i = 0; i < effectClips.length; i++) {
+      final effect = effectClips[i];
+      if (!ProjectEffectClip.supportedTypes.contains(effect.type) ||
+          !_isFinite(effect.start) ||
+          !_isFinite(effect.end) ||
+          effect.start < 0 ||
+          effect.end <= effect.start ||
+          (videoClips.isNotEmpty && effect.end > videoClips.map((clip) => clip.timelineEnd).reduce((a, b) => a > b ? a : b) + 0.001)) {
+        throw FormatException('Некорректный эффект на таймлайне ' + (i + 1).toString() + '.');
+      }
+    }
+    for (var i = 0; i < transitions.length; i++) {
+      final transition = transitions[i];
+      if (!ProjectTransition.supportedTypes.contains(transition.type) ||
+          !_isFinite(transition.at) ||
+          !_isFinite(transition.duration) ||
+          transition.at < 0 ||
+          transition.duration < 0.1 ||
+          transition.duration > 5) {
+        throw FormatException('Некорректный переход ' + (i + 1).toString() + '.');
+      }
+      final hasJoin = videoClips.any((left) => videoClips.any((right) =>
+          (left.timelineEnd - transition.at).abs() < 0.025 &&
+          (right.timelineStart - transition.at).abs() < 0.025 &&
+          left.timelineStart != right.timelineStart));
+      if (!hasJoin) {
+        throw FormatException('Переход ' + (i + 1).toString() + ' не привязан к стыку двух видеоклипов.');
       }
     }
 
@@ -160,6 +275,8 @@ class ProjectDocument {
         'audioClipEnd': audioClipEnd,
         'timelineZoom': timelineZoom,
         'playheadMs': playheadMs,
+        'effectClips': effectClips.map((effect) => effect.toJson()).toList(),
+        'transitions': transitions.map((transition) => transition.toJson()).toList(),
       };
 
   String encode() => const JsonEncoder.withIndent('  ').convert(toJson());
@@ -205,6 +322,44 @@ class ProjectDocument {
         legacyTimelineCursor += sourceEnd - sourceStart;
       }
 
+      List<ProjectEffectClip> readEffects() {
+        final raw = json['effectClips'] ?? const [];
+        if (raw is! List) throw const FormatException('Поле effectClips должно быть массивом.');
+        return raw.asMap().entries.map((entry) {
+          final value = entry.value;
+          if (value is! Map) throw FormatException('Эффект ' + (entry.key + 1).toString() + ' должен быть объектом.');
+          final map = <String, dynamic>{};
+          for (final field in value.entries) {
+            if (field.key is! String) throw const FormatException('Некорректные поля эффекта.');
+            map[field.key as String] = field.value;
+          }
+          return ProjectEffectClip(
+            type: _readString(map, 'type'),
+            start: _readDouble(map, 'start'),
+            end: _readDouble(map, 'end'),
+          );
+        }).toList();
+      }
+
+      List<ProjectTransition> readTransitions() {
+        final raw = json['transitions'] ?? const [];
+        if (raw is! List) throw const FormatException('Поле transitions должно быть массивом.');
+        return raw.asMap().entries.map((entry) {
+          final value = entry.value;
+          if (value is! Map) throw FormatException('Переход ' + (entry.key + 1).toString() + ' должен быть объектом.');
+          final map = <String, dynamic>{};
+          for (final field in value.entries) {
+            if (field.key is! String) throw const FormatException('Некорректные поля перехода.');
+            map[field.key as String] = field.value;
+          }
+          return ProjectTransition(
+            type: _readString(map, 'type'),
+            at: _readDouble(map, 'at'),
+            duration: _readDouble(map, 'duration'),
+          );
+        }).toList();
+      }
+
       final rawAudioPath = json['audioPath'];
       if (rawAudioPath != null && rawAudioPath is! String) {
         throw const FormatException('Поле audioPath должно быть строкой или null.');
@@ -224,6 +379,8 @@ class ProjectDocument {
         audioClipEnd: _readDouble(json, 'audioClipEnd'),
         timelineZoom: _readDouble(json, 'timelineZoom'),
         playheadMs: _readInt(json, 'playheadMs'),
+        effectClips: readEffects(),
+        transitions: readTransitions(),
       );
     } on FormatException {
       rethrow;
