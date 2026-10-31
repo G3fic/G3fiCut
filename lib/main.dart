@@ -553,12 +553,14 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 20)
       ..userAgent = 'GifCut/$appVersion';
-    Directory? tempDir;
     File? installer;
+    var installerVerified = false;
     try {
       if (mounted) setStatus('Подготавливаю установщик GifCut $version…');
-      tempDir = await Directory.systemTemp.createTemp('gifcut-update-');
-      installer = File(p.join(tempDir.path, 'GifCut-Setup-$version.exe'));
+      final downloadsDirectory = await getDownloadsDirectory();
+      final updateDirectory = downloadsDirectory ?? await getTemporaryDirectory();
+      await updateDirectory.create(recursive: true);
+      installer = File(p.join(updateDirectory.path, 'GifCut-Setup-$version.exe'));
 
       final request = await client.getUrl(uri).timeout(const Duration(seconds: 25));
       final response = await request.close().timeout(const Duration(seconds: 60));
@@ -600,51 +602,56 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       if (actual.toString().toLowerCase() != expected) {
         throw StateError('Контрольная сумма установщика не совпала. Установка отменена.');
       }
+      installerVerified = true;
 
-      // Launch through the Windows shell. Inno Setup may require elevation;
-      // cmd's "start" delegates to the shell so Windows can display the UAC prompt.
-      // Keep GifCut alive: Process.start only reports that a child was created,
-      // not that the installer UI was actually shown. Inno Setup's Restart
-      // Manager can close the editor when it is ready to replace its files.
-      if (mounted) {
-        setStatus('Открываю установщик GifCut $version…');
-      }
-      final commandProcessor = Platform.environment['COMSPEC'] ?? 'cmd.exe';
-      final launchArguments = ['/c', 'start', '', installer.path];
-      final launchResult = await Process.run(
-        commandProcessor,
-        launchArguments,
-        runInShell: false,
+      // Open the verified executable through Windows Explorer. The shell
+      // honors the Inno Setup elevation manifest and can show the UAC prompt.
+      // Keep GifCut alive; Inno Setup's Restart Manager can close the editor
+      // when setup is ready to replace the running application files.
+      if (mounted) setStatus('Открываю установщик GifCut $version…');
+      await Process.start(
+        'explorer.exe',
+        [installer.path],
+        mode: ProcessStartMode.detached,
       );
-      if (launchResult.exitCode != 0) {
-        throw StateError(
-          'Windows не смогла открыть установщик: '
-          '${launchResult.stderr.toString().trim()}',
-        );
-      }
       if (mounted) {
         setStatus(
-          'Установщик GifCut $version передан Windows. '
-          'Завершите установку в открывшемся окне.',
+          'Установщик GifCut $version сохранён в папке «Загрузки» и открыт. '
+          'Завершите установку в отдельном окне.',
         );
       }
     } catch (e) {
+      final message = e.toString().replaceFirst('Bad state: ', '');
       if (mounted) {
-        setStatus('Не удалось запустить установщик: ${e.toString().replaceFirst('Bad state: ', '')}');
+        setStatus(
+          installerVerified
+              ? 'Установщик сохранён в папке «Загрузки», но не открылся: $message'
+              : 'Не удалось подготовить установщик: $message',
+        );
       }
-      if (installer != null) {
+      if (installer != null && !installerVerified) {
         try {
           if (await installer.exists()) await installer.delete();
         } catch (_) {
           // Keep the original update error visible in the status bar.
         }
       }
-      if (tempDir != null) {
-        try {
-          if (await tempDir.exists()) await tempDir.delete(recursive: true);
-        } catch (_) {
-          // A temporary installer file can be left for Windows cleanup.
-        }
+      if (mounted && installerVerified && installer != null) {
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Установщик скачан, но не открылся'),
+            content: SelectableText(
+              'Запустите файл вручную из папки «Загрузки»:\n${installer!.path}',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Закрыть'),
+              ),
+            ],
+          ),
+        );
       }
     } finally {
       client.close(force: true);
