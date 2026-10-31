@@ -96,6 +96,77 @@ class ProjectTransition {
   int get hashCode => Object.hash(type, at, duration);
 }
 
+/// A persistent image layer placed over the sequence canvas.
+class ProjectPhotoOverlay {
+  const ProjectPhotoOverlay({
+    required this.path,
+    this.x = 0,
+    this.y = 0,
+    this.scale = 1,
+    this.rotation = 0,
+    this.opacity = 1,
+    this.start = 0,
+    this.end = 3,
+  });
+
+  final String path;
+  final double x;
+  final double y;
+  final double scale;
+  final double rotation;
+  final double opacity;
+  final double start;
+  final double end;
+
+  Map<String, Object> toJson() => <String, Object>{
+        'path': path,
+        'x': x,
+        'y': y,
+        'scale': scale,
+        'rotation': rotation,
+        'opacity': opacity,
+        'start': start,
+        'end': end,
+      };
+}
+
+/// Editable text/caption layer with sequence timing and canvas placement.
+class ProjectTextOverlay {
+  const ProjectTextOverlay({
+    required this.text,
+    required this.start,
+    required this.end,
+    this.x = 0,
+    this.y = 0.28,
+    this.fontSize = 42,
+    this.color = '#FFFFFF',
+    this.bold = true,
+    this.opacity = 1,
+  });
+
+  final String text;
+  final double start;
+  final double end;
+  final double x;
+  final double y;
+  final double fontSize;
+  final String color;
+  final bool bold;
+  final double opacity;
+
+  Map<String, Object> toJson() => <String, Object>{
+        'text': text,
+        'start': start,
+        'end': end,
+        'x': x,
+        'y': y,
+        'fontSize': fontSize,
+        'color': color,
+        'bold': bold,
+        'opacity': opacity,
+      };
+}
+
 /// Versioned, validated representation of a GifCut editing project.
 ///
 /// Media paths are deliberately persisted as local absolute paths for schema
@@ -117,14 +188,18 @@ class ProjectDocument {
     required this.playheadMs,
     List<ProjectEffectClip> effectClips = const [],
     List<ProjectTransition> transitions = const [],
+    List<ProjectPhotoOverlay> photoOverlays = const [],
+    List<ProjectTextOverlay> textOverlays = const [],
   })  : videoClips = List<ProjectClipRange>.unmodifiable(videoClips),
         effectClips = List<ProjectEffectClip>.unmodifiable(effectClips),
-        transitions = List<ProjectTransition>.unmodifiable(transitions) {
+        transitions = List<ProjectTransition>.unmodifiable(transitions),
+        photoOverlays = List<ProjectPhotoOverlay>.unmodifiable(photoOverlays),
+        textOverlays = List<ProjectTextOverlay>.unmodifiable(textOverlays) {
     _validate();
   }
 
   static const formatId = 'g3ficut-project';
-  static const currentSchemaVersion = 3;
+  static const currentSchemaVersion = 4;
 
   final String format;
   final int schemaVersion;
@@ -141,6 +216,8 @@ class ProjectDocument {
   final int playheadMs;
   final List<ProjectEffectClip> effectClips;
   final List<ProjectTransition> transitions;
+  final List<ProjectPhotoOverlay> photoOverlays;
+  final List<ProjectTextOverlay> textOverlays;
 
   void _validate() {
     if (format != formatId) {
@@ -218,6 +295,45 @@ class ProjectDocument {
       }
     }
 
+    for (var i = 0; i < photoOverlays.length; i++) {
+      final overlay = photoOverlays[i];
+      if (overlay.path.trim().isEmpty ||
+          !_isFinite(overlay.x) ||
+          !_isFinite(overlay.y) ||
+          !_isFinite(overlay.scale) ||
+          !_isFinite(overlay.rotation) ||
+          !_isFinite(overlay.opacity) ||
+          !_isFinite(overlay.start) ||
+          !_isFinite(overlay.end) ||
+          overlay.scale < 0.05 ||
+          overlay.scale > 8 ||
+          overlay.opacity < 0 ||
+          overlay.opacity > 1 ||
+          overlay.start < 0 ||
+          overlay.end <= overlay.start) {
+        throw FormatException('Некорректный слой фото ${i + 1}.');
+      }
+    }
+    for (var i = 0; i < textOverlays.length; i++) {
+      final overlay = textOverlays[i];
+      if (overlay.text.trim().isEmpty ||
+          !_isFinite(overlay.x) ||
+          !_isFinite(overlay.y) ||
+          !_isFinite(overlay.fontSize) ||
+          !_isFinite(overlay.opacity) ||
+          !_isFinite(overlay.start) ||
+          !_isFinite(overlay.end) ||
+          overlay.fontSize < 8 ||
+          overlay.fontSize > 240 ||
+          overlay.opacity < 0 ||
+          overlay.opacity > 1 ||
+          overlay.start < 0 ||
+          overlay.end <= overlay.start ||
+          !RegExp(r'^#[0-9A-Fa-f]{6}$').hasMatch(overlay.color)) {
+        throw FormatException('Некорректный текстовый слой ${i + 1}.');
+      }
+    }
+
     final path = audioPath;
     if (path == null) {
       if (audioDurationMs != 0 || audioClipStart != 0 || audioClipEnd != 0) {
@@ -265,6 +381,8 @@ class ProjectDocument {
         'playheadMs': playheadMs,
         'effectClips': effectClips.map((effect) => effect.toJson()).toList(),
         'transitions': transitions.map((transition) => transition.toJson()).toList(),
+        'photoOverlays': photoOverlays.map((overlay) => overlay.toJson()).toList(),
+        'textOverlays': textOverlays.map((overlay) => overlay.toJson()).toList(),
       };
 
   String encode() => const JsonEncoder.withIndent('  ').convert(toJson());
@@ -348,6 +466,59 @@ class ProjectDocument {
         }).toList();
       }
 
+      List<ProjectPhotoOverlay> readPhotoOverlays() {
+        final raw = json['photoOverlays'] ?? const [];
+        if (raw is! List) throw const FormatException('Поле photoOverlays должно быть массивом.');
+        return raw.asMap().entries.map((entry) {
+          final value = entry.value;
+          if (value is! Map) throw FormatException('Слой фото ${entry.key + 1} должен быть объектом.');
+          final map = <String, dynamic>{};
+          for (final field in value.entries) {
+            if (field.key is! String) throw const FormatException('Некорректные поля слоя фото.');
+            map[field.key as String] = field.value;
+          }
+          return ProjectPhotoOverlay(
+            path: _readString(map, 'path'),
+            x: map.containsKey('x') ? _readDouble(map, 'x') : 0,
+            y: map.containsKey('y') ? _readDouble(map, 'y') : 0,
+            scale: map.containsKey('scale') ? _readDouble(map, 'scale') : 1,
+            rotation: map.containsKey('rotation') ? _readDouble(map, 'rotation') : 0,
+            opacity: map.containsKey('opacity') ? _readDouble(map, 'opacity') : 1,
+            start: map.containsKey('start') ? _readDouble(map, 'start') : 0,
+            end: map.containsKey('end') ? _readDouble(map, 'end') : 3,
+          );
+        }).toList();
+      }
+
+      List<ProjectTextOverlay> readTextOverlays() {
+        final raw = json['textOverlays'] ?? const [];
+        if (raw is! List) throw const FormatException('Поле textOverlays должно быть массивом.');
+        return raw.asMap().entries.map((entry) {
+          final value = entry.value;
+          if (value is! Map) throw FormatException('Текстовый слой ${entry.key + 1} должен быть объектом.');
+          final map = <String, dynamic>{};
+          for (final field in value.entries) {
+            if (field.key is! String) throw const FormatException('Некорректные поля текстового слоя.');
+            map[field.key as String] = field.value;
+          }
+          final boldValue = map['bold'] ?? true;
+          if (boldValue is! bool) throw const FormatException('Поле bold должно быть логическим.');
+          final colorValue = map['color'] ?? '#FFFFFF';
+          if (colorValue is! String) throw const FormatException('Поле color должно быть строкой.');
+          return ProjectTextOverlay(
+            text: _readString(map, 'text'),
+            start: _readDouble(map, 'start'),
+            end: _readDouble(map, 'end'),
+            x: map.containsKey('x') ? _readDouble(map, 'x') : 0,
+            y: map.containsKey('y') ? _readDouble(map, 'y') : 0.28,
+            fontSize: map.containsKey('fontSize') ? _readDouble(map, 'fontSize') : 42,
+            color: colorValue,
+            bold: boldValue,
+            opacity: map.containsKey('opacity') ? _readDouble(map, 'opacity') : 1,
+          );
+        }).toList();
+      }
+
       final rawAudioPath = json['audioPath'];
       if (rawAudioPath != null && rawAudioPath is! String) {
         throw const FormatException('Поле audioPath должно быть строкой или null.');
@@ -369,6 +540,8 @@ class ProjectDocument {
         playheadMs: _readInt(json, 'playheadMs'),
         effectClips: readEffects(),
         transitions: readTransitions(),
+        photoOverlays: readPhotoOverlays(),
+        textOverlays: readTextOverlays(),
       );
     } on FormatException {
       rethrow;
