@@ -935,7 +935,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   }
 
   Future<void> importPhotoOverlay() async {
-    if (busy || videoPath == null) return;
+    if (busy) return;
     try {
       final result = await FilePicker.platform.pickFiles(type: FileType.image, allowMultiple: false, dialogTitle: 'Выберите изображение поверх видео', allowedExtensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp']);
       if (result == null || result.files.isEmpty) return;
@@ -944,8 +944,11 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       setState(() {
         photoOverlays.add(PhotoOverlay(path: path));
         selectedPhotoOverlay = photoOverlays.length - 1;
+        _selectedCanvasObject = 'photo';
         projectDirty = true;
-        status = 'Фото добавлено поверх видео.';
+        status = videoPath == null
+            ? 'Фото загружено. Добавьте видео, чтобы разместить его поверх.'
+            : 'Фото добавлено поверх видео.';
       });
     } catch (e) { setStatus('Не удалось импортировать фото: $e'); }
   }
@@ -1018,6 +1021,27 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       result.add(peak);
     }
     return result;
+  }
+
+  double _softAxisSnap(double value) {
+    const range = 0.012;
+    const strength = 0.12;
+    final proximity = 1 - value.abs() / range;
+    if (proximity <= 0) return value;
+    return value * (1 - strength * proximity);
+  }
+
+  double _softAngleSnap(double degrees) {
+    const step = 15.0;
+    const range = 3.0;
+    const strength = 0.30;
+    final nearest = (degrees / step).round() * step;
+    var difference = nearest - degrees;
+    if (difference > 180) difference -= 360;
+    if (difference < -180) difference += 360;
+    final proximity = 1 - difference.abs() / range;
+    if (proximity <= 0) return degrees;
+    return degrees + difference * strength * proximity;
   }
 
   Future<void> extractAudio() async {
@@ -2737,6 +2761,45 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   double get playheadSeconds =>
       (position.inMilliseconds / 1000).clamp(0.0, timelineSeconds).toDouble();
 
+  int _nearestClipIndexToPlayhead() {
+    final active = _clipIndexAtTimelineTime(playheadSeconds);
+    if (active >= 0) return active;
+    if (videoClips.isEmpty) return -1;
+    var nearest = 0;
+    var nearestDistance = double.infinity;
+    for (var i = 0; i < videoClips.length; i++) {
+      final clip = videoClips[i];
+      final distance = playheadSeconds < clip.timelineStart
+          ? clip.timelineStart - playheadSeconds
+          : playheadSeconds > clip.timelineEnd
+              ? playheadSeconds - clip.timelineEnd
+              : 0.0;
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = i;
+      }
+    }
+    return nearest;
+  }
+
+  void _selectVideoAtPlayhead() {
+    final index = _nearestClipIndexToPlayhead();
+    setState(() {
+      _selectedCanvasObject = 'video';
+      selectedPhotoOverlay = -1;
+      if (index >= 0) selectedClipIndex = index;
+    });
+  }
+
+  void _selectVideoClip(int index) {
+    if (index < 0 || index >= videoClips.length) return;
+    setState(() {
+      selectedClipIndex = index;
+      selectedPhotoOverlay = -1;
+      _selectedCanvasObject = 'video';
+    });
+  }
+
   void splitSelectedClip() {
     try {
       final next = TimelineEditing.splitAt(_clipRanges(), selectedClipIndex, playheadSeconds);
@@ -3426,19 +3489,62 @@ class WaveformPainter extends CustomPainter {
   const WaveformPainter({required this.color, required this.samples});
   final Color color;
   final List<double> samples;
+
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFF163E37));
-    final count = samples.isEmpty ? 0 : math.min(samples.length, (size.width / 2.5).floor());
-    final paint = Paint()..color = color.withValues(alpha: 0.92)..strokeWidth = 1.8..strokeCap = StrokeCap.round;
+    if (samples.isEmpty || size.width <= 0 || size.height <= 0) return;
+
+    final peak = samples.reduce((a, b) => a > b ? a : b);
+    if (peak <= 0) return;
+    final count = math.min(samples.length, (size.width / 2.2).floor());
+    if (count <= 0) return;
+
     final center = size.height / 2;
+    final waveformPaint = Paint()
+      ..color = color.withValues(alpha: 0.98)
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round;
+    final peakPaint = Paint()
+      ..color = const Color(0xFFD9FFF3).withValues(alpha: 0.72)
+      ..strokeWidth = 1.0
+      ..strokeCap = StrokeCap.round;
+
     for (var i = 0; i < count; i++) {
-      final sampleIndex = (i * samples.length / count).floor().clamp(0, samples.length - 1);
-      final h = math.max(1.5, samples[sampleIndex] * size.height * 0.88);
-      final x = i * size.width / count + 1;
-      canvas.drawLine(Offset(x, center - h / 2), Offset(x, center + h / 2), paint);
+      final sampleIndex = (i * samples.length / count)
+          .floor()
+          .clamp(0, samples.length - 1)
+          .toInt();
+      final raw = (samples[sampleIndex] / peak).clamp(0.0, 1.0);
+      // Normalize quiet recordings and compress their dynamic range so
+      // bass hits and quieter passages remain visible on the timeline.
+      final boosted = math.pow(raw, 0.58).toDouble();
+      final halfHeight = math.max(1.2, boosted * size.height * 0.43).toDouble();
+      final x = (i + 0.5) * size.width / count;
+      canvas.drawLine(
+        Offset(x, center - halfHeight),
+        Offset(x, center + halfHeight),
+        waveformPaint,
+      );
+      if (boosted > 0.78) {
+        canvas.drawLine(
+          Offset(x, center - halfHeight),
+          Offset(x, center + halfHeight),
+          peakPaint,
+        );
+      }
     }
+
+    canvas.drawLine(
+      Offset(0, center),
+      Offset(size.width, center),
+      Paint()
+        ..color = color.withValues(alpha: 0.20)
+        ..strokeWidth = 0.7,
+    );
   }
+
   @override
-  bool shouldRepaint(covariant WaveformPainter old) => old.color != color || !identical(old.samples, samples);
+  bool shouldRepaint(covariant WaveformPainter old) =>
+      old.color != color || !identical(old.samples, samples);
 }
