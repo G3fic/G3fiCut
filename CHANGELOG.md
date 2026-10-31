@@ -1,5 +1,12 @@
 # Changelog
 
+## G3fiCut v0.3.65 — 2026-10-31
+
+- Check GitHub Releases on startup, when the app returns to the foreground, and every six hours while open.
+- Retry transient GitHub/network failures and show a clear status while preserving automatic retries.
+- Keep installer downloads restricted to official GitHub Releases and verify SHA-256 before launch.
+
+
 ## G3fiCut v0.3.64 — 2026-10-31
 
 - Fixed the widget-test analyzer failure by importing Flutter keyboard key definitions.
