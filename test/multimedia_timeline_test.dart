@@ -69,7 +69,7 @@ void main() {
       expect(() => MultimediaTimelineDocument(
         assets: assets, tracks: tracks,
         clips: const [],
-      ), throwsFormatException); // Empty lists are valid; no duplicate IDs.
+      ), returnsNormally);
     });
 
     test('supports text clips without media files', () {
