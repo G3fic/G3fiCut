@@ -270,7 +270,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       if (!lutFile.existsSync()) return 'null';
       final escapedPath = lutFile.absolute.path
           .replaceAll('\\', '/')
-          .replaceAll("'", "\\'");
+          .replaceAll(':', r'\\:')
+          .replaceAll("'", r"\\'");
       return "lut3d=file='$escapedPath':interp=tetrahedral";
     }
 
