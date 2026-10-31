@@ -2562,6 +2562,48 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         ]),
       );
 
+  void _handleTimelinePointerDown(PointerDownEvent event) {
+    if ((event.buttons & kSecondaryMouseButton) == 0) return;
+    _timelinePanPointer = event.pointer;
+    _timelinePanLastGlobal = event.position;
+    _timelinePanMoved = false;
+  }
+
+  void _handleTimelinePointerMove(PointerMoveEvent event) {
+    if (event.pointer != _timelinePanPointer) return;
+    final previous = _timelinePanLastGlobal;
+    _timelinePanLastGlobal = event.position;
+    if (previous == null) return;
+    final delta = event.position - previous;
+    if (delta.distanceSquared < 0.25) return;
+    if (delta.distance > 3) _timelinePanMoved = true;
+
+    final horizontal = timelineScrollController;
+    final vertical = timelineVerticalScrollController;
+    if (horizontal.hasClients && delta.dx != 0) {
+      horizontal.jumpTo(
+        (horizontal.offset - delta.dx)
+            .clamp(0.0, horizontal.position.maxScrollExtent)
+            .toDouble(),
+      );
+    }
+    if (vertical.hasClients && delta.dy != 0) {
+      vertical.jumpTo(
+        (vertical.offset - delta.dy)
+            .clamp(0.0, vertical.position.maxScrollExtent)
+            .toDouble(),
+      );
+    }
+  }
+
+  void _handleTimelinePointerEnd(PointerEvent event) {
+    if (event.pointer != _timelinePanPointer) return;
+    _timelinePanPointer = null;
+    _timelinePanLastGlobal = null;
+    // Keep _timelinePanMoved until the secondary-tap recognizer has decided
+    // whether this was a context click or an intentional right-button pan.
+  }
+
   Widget timelinePanel() => Container(
         height: _timelinePanelHeight,
         color: const Color(0xFF12151B),
@@ -2647,6 +2689,11 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           ),
           Expanded(
             child: Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: _handleTimelinePointerDown,
+              onPointerMove: _handleTimelinePointerMove,
+              onPointerUp: _handleTimelinePointerEnd,
+              onPointerCancel: _handleTimelinePointerEnd,
               onPointerSignal: (event) {
                 if (event is! PointerScrollEvent) return;
                 final horizontalController = timelineScrollController;
@@ -2680,14 +2727,20 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               },
               child: SingleChildScrollView(
               controller: timelineScrollController,
+              physics: const NeverScrollableScrollPhysics(),
               scrollDirection: Axis.horizontal,
               child: SizedBox(
                 width: 140 + timelineWidth,
                 child: SingleChildScrollView(
                   controller: timelineVerticalScrollController,
                   primary: false,
+                  physics: const NeverScrollableScrollPhysics(),
                   scrollDirection: Axis.vertical,
-                  child: Column(children: [
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                     SizedBox(
                       height: 32,
                       child: Row(children: [
@@ -2711,6 +2764,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                       photoTrackRow(),
                     ],
                   ]),
+                  ),
                 ),
               ),
               ),
