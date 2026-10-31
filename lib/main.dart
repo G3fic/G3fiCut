@@ -3126,7 +3126,9 @@ try {
                       selectedPhotoOverlay = -1;
                       _selectedCanvasObject = 'timeline-transition';
                     }),
-                    onSecondaryTapDown: (details) => showTimelineTransitionMenu(details.globalPosition, i),
+                    onSecondaryTapUp: (details) {
+                      if (!_timelinePanMoved) showTimelineTransitionMenu(details.globalPosition, i);
+                    },
                     child: Container(
                       decoration: BoxDecoration(
                         color: const Color(0xCC9A7138),
@@ -3257,7 +3259,9 @@ try {
                     child: GestureDetector(
                       onTapDown: (d) => seekTimeline(videoClips[i].timelineStart * zoom + d.localPosition.dx),
                       onTap: () => _selectVideoClip(i),
-                      onSecondaryTapDown: (details) => showClipMenu(details.globalPosition, i),
+                      onSecondaryTapUp: (details) {
+                        if (!_timelinePanMoved) showClipMenu(details.globalPosition, i);
+                      },
                       onHorizontalDragStart: (_) => _startClipMove(i),
                       onHorizontalDragUpdate: _updateClipMove,
                       onHorizontalDragEnd: (_) => _finishClipMove(),
@@ -3647,6 +3651,9 @@ try {
         selectedTransitionIndex = timelineTransitions.length - 1;
       }
       selectedEffectClipIndex = -1;
+      selectedAudioClip = false;
+      selectedPhotoOverlay = -1;
+      _selectedCanvasObject = 'timeline-transition';
       status = 'Переход «$type» добавлен между видеоклипами.';
     });
   }
@@ -3665,7 +3672,13 @@ try {
 
   Future<void> showEffectClipMenu(Offset position, int index) async {
     if (index < 0 || index >= effectClips.length) return;
-    setState(() { selectedEffectClipIndex = index; selectedTransitionIndex = -1; });
+    setState(() {
+      selectedEffectClipIndex = index;
+      selectedTransitionIndex = -1;
+      selectedAudioClip = false;
+      selectedPhotoOverlay = -1;
+      _selectedCanvasObject = 'timeline-effect';
+    });
     final action = await showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx + 1, position.dy + 1),
@@ -3683,19 +3696,37 @@ try {
         effectClips.removeAt(index);
         selectedEffectClipIndex = -1;
         status = 'Эффект удалён с таймлайна.';
-      } else if (action == 'longer') {
-        effect.end = math.min(timelineSeconds, effect.end + 1).toDouble();
-        status = 'Длительность эффекта увеличена.';
       } else {
-        effect.end = math.max(effect.start + 0.25, effect.end - 1).toDouble();
-        status = 'Длительность эффекта уменьшена.';
+        final ranges = effectClips
+            .map((item) => TimelineEffectRange(item.type, item.start, item.end))
+            .toList();
+        final requested = action == 'longer' ? effect.end + 1 : effect.end - 1;
+        final resized = TimelineEditing.resizeEffectEdge(
+          effects: ranges,
+          index: index,
+          requestedTime: requested,
+          timelineEnd: timelineSeconds,
+          resizeStart: false,
+        );
+        effect
+          ..start = resized.start
+          ..end = resized.end;
+        status = action == 'longer'
+            ? 'Длительность эффекта увеличена без перекрытия соседних эффектов.'
+            : 'Длительность эффекта уменьшена.';
       }
     });
   }
 
   Future<void> showTimelineTransitionMenu(Offset position, int index) async {
     if (index < 0 || index >= timelineTransitions.length) return;
-    setState(() { selectedTransitionIndex = index; selectedEffectClipIndex = -1; });
+    setState(() {
+      selectedTransitionIndex = index;
+      selectedEffectClipIndex = -1;
+      selectedAudioClip = false;
+      selectedPhotoOverlay = -1;
+      _selectedCanvasObject = 'timeline-transition';
+    });
     final action = await showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx + 1, position.dy + 1),
