@@ -19,6 +19,7 @@ import 'package:path_provider/path_provider.dart';
 import 'timeline_history.dart';
 import 'timeline_editing.dart';
 import 'project_document.dart';
+import 'canvas_snapping.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1113,15 +1114,12 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     double canvasExtent,
     bool wasSnapped,
   ) {
-    // Catch the axis within 14 logical pixels and keep it latched until
-    // the pointer has moved 24 pixels past it. The visual offset is exactly 0.
-    const catchDistance = 14.0;
-    const releaseDistance = 24.0;
-    final distance = rawOffset * canvasExtent;
-    final shouldSnap = wasSnapped
-        ? distance.abs() <= releaseDistance
-        : distance.abs() <= catchDistance;
-    return (value: shouldSnap ? 0.0 : rawOffset, snapped: shouldSnap);
+    final result = const CenterAxisSnapper().update(
+      rawOffset: rawOffset,
+      canvasExtent: canvasExtent,
+      wasSnapped: wasSnapped,
+    );
+    return (value: result.offset, snapped: result.isSnapped);
   }
 
   void _startVideoCanvasDrag() {
