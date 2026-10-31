@@ -1,5 +1,10 @@
 # Changelog
 
+## GifCut v0.3.74 — 2026-10-31
+
+- Fix the effect-placement regression test: the timeline correctly chooses the nearest available two-second gap, rather than incorrectly expecting no slot.
+- Keep the numeric application version and Windows release build metadata in sync.
+
 ## GifCut v0.3.73 — 2026-10-31
 
 - Place transition markers directly across video cuts and show them as translucent overlays on the video timeline.
