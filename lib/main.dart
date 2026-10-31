@@ -4603,7 +4603,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         final graph = <String>[
           '[0:v]split=2[fitSource][backdropSource]',
           '[backdropSource]scale=$outputWidth:$outputHeight:force_original_aspect_ratio=increase,'
-              'crop=$outputWidth:$outputHeight,boxblur=26:12,'
+              'crop=$outputWidth:$outputHeight,gblur=sigma=18,'
               'eq=brightness=-0.30:saturation=0.82[backdrop]',
           '[fitSource]$effectPrefix$foregroundTransforms[foreground]',
           '[backdrop][foreground]overlay=(W-w)/2:(H-h)/2:shortest=1[base0]',
