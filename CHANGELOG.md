@@ -1,5 +1,10 @@
 # Changelog
 
+## GifCut v0.3.77 — 2026-10-31
+
+- Launch the verified Windows installer through the Windows shell so elevation prompts are shown correctly.
+- Keep GifCut running until the installer takes over instead of exiting as soon as a child process is spawned.
+
 ## GifCut v0.3.76 — 2026-10-31
 
 - Fix in-app updates to launch the visible, SHA-256-verified Windows installer instead of silently copying files from a ZIP archive.
