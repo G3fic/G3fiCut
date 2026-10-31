@@ -119,6 +119,55 @@ jobs:
           ) -join [Environment]::NewLine
           Set-Content -Path (Join-Path $release 'FFmpeg-LICENSE-NOTICE.txt') -Value $notice -Encoding utf8
 
+      - name: Verify required FFmpeg filters
+        shell: pwsh
+        run: |
+          $ffmpeg = Join-Path $PWD 'build/windows/x64/runner/Release/ffmpeg.exe'
+          $filters = & $ffmpeg -hide_banner -filters 2>&1 | Out-String
+          foreach ($filter in @('xfade', 'lut3d', 'noise', 'chromashift', 'rgbashift', 'vignette', 'unsharp')) {
+            if ($filters -notmatch "(?m)^\s*[.TSC]{3}\s+$filter\s") {
+              throw "The bundled FFmpeg build does not include required filter: $filter"
+            }
+          }
+          & $ffmpeg -hide_banner -h filter=xfade 2>&1 | Out-File "$env:RUNNER_TEMP/xfade-help.txt"
+          $xfade = Get-Content "$env:RUNNER_TEMP/xfade-help.txt" -Raw
+          foreach ($transition in @('circlecrop', 'radial', 'smoothleft', 'zoomin', 'coverleft', 'revealright')) {
+            if ($xfade -notmatch "(?m)\b$transition\b") {
+              throw "The bundled FFmpeg xfade filter is missing transition: $transition"
+            }
+          }
+
+      - name: Download CC BY 4.0 cinematic LUT presets
+        shell: pwsh
+        run: |
+          $release = Join-Path $PWD 'build/windows/x64/runner/Release'
+          $lutDirectory = Join-Path $release 'luts'
+          New-Item -ItemType Directory -Path $lutDirectory -Force | Out-Null
+          $baseUrl = 'https://raw.githubusercontent.com/slaycamera/luts/main/luts'
+          $lutFiles = @(
+            'slay-01-amber.cube',
+            'slay-02-fade.cube',
+            'slay-03-neon.cube',
+            'slay-04-film.cube',
+            'slay-05-portrait.cube'
+          )
+          foreach ($name in $lutFiles) {
+            $destination = Join-Path $lutDirectory $name
+            Invoke-WebRequest -Uri "$baseUrl/$name" -OutFile $destination
+            if ((Get-Item $destination).Length -lt 900000) {
+              throw "Downloaded LUT file appears incomplete: $name"
+            }
+          }
+          $attribution = @(
+            'Cinematic LUT presets by slaycamera',
+            'Source: https://github.com/slaycamera/luts',
+            'License: Creative Commons Attribution 4.0 International (CC BY 4.0)',
+            'License text: https://creativecommons.org/licenses/by/4.0/',
+            'Attribution: LUTs: slay (CC BY 4.0)',
+            'The original LUT data is redistributed unchanged.'
+          ) -join [Environment]::NewLine
+          Set-Content -Path (Join-Path $lutDirectory 'ATTRIBUTION.txt') -Value $attribution -Encoding utf8
+
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --yes --no-progress
