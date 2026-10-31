@@ -10,6 +10,7 @@ void main() {
 
     expect(find.text('GifCut'), findsOneWidget);
     expect(find.byTooltip('Импортировать видео'), findsOneWidget);
+    expect(find.byKey(const ValueKey('media-import-photo')), findsOneWidget);
     expect(find.text('ТАЙМЛАЙН'), findsOneWidget);
     expect(find.text('Ваше видео появится здесь'), findsOneWidget);
     expect(tester.takeException(), isNull, reason: 'The editor must open without layout or initialization exceptions.');

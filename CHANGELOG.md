@@ -1,5 +1,15 @@
 # Changelog
 
+## GifCut v0.3.75 — 2026-10-31
+
+- Make the preview canvas follow the selected aspect ratio and use dark-gray letterbox areas around the frame.
+- Move the inspector to the left and show settings for the selected video clip, photo, audio clip, effect, or transition.
+- Add photo import directly to the Media tab.
+- Add editable transition type and duration controls, more FFmpeg-supported transition presets, and visible preview feedback for wipes and other transition styles.
+- Keep playback continuous when a clip is split into adjacent source ranges, avoiding a redundant seek and brief picture/audio dropout.
+- Keep timeline track headers aligned on the left.
+- Bump the application version to 0.3.75 (build 83).
+
 ## GifCut v0.3.74 — 2026-10-31
 
 - Fix the effect-placement regression test: the timeline correctly chooses the nearest available two-second gap, rather than incorrectly expecting no slot.

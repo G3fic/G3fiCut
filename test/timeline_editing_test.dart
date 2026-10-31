@@ -17,6 +17,36 @@ void main() {
       ]);
     });
 
+    test('a split of adjacent source and sequence ranges keeps playback running', () {
+      expect(
+        TimelineEditing.canContinuePlaybackWithoutSeek(
+          currentSourceEnd: 5,
+          nextSourceStart: 5,
+          currentTimelineEnd: 3,
+          nextTimelineStart: 3,
+        ),
+        isTrue,
+      );
+      expect(
+        TimelineEditing.canContinuePlaybackWithoutSeek(
+          currentSourceEnd: 5,
+          nextSourceStart: 6,
+          currentTimelineEnd: 3,
+          nextTimelineStart: 3,
+        ),
+        isFalse,
+      );
+      expect(
+        TimelineEditing.canContinuePlaybackWithoutSeek(
+          currentSourceEnd: 5,
+          nextSourceStart: 5,
+          currentTimelineEnd: 3,
+          nextTimelineStart: 4,
+        ),
+        isFalse,
+      );
+    });
+
     test('duplicate inserts after selection and shifts following clips', () {
       expect(TimelineEditing.duplicateAfter(source, 0), [
         const TimelineClipRange(0, 4, timelineStart: 0),
