@@ -2,8 +2,8 @@
 
 ## GifCut v0.3.77 — 2026-10-31
 
-- Launch the verified Windows installer through the Windows shell so elevation prompts are shown correctly.
-- Keep GifCut running until the installer takes over instead of exiting as soon as a child process is spawned.
+- Save the verified Windows installer in the user's Downloads folder and open it through Windows Explorer so elevation prompts are shown correctly.
+- Keep GifCut running until the installer takes over instead of exiting as soon as a child process is spawned; retain the downloaded setup file for manual launch if needed.
 
 ## GifCut v0.3.76 — 2026-10-31
 
