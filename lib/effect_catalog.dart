@@ -98,16 +98,16 @@ const Map<String, String> builtinEffectExportFilters = {
   'Тёплый тон': 'colorbalance=rs=0.12:bs=-0.06',
   'Холодный тон': 'colorbalance=rs=-0.04:bs=0.12',
   'Размытие': 'gblur=sigma=5.5',
-  'Высокий контраст': 'eq=contrast=1.65:saturation=1.15',
-  'Кинематографичный': 'eq=contrast=1.12:saturation=0.92:gamma=1.02,colorbalance=rs=0.025:bs=-0.015',
+  'Высокий контраст': 'colorchannelmixer=rr=1.65:gg=1.65:bb=1.65:ro=-0.325:go=-0.325:bo=-0.325,hue=s=1.15',
+  'Кинематографичный': 'colorchannelmixer=rr=1.12:gg=1.12:bb=1.12:ro=-0.06:go=-0.06:bo=-0.06,hue=s=0.92,colorbalance=rs=0.025:bs=-0.015',
   'Плёночное зерно': 'noise=alls=12:allf=t+u',
   'Старая плёнка': 'noise=alls=18:allf=t+u,hue=s=0.72,vignette=angle=PI/5',
-  'VHS': 'chromashift=cbh=3:crh=-3,noise=alls=9:allf=t+u,eq=saturation=0.82:contrast=1.06',
+  'VHS': 'chromashift=cbh=3:crh=-3,noise=alls=9:allf=t+u,colorchannelmixer=rr=1.06:gg=1.06:bb=1.06:ro=-0.03:go=-0.03:bo=-0.03,hue=s=0.82',
   'Глитч RGB': 'rgbashift=rh=5:rv=0:gh=-3:gv=1:bh=2:bv=-1',
   'Виньетка': 'vignette=angle=PI/4',
   'Резкость': 'unsharp=5:5:1.1:5:5:0.0',
-  'Пастель': 'eq=saturation=0.72:contrast=0.92:brightness=0.025',
-  'Холодная ночь': 'colorbalance=rs=-0.08:gs=0.01:bs=0.16,eq=saturation=0.88:contrast=1.12',
+  'Пастель': 'colorchannelmixer=rr=0.92:gg=0.92:bb=0.92:ro=0.065:go=0.065:bo=0.065,hue=s=0.72',
+  'Холодная ночь': 'colorbalance=rs=-0.08:gs=0.01:bs=0.16,colorchannelmixer=rr=1.12:gg=1.12:bb=1.12:ro=-0.06:go=-0.06:bo=-0.06,hue=s=0.88',
 };
 
 /// Human-readable global effects; LUT options are resolved from the bundled
