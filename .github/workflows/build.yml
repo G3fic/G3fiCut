@@ -125,7 +125,8 @@ jobs:
           $ffmpeg = Join-Path $PWD 'build/windows/x64/runner/Release/ffmpeg.exe'
           $filters = & $ffmpeg -hide_banner -filters 2>&1 | Out-String
           foreach ($filter in @('xfade', 'lut3d', 'noise', 'chromashift', 'rgbashift', 'vignette', 'unsharp')) {
-            if ($filters -notmatch "(?m)^\s*[.TSC]{3}\s+$filter\s") {
+            if ($filters -notmatch "(?m)\b$filter\b") {
+              Write-Output $filters
               throw "The bundled FFmpeg build does not include required filter: $filter"
             }
           }
