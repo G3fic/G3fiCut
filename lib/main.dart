@@ -293,6 +293,17 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       lutPreviewMatrices[videoEffect] ??
       _previewEffectMatrix(videoEffect);
 
+  List<double> _previewEffectMatrix(String type) {
+    const aliases = <String, String>{
+      'Холодный': 'Холодный тон',
+      'Тёплый': 'Тёплый тон',
+      'Мягкое размытие': 'Размытие',
+      'Оригинал': 'Оригинал',
+    };
+    final resolved = aliases[type] ?? type;
+    return _timelineEffectColorMatrix(resolved);
+  }
+
   ({Color color, double opacity}) get previewTransitionOverlay {
     final seconds = position.inMilliseconds / 1000;
     var opacity = 0.0;
@@ -4351,27 +4362,24 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
   String _buildExportVideoFilter(int index, TimelineClip clip) {
     final filters = <String>[];
-    {
-      final dimensions = const {
-        '16:9': '1920:1080',
-        '9:16': '1080:1920',
-        '1:1': '1080:1080',
-        '4:3': '1440:1080',
-        '4:5': '864:1080',
-        '3:2': '1620:1080',
-      }[aspectRatioPreset];
-      if (dimensions != null) {
-        final parts = dimensions.split(':');
-        filters.add('scale=${parts[0]}:${parts[1]}:force_original_aspect_ratio=decrease');
-        filters.add('pad=${parts[0]}:${parts[1]}:(ow-iw)/2:(oh-ih)/2:black');
-      }
+    if (videoScaleX != 1.0 || videoScaleY != 1.0) {
+      filters.add(
+        'scale=iw*\u0024{videoScaleX.toStringAsFixed(3)}:ih*\u0024{videoScaleY.toStringAsFixed(3)}:flags=lanczos',
+      );
     }
-    if (videoScaleX != 1.0 || videoScaleY != 1.0) filters.add('scale=iw*${videoScaleX.toStringAsFixed(3)}:ih*${videoScaleY.toStringAsFixed(3)}');
-    if (videoRotation.abs() > 0.01) filters.add('rotate=${(videoRotation * math.pi / 180).toStringAsFixed(5)}:c=black');
+    if (videoRotation.abs() > 0.01) {
+      filters.add(
+        'rotate=\u0024{(videoRotation * math.pi / 180).toStringAsFixed(5)}:c=none:ow=rotw(iw):oh=roth(ih)',
+      );
+    }
     if (filtersEnabled) {
-      filters.add('eq=brightness=${brightness.toStringAsFixed(3)}:contrast=${contrast.toStringAsFixed(3)}:saturation=${saturation.toStringAsFixed(3)}');
+      filters.add(
+        'eq=brightness=\u0024{brightness.toStringAsFixed(3)}:contrast=\u0024{contrast.toStringAsFixed(3)}:saturation=\u0024{saturation.toStringAsFixed(3)}',
+      );
     }
-    if (videoEffect != 'Оригинал' && _exportEffectFilter != 'null') filters.add(_exportEffectFilter);
+    if (videoEffect != 'Оригинал' && _exportEffectFilter != 'null') {
+      filters.add(_exportEffectFilter);
+    }
     if (motionBlurEnabled) filters.add('tmix=frames=3:weights=1 1 1');
 
     for (final effect in effectClips) {
@@ -4382,7 +4390,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       final localEnd = (overlapEnd - clip.timelineStart).clamp(0.0, clip.length).toDouble();
       final filter = _effectExportFilter(effect.type);
       if (filter != 'null') {
-        filters.add("$filter:enable='between(t,${localStart.toStringAsFixed(3)},${localEnd.toStringAsFixed(3)})'");
+        filters.add("$filter:enable='between(t,\u0024{localStart.toStringAsFixed(3)},\u0024{localEnd.toStringAsFixed(3)})'");
       }
     }
     if (transitionEffect != 'Нет' && videoClips.length > 1) {
@@ -4390,10 +4398,10 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       final color = transitionEffect == 'Белая вспышка' ? 'white' : 'black';
       final hasIncomingOverride = timelineTransitions.any((value) => (value.at - clip.timelineStart).abs() <= 0.025);
       final hasOutgoingOverride = timelineTransitions.any((value) => (value.at - clip.timelineEnd).abs() <= 0.025);
-      if (index > 0 && !hasIncomingOverride) filters.add('fade=t=in:st=0:d=${durationForClip.toStringAsFixed(2)}:color=$color');
+      if (index > 0 && !hasIncomingOverride) filters.add('fade=t=in:st=0:d=\u0024{durationForClip.toStringAsFixed(2)}:color=$color');
       if (index < videoClips.length - 1 && !hasOutgoingOverride) {
         final start = math.max(0, clip.length - durationForClip).toDouble();
-        filters.add('fade=t=out:st=${start.toStringAsFixed(2)}:d=${durationForClip.toStringAsFixed(2)}:color=$color');
+        filters.add('fade=t=out:st=\u0024{start.toStringAsFixed(2)}:d=\u0024{durationForClip.toStringAsFixed(2)}:color=$color');
       }
     }
     return filters.isEmpty ? 'null' : filters.join(',');
@@ -4574,42 +4582,60 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           args.addAll(['-loop', '1', '-framerate', '30', '-i', overlay.path]);
         }
 
-        if (photoOverlays.isEmpty) {
-          args.addAll(['-vf', _buildExportVideoFilter(i, clip)]);
-        } else {
-          final graph = <String>[
-            '[0:v]${_buildExportVideoFilter(i, clip)}[base0]',
-          ];
-          var previous = 'base0';
-          for (var overlayIndex = 0;
-              overlayIndex < photoOverlays.length;
-              overlayIndex++) {
-            final overlay = photoOverlays[overlayIndex];
-            final inputIndex = overlayIndex + 1;
-            final overlayLabel = 'ov$overlayIndex';
-            final outputLabel = overlayIndex == photoOverlays.length - 1
-                ? 'vout'
-                : 'base${overlayIndex + 1}';
-            final width = (360 * overlay.scale).round().clamp(24, 1800);
-            final angle =
-                (overlay.rotation * math.pi / 180).toStringAsFixed(5);
-            graph.add(
-              '[$inputIndex:v]scale=$width:-1,format=rgba,rotate=$angle:c=none,colorchannelmixer=aa=${overlay.opacity.toStringAsFixed(3)}[$overlayLabel]',
-            );
-            graph.add(
-              '[$previous][$overlayLabel]overlay=x=(W-w)/2+(${overlay.x.toStringAsFixed(4)})*W:y=(H-h)/2+(${overlay.y.toStringAsFixed(4)})*H:shortest=1[$outputLabel]',
-            );
-            previous = outputLabel;
-          }
-          args.addAll([
-            '-filter_complex',
-            graph.join(';'),
-            '-map',
-            '[vout]',
-            '-map',
-            '0:a?',
-          ]);
+        final dimensions = const {
+          '16:9': '1920:1080',
+          '9:16': '1080:1920',
+          '1:1': '1080:1080',
+          '4:3': '1440:1080',
+          '4:5': '864:1080',
+          '3:2': '1620:1080',
+        }[aspectRatioPreset] ?? '1920:1080';
+        final dimensionParts = dimensions.split(':');
+        final outputWidth = dimensionParts[0];
+        final outputHeight = dimensionParts[1];
+        final foregroundEffects = _buildExportVideoFilter(i, clip);
+        final foregroundChain = foregroundEffects == 'null'
+            ? 'format=rgba'
+            : 'format=rgba,$foregroundEffects';
+        final graph = <String>[
+          '[0:v]split=2[fitSource][backdropSource]',
+          '[backdropSource]scale=$outputWidth:$outputHeight:force_original_aspect_ratio=increase,'
+              'crop=$outputWidth:$outputHeight,boxblur=26:12,'
+              'eq=brightness=-0.30:saturation=0.82[backdrop]',
+          '[fitSource]scale=$outputWidth:$outputHeight:force_original_aspect_ratio=decrease,'
+              'pad=$outputWidth:$outputHeight:(ow-iw)/2:(oh-ih)/2:color=0x00000000,'
+              'setsar=1,$foregroundChain[foreground]',
+          '[backdrop][foreground]overlay=(W-w)/2:(H-h)/2:shortest=1[base0]',
+        ];
+        var previous = 'base0';
+        for (var overlayIndex = 0;
+            overlayIndex < photoOverlays.length;
+            overlayIndex++) {
+          final overlay = photoOverlays[overlayIndex];
+          final inputIndex = overlayIndex + 1;
+          final overlayLabel = 'ov$overlayIndex';
+          final outputLabel = 'base\u0024{overlayIndex + 1}';
+          final width = (360 * overlay.scale).round().clamp(24, 1800);
+          final angle = (overlay.rotation * math.pi / 180).toStringAsFixed(5);
+          graph.add(
+            '[$inputIndex:v]scale=$width:-1,format=rgba,rotate=$angle:c=none,'
+                'colorchannelmixer=aa=\u0024{overlay.opacity.toStringAsFixed(3)}[$overlayLabel]',
+          );
+          graph.add(
+            '[$previous][$overlayLabel]overlay=x=(W-w)/2+(\u0024{overlay.x.toStringAsFixed(4)})*W:'
+                'y=(H-h)/2+(\u0024{overlay.y.toStringAsFixed(4)})*H:shortest=1[$outputLabel]',
+          );
+          previous = outputLabel;
         }
+        graph.add('[$previous]setsar=1,format=yuv420p[vout]');
+        args.addAll([
+          '-filter_complex',
+          graph.join(';'),
+          '-map',
+          '[vout]',
+          '-map',
+          '0:a?',
+        ]);
 
         final commonOutputArgs = <String>[
           '-r',
