@@ -1807,13 +1807,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                       final maxWidth = (screenWidth - 64 - 1 - 14 - _inspectorPanelWidth - 220).clamp(150.0, 420.0).toDouble();
                       _mediaPanelWidth = (_mediaPanelWidth + dx).clamp(150.0, maxWidth).toDouble();
                     }),
-                    SizedBox(width: _inspectorPanelWidth, child: inspectorPanel()),
+                    Expanded(child: previewPanel()),
                     _verticalPanelSplitter('inspector-panel-splitter', (dx) {
                       final screenWidth = MediaQuery.sizeOf(context).width;
                       final maxWidth = (screenWidth - 64 - 1 - 14 - _mediaPanelWidth - 220).clamp(190.0, 440.0).toDouble();
                       _inspectorPanelWidth = (_inspectorPanelWidth - dx).clamp(190.0, maxWidth).toDouble();
                     }),
-                    Expanded(child: previewPanel()),
+                    SizedBox(width: _inspectorPanelWidth, child: inspectorPanel()),
                   ],
                 ),
               ),
@@ -2372,6 +2372,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       );
 
   Widget previewPanel() => Container(
+        key: const ValueKey('preview-panel'),
         color: const Color(0xFF101217),
         child: Column(children: [
           Container(
@@ -2860,6 +2861,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   }
 
   Widget inspectorPanel() => Container(
+        key: const ValueKey('right-inspector-panel'),
         color: panel,
         padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
         child: SingleChildScrollView(
