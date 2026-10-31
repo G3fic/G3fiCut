@@ -3540,7 +3540,57 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         _adjustmentSlider('Размер', pht.scale, 0.1, 5, (v) => setState(() { pht.scale = v; projectDirty = true; })),
         _adjustmentSlider('Поворот', pht.rotation, -180, 180, (v) => setState(() { pht.rotation = v; projectDirty = true; })),
         _adjustmentSlider('Прозрачность', pht.opacity, 0.05, 1, (v) => setState(() { pht.opacity = v; projectDirty = true; })),
+        _adjustmentSlider('Начало', pht.start, 0, math.max(0.05, timelineSeconds - 0.05), (v) => setState(() {
+          pht.start = v;
+          pht.end = math.max(pht.end, pht.start + 0.05).toDouble();
+          projectDirty = true;
+        })),
+        _adjustmentSlider('Конец', pht.end, pht.start + 0.05, math.max(pht.start + 0.05, timelineSeconds), (v) => setState(() {
+          pht.end = v;
+          projectDirty = true;
+        })),
         TextButton.icon(onPressed: deleteSelectedTimelineItem, icon: const Icon(Icons.delete_outline), label: const Text('Удалить фото')),
+        const Divider(),
+      ]);
+    }
+    if (selectedTextOverlay >= 0 && selectedTextOverlay < textOverlays.length) {
+      final text = textOverlays[selectedTextOverlay];
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('НАСТРОЙКИ ТЕКСТА', style: TextStyle(color: muted, fontSize: 10, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        TextFormField(
+          key: ValueKey('text-overlay-editor-$selectedTextOverlay'),
+          initialValue: text.text,
+          maxLines: 3,
+          decoration: const InputDecoration(labelText: 'Содержание', isDense: true, border: OutlineInputBorder()),
+          onChanged: (value) => setState(() { text.text = value; projectDirty = true; }),
+        ),
+        const SizedBox(height: 8),
+        _adjustmentSlider('Размер шрифта', text.fontSize, 12, 120, (value) => setState(() { text.fontSize = value; projectDirty = true; })),
+        DropdownButtonFormField<String>(
+          isExpanded: true,
+          initialValue: text.color,
+          decoration: const InputDecoration(labelText: 'Цвет', isDense: true, border: OutlineInputBorder()),
+          items: const [
+            DropdownMenuItem(value: '#FFFFFF', child: Text('Белый')),
+            DropdownMenuItem(value: '#FFD166', child: Text('Жёлтый')),
+            DropdownMenuItem(value: '#FF6B6B', child: Text('Красный')),
+            DropdownMenuItem(value: '#7AE7C7', child: Text('Мятный')),
+            DropdownMenuItem(value: '#9B6DFF', child: Text('Фиолетовый')),
+          ],
+          onChanged: (value) => setState(() { text.color = value ?? '#FFFFFF'; projectDirty = true; }),
+        ),
+        SwitchListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Жирный шрифт', style: TextStyle(fontSize: 12)),
+          value: text.bold,
+          onChanged: (value) => setState(() { text.bold = value; projectDirty = true; }),
+        ),
+        _adjustmentSlider('Прозрачность', text.opacity, 0, 1, (value) => setState(() { text.opacity = value; projectDirty = true; })),
+        property('Начало', '${text.start.toStringAsFixed(2)} с'),
+        property('Конец', '${text.end.toStringAsFixed(2)} с'),
+        TextButton.icon(onPressed: deleteSelectedTimelineItem, icon: const Icon(Icons.delete_outline), label: const Text('Удалить текст')),
         const Divider(),
       ]);
     }
@@ -3573,7 +3623,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             if ((selectedTransitionIndex >= 0 && selectedTransitionIndex < timelineTransitions.length) ||
                 (selectedEffectClipIndex >= 0 && selectedEffectClipIndex < effectClips.length) ||
-                (selectedPhotoOverlay >= 0 && selectedPhotoOverlay < photoOverlays.length) || selectedAudioClip ||
+                (selectedPhotoOverlay >= 0 && selectedPhotoOverlay < photoOverlays.length) ||
+                (selectedTextOverlay >= 0 && selectedTextOverlay < textOverlays.length) || selectedAudioClip ||
                 (videoClips.isNotEmpty && _selectedCanvasObject == 'video' && selectedClipIndex < videoClips.length))
               _selectedItemSettings(),
             Row(children: [
@@ -3802,7 +3853,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                     IconButton(
                       tooltip: 'Удалить выбранный элемент',
                       visualDensity: VisualDensity.compact,
-                      onPressed: videoClips.isEmpty && effectClips.isEmpty && timelineTransitions.isEmpty && audioPath == null && photoOverlays.isEmpty
+                      onPressed: videoClips.isEmpty && effectClips.isEmpty && timelineTransitions.isEmpty && audioPath == null && photoOverlays.isEmpty && textOverlays.isEmpty
                           ? null
                           : deleteSelectedTimelineItem,
                       icon: const Icon(Icons.delete_outline_rounded, size: 17),
