@@ -1,8 +1,8 @@
 name: gifcut
 description: A Windows-first video editor with timeline-based audio extraction.
 publish_to: "none"
-version: 0.3.79+87
-# Release GifCut v0.3.79
+version: 0.3.80+88
+# Release GifCut v0.3.80
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -17,6 +17,7 @@ dependencies:
   media_kit: ^1.2.6
   media_kit_video: ^2.0.1
   media_kit_libs_video: ^1.0.7
+  super_drag_and_drop: ^0.9.1
 
 dev_dependencies:
   flutter_test:
