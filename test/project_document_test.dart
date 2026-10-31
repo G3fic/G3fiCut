@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:g3ficut/project_document.dart';
+import 'package:gifcut/project_document.dart';
 
 ProjectDocument makeProject({
   String format = ProjectDocument.formatId,
