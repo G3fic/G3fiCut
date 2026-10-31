@@ -143,7 +143,7 @@ jobs:
           $release = Join-Path $PWD 'build/windows/x64/runner/Release'
           $lutDirectory = Join-Path $release 'luts'
           New-Item -ItemType Directory -Path $lutDirectory -Force | Out-Null
-          $baseUrl = 'https://raw.githubusercontent.com/slaycamera/luts/main/luts'
+          $baseUrl = 'https://raw.githubusercontent.com/slaycamera/luts/a1709044efe115640dde1dee17d4185fc059af0d/luts'
           $lutFiles = @(
             'slay-01-amber.cube',
             'slay-02-fade.cube',
