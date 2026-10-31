@@ -1,5 +1,14 @@
 # Changelog
 
+## G3fiCut v0.3.66 — 2026-10-31
+
+- Move primary editing actions from the horizontal toolbar into a vertical left tool rail.
+- Remove independent width/height drag handles; use uniform video scaling and a dedicated bottom rotation handle.
+- Reduce center-snap resistance so video and photo overlays can be freely positioned.
+- Draw the extracted audio clip from measured PCM peak samples instead of a synthetic decorative waveform.
+- Rebuild audio waveform when opening a project with an existing extracted WAV file.
+
+
 ## G3fiCut v0.3.65 — 2026-10-31
 
 - Check GitHub Releases on startup, when the app returns to the foreground, and every six hours while open.
