@@ -141,8 +141,35 @@ class PhotoOverlay {
   double x, y, scale, rotation, opacity;
 }
 
+class TimelineEffectClip {
+  TimelineEffectClip({required this.type, required this.start, required this.end});
+  String type;
+  double start, end;
+  double get duration => end - start;
+}
+
+class TimelineTransition {
+  TimelineTransition({required this.type, required this.at, required this.duration});
+  String type;
+  double at, duration;
+}
+
+class ExportTimelineSegment {
+  const ExportTimelineSegment({
+    required this.path,
+    required this.start,
+    required this.end,
+    required this.isGap,
+  });
+  final String path;
+  final double start;
+  final double end;
+  final bool isGap;
+  double get duration => end - start;
+}
+
 class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.70');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.71');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -188,6 +215,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   double _videoRotateStartRotation = 0;
   final Map<int, double> _photoRotateStartAngles = {};
   final Map<int, double> _photoRotateStartRotations = {};
+  double _videoDragRawX = 0;
+  double _videoDragRawY = 0;
+  bool _videoSnapXActive = false;
+  bool _videoSnapYActive = false;
+  final Map<int, Offset> _photoDragRawOffsets = {};
+  final Set<int> _photoSnapXActive = {};
+  final Set<int> _photoSnapYActive = {};
   int _gapNextClipIndex = -1;
   bool _gapResumePending = false;
   bool _suppressPlayerStateEvents = false;
@@ -209,6 +243,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   String videoEffect = 'Оригинал';
   String transitionEffect = 'Нет';
   double transitionDuration = 0.4;
+  static const _timelineEffectTypes = ProjectEffectClip.supportedTypes;
+  static const _timelineTransitionTypes = ProjectTransition.supportedTypes;
 
   double get previewAspectRatio => const {
     '16:9': 16 / 9,
@@ -274,6 +310,14 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   final List<TimelineClip> videoClips = [];
   final TimelineHistory _timelineHistory = TimelineHistory();
   int selectedClipIndex = 0;
+  final List<TimelineEffectClip> effectClips = [];
+  final List<TimelineTransition> timelineTransitions = [];
+  int selectedEffectClipIndex = -1;
+  int selectedTransitionIndex = -1;
+  int _effectClipMoveIndex = -1;
+  double _effectClipMoveStart = 0;
+  double _effectClipMovePointerX = 0;
+  TimelineSnapshot? _effectClipMoveBefore;
   double audioClipStart = 0;
   double audioClipEnd = 0;
   List<double> audioWaveform = const [];
@@ -1023,12 +1067,28 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     return result;
   }
 
-  double _softAxisSnap(double value) {
-    const range = 0.012;
-    const strength = 0.12;
-    final proximity = 1 - value.abs() / range;
-    if (proximity <= 0) return value;
-    return value * (1 - strength * proximity);
+  ({double value, bool snapped}) _snapToCenterAxis(
+    double rawOffset,
+    double canvasExtent,
+    bool wasSnapped,
+  ) {
+    // Catch the axis within 14 logical pixels and keep it latched until
+    // the pointer has moved 24 pixels past it. The visual offset is exactly 0.
+    const catchDistance = 14.0;
+    const releaseDistance = 24.0;
+    final distance = rawOffset * canvasExtent;
+    final shouldSnap = wasSnapped
+        ? distance.abs() <= releaseDistance
+        : distance.abs() <= catchDistance;
+    return (value: shouldSnap ? 0.0 : rawOffset, snapped: shouldSnap);
+  }
+
+  void _startVideoCanvasDrag() {
+    _videoDragRawX = videoOffsetX;
+    _videoDragRawY = videoOffsetY;
+    _videoSnapXActive = false;
+    _videoSnapYActive = false;
+    _selectVideoAtPlayhead();
   }
 
   double _softAngleSnap(double degrees) {
