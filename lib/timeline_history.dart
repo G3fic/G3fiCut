@@ -21,6 +21,39 @@ class TimelineClipRange {
   int get hashCode => Object.hash(start, end, timelineStart);
 }
 
+
+/// Immutable timing for one standalone effect block.
+class TimelineEffectRange {
+  const TimelineEffectRange(this.type, this.start, this.end);
+  final String type;
+  final double start;
+  final double end;
+
+  @override
+  bool operator ==(Object other) =>
+      other is TimelineEffectRange &&
+      other.type == type && other.start == start && other.end == end;
+
+  @override
+  int get hashCode => Object.hash(type, start, end);
+}
+
+/// Immutable transition attached to one cut between adjacent video clips.
+class TimelineTransitionRange {
+  const TimelineTransitionRange(this.type, this.at, this.duration);
+  final String type;
+  final double at;
+  final double duration;
+
+  @override
+  bool operator ==(Object other) =>
+      other is TimelineTransitionRange &&
+      other.type == type && other.at == at && other.duration == duration;
+
+  @override
+  int get hashCode => Object.hash(type, at, duration);
+}
+
 /// An immutable snapshot of user-editable timeline state.
 class TimelineSnapshot {
   TimelineSnapshot({
@@ -29,20 +62,28 @@ class TimelineSnapshot {
     required this.audioPath,
     required this.audioClipStart,
     required this.audioClipEnd,
-  }) : videoClips = List<TimelineClipRange>.unmodifiable(videoClips);
+    List<TimelineEffectRange> effectClips = const [],
+    List<TimelineTransitionRange> transitions = const [],
+  })  : videoClips = List<TimelineClipRange>.unmodifiable(videoClips),
+        effectClips = List<TimelineEffectRange>.unmodifiable(effectClips),
+        transitions = List<TimelineTransitionRange>.unmodifiable(transitions);
 
   final List<TimelineClipRange> videoClips;
   final int selectedClipIndex;
   final String? audioPath;
   final double audioClipStart;
   final double audioClipEnd;
+  final List<TimelineEffectRange> effectClips;
+  final List<TimelineTransitionRange> transitions;
 
   bool sameContentAs(TimelineSnapshot other) {
     if (selectedClipIndex != other.selectedClipIndex ||
         audioPath != other.audioPath ||
         audioClipStart != other.audioClipStart ||
         audioClipEnd != other.audioClipEnd ||
-        videoClips.length != other.videoClips.length) {
+        videoClips.length != other.videoClips.length ||
+        effectClips.length != other.effectClips.length ||
+        transitions.length != other.transitions.length) {
       return false;
     }
 
@@ -54,6 +95,12 @@ class TimelineSnapshot {
           left.timelineStart != right.timelineStart) {
         return false;
       }
+    }
+    for (var i = 0; i < effectClips.length; i++) {
+      if (effectClips[i] != other.effectClips[i]) return false;
+    }
+    for (var i = 0; i < transitions.length; i++) {
+      if (transitions[i] != other.transitions[i]) return false;
     }
     return true;
   }
