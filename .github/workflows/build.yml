@@ -168,6 +168,32 @@ jobs:
           ) -join [Environment]::NewLine
           Set-Content -Path (Join-Path $lutDirectory 'ATTRIBUTION.txt') -Value $attribution -Encoding utf8
 
+      - name: Smoke-test LUTs, effects and blurred aspect-ratio canvas
+        shell: pwsh
+        run: |
+          $ffmpeg = Join-Path $PWD 'build/windows/x64/runner/Release/ffmpeg.exe'
+          $lut = (Join-Path $PWD 'build/windows/x64/runner/Release/luts/slay-04-film.cube') -replace '\\', '/'
+          $sampleFilters = @(
+            "lut3d=file='$lut':interp=tetrahedral",
+            'noise=alls=12:allf=t+u',
+            'chromashift=cbh=3:crh=-3',
+            'format=rgba,rgbashift=rh=5:rv=0:gh=-3:gv=1:bh=2:bv=-1',
+            'vignette=angle=PI/5',
+            'unsharp=5:5:1.1:5:5:0.0'
+          )
+          foreach ($filter in $sampleFilters) {
+            & $ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=64x64:rate=30' -vf $filter -frames:v 1 -f null NUL
+            if ($LASTEXITCODE -ne 0) { throw "FFmpeg effect smoke test failed: $filter" }
+          }
+
+          $canvasGraph = '[0:v]split=2[fitSource][backdropSource];[backdropSource]scale=64:96:force_original_aspect_ratio=increase,crop=64:96,boxblur=26:12,eq=brightness=-0.30:saturation=0.82[backdrop];[fitSource]scale=64:96:force_original_aspect_ratio=decrease,format=rgba,pad=64:96:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1[foreground];[backdrop][foreground]overlay=(W-w)/2:(H-h)/2:shortest=1,setsar=1,format=yuv420p[out]'
+          & $ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=96x64:rate=30:duration=1' -filter_complex $canvasGraph -map '[out]' -frames:v 1 -f null NUL
+          if ($LASTEXITCODE -ne 0) { throw 'Blurred aspect-ratio canvas composition smoke test failed.' }
+
+          $transitionGraph = '[0:v]settb=AVTB,setpts=PTS-STARTPTS,fps=30,format=yuv420p[a];[1:v]settb=AVTB,setpts=PTS-STARTPTS,fps=30,format=yuv420p[b];[a][b]xfade=transition=radial:duration=0.3:offset=0.5[out]'
+          & $ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=64x64:rate=30:duration=1' -f lavfi -i 'smptebars=size=64x64:rate=30:duration=1' -filter_complex $transitionGraph -map '[out]' -frames:v 1 -f null NUL
+          if ($LASTEXITCODE -ne 0) { throw 'FFmpeg xfade transition smoke test failed.' }
+
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --yes --no-progress
