@@ -1062,6 +1062,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     if (nextClipIndex < 0 || nextClipIndex >= videoClips.length) return;
     final endSeconds = videoClips[nextClipIndex].timelineStart;
     final safeStart = startSeconds.clamp(0.0, endSeconds).toDouble();
+    _gapNextClipIndex = nextClipIndex;
     if (endSeconds <= safeStart + 0.001) {
       unawaited(_resumePlaybackAfterGap());
       return;
