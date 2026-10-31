@@ -4311,7 +4311,6 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
   Widget trackRow({required bool audio}) {
     final path = audio ? audioPath : videoPath;
-    final color = audio ? audioGreen : videoBlue;
     final playhead = (position.inMilliseconds / 1000 * zoom).clamp(0.0, timelineWidth - 2).toDouble();
 
     return SizedBox(
@@ -5535,7 +5534,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         } else {
           graph.add('[0:v]null[fitSource]');
           graph.add(
-            'color=c=black:s=${outputWidth}x${outputHeight}:r=${frameRate.toStringAsFixed(3)}:d=${clip.length.toStringAsFixed(3)}[backdrop]',
+            'color=c=black:s=${outputWidth}x$outputHeight:r=${frameRate.toStringAsFixed(3)}:d=${clip.length.toStringAsFixed(3)}[backdrop]',
           );
         }
         graph.add('[fitSource]$effectPrefix$foregroundTransforms[foreground]');
@@ -5575,7 +5574,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           final localEnd = (overlapEnd - clip.timelineStart).toStringAsFixed(3);
           final textFile = File(p.join(
             temp.path,
-            'text_${i}_${textIndex}.txt',
+            'text_${i}_$textIndex.txt',
           ));
           await textFile.writeAsString(overlay.text);
           final safeTextPath = textFile.absolute.path
@@ -5586,7 +5585,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               .round()
               .clamp(10, 220);
           final fontColor = '0x${overlay.color.replaceFirst('#', '')}@${overlay.opacity.toStringAsFixed(3)}';
-          final textOutput = 'textBase${textIndex}_${i}';
+          final textOutput = 'textBase${textIndex}_$i';
           graph.add(
             '[$previous]drawtext=fontfile=C\\:/Windows/Fonts/${overlay.bold ? 'arialbd' : 'arial'}.ttf:'
             "textfile='$safeTextPath':reload=0:"
