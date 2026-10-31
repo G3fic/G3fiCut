@@ -623,7 +623,7 @@ try {
 if (-not $isAdmin -and -not $canWrite) {
   $elevationArgs = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -ProcessId {1} -ArchivePath "{2}" -TargetDirectory "{3}" -ExecutablePath "{4}"' -f $PSCommandPath, $ProcessId, $ArchivePath, $TargetDirectory, $ExecutablePath
   try {
-    Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $elevationArgs
+    Start-Process -FilePath 'powershell.exe' -Verb RunAs -WindowStyle Hidden -ArgumentList $elevationArgs
     exit 0
   } catch {
     # If the user cancels UAC, restore the previous working application session.
@@ -664,6 +664,8 @@ try {
       await Process.start(
         'powershell.exe',
         [
+          '-WindowStyle',
+          'Hidden',
           '-NoProfile',
           '-ExecutionPolicy',
           'Bypass',
