@@ -2710,7 +2710,13 @@ try {
                     if (selectedPhotoOverlay >= photoOverlays.length) selectedPhotoOverlay = photoOverlays.length - 1;
                     projectDirty = true;
                   }), icon: const Icon(Icons.delete_outline, size: 16)),
-                  onTap: () => setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; }),
+                  onTap: () => setState(() {
+                    selectedPhotoOverlay = i;
+                    selectedAudioClip = false;
+                    selectedEffectClipIndex = -1;
+                    selectedTransitionIndex = -1;
+                    _selectedCanvasObject = 'photo';
+                  }),
                 ),
               if (selectedPhotoOverlay >= 0 && selectedPhotoOverlay < photoOverlays.length) ...[
                 _adjustmentSlider('Размер фото', photoOverlays[selectedPhotoOverlay].scale, 0.2, 3, (v) => setState(() { photoOverlays[selectedPhotoOverlay].scale = v; projectDirty = true; })),
@@ -3491,6 +3497,13 @@ try {
 
   Future<void> showAudioClipMenu(Offset position) async {
     if (audioPath == null || audioClipEnd <= audioClipStart) return;
+    setState(() {
+      selectedAudioClip = true;
+      selectedEffectClipIndex = -1;
+      selectedTransitionIndex = -1;
+      selectedPhotoOverlay = -1;
+      _selectedCanvasObject = 'audio';
+    });
     final action = await showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx + 1, position.dy + 1),
