@@ -1566,14 +1566,21 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
-              child: Tooltip(
-                message: 'Импортировать видео',
-                child: OutlinedButton.icon(
-                  onPressed: busy ? null : pickVideo,
-                  icon: const Icon(Icons.video_call_outlined, size: 17),
-                  label: const Text('Импортировать видео'),
-                ),
-              ),
+              child: LayoutBuilder(builder: (context, constraints) {
+                final compact = constraints.maxWidth < 170;
+                return Tooltip(
+                  message: 'Импортировать видео',
+                  child: OutlinedButton.icon(
+                    onPressed: busy ? null : pickVideo,
+                    icon: const Icon(Icons.video_call_outlined, size: 17),
+                    label: Text(
+                      compact ? 'Импорт' : 'Импортировать видео',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                );
+              }),
             ),
             const SizedBox(height: 8),
             InkWell(
