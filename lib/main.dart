@@ -2368,7 +2368,7 @@ try {
               child: videoPath == null
                   ? SingleChildScrollView(
                       child: ConstrainedBox(
-                        constraints: const BoxConstraints(minHeight: 120),
+                        constraints: const BoxConstraints(minHeight: 96),
                         child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                           Icon(Icons.slideshow_outlined, size: 54, color: Color(0xFF414451)),
                           SizedBox(height: 14),
