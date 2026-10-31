@@ -175,6 +175,7 @@ void main() {
     expect(find.byKey(const ValueKey('media-library-media')), findsOneWidget);
     final effectsTab = find.byKey(const ValueKey('media-library-effects'));
     expect(effectsTab, findsOneWidget);
+    await tester.ensureVisible(effectsTab);
     await tester.tap(effectsTab);
     await tester.pump();
 
@@ -186,7 +187,9 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.tap(find.byKey(const ValueKey('media-library-transitions')));
+    final transitionsTab = find.byKey(const ValueKey('media-library-transitions'));
+    await tester.ensureVisible(transitionsTab);
+    await tester.tap(transitionsTab);
     await tester.pump();
     expect(find.text('ПЕРЕХОДЫ МЕЖДУ КЛИПАМИ'), findsOneWidget);
     expect(find.text('Растворение'), findsOneWidget);
@@ -195,7 +198,9 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.tap(find.byKey(const ValueKey('media-library-text')));
+    final textTab = find.byKey(const ValueKey('media-library-text'));
+    await tester.ensureVisible(textTab);
+    await tester.tap(textTab);
     await tester.pump();
     expect(find.byKey(const ValueKey('add-text-overlay')), findsOneWidget);
 
@@ -216,11 +221,15 @@ void main() {
     await tester.pump();
     expect(find.byKey(const ValueKey('import-audio-file')), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('media-library-stickers')));
+    final stickersTab = find.byKey(const ValueKey('media-library-stickers'));
+    await tester.ensureVisible(stickersTab);
+    await tester.tap(stickersTab);
     await tester.pump();
     expect(find.byKey(const ValueKey('sticker-⭐')), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('media-library-captions')));
+    final captionsTab = find.byKey(const ValueKey('media-library-captions'));
+    await tester.ensureVisible(captionsTab);
+    await tester.tap(captionsTab);
     await tester.pump();
     expect(find.byKey(const ValueKey('import-captions-file')), findsOneWidget);
 
