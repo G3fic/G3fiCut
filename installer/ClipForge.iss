@@ -3,7 +3,7 @@
   #define MyAppVersion "0.2.0"
 #endif
 #define MyAppPublisher "GifCut"
-#define MyAppExeName "g3ficut.exe"
+#define MyAppExeName "gifcut.exe"
 
 [Setup]
 AppId={{6B7F4C9D-21C3-4E88-9B13-CE9A4C1F6D27}
@@ -21,7 +21,7 @@ CloseApplications=yes
 RestartApplications=no
 UninstallDisplayIcon={app}\{#MyAppExeName}
 OutputDir=..\build\installer
-OutputBaseFilename=G3fiCut-Setup-{#MyAppVersion}
+OutputBaseFilename=GifCut-Setup-{#MyAppVersion}
 Compression=lzma2
 SolidCompression=yes
 
