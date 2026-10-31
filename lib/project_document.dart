@@ -223,7 +223,7 @@ class ProjectDocument {
     if (format != formatId) {
       throw const FormatException('Неподдерживаемый формат файла проекта.');
     }
-    if (schemaVersion != 1 && schemaVersion != 2 && schemaVersion != currentSchemaVersion) {
+    if (schemaVersion != 1 && schemaVersion != 2 && schemaVersion != 3 && schemaVersion != currentSchemaVersion) {
       throw FormatException('Версия формата проекта $schemaVersion не поддерживается.');
     }
     if (appVersion.trim().isEmpty) {
