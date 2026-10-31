@@ -3578,7 +3578,7 @@ try {
       setStatus('Недостаточно места на таймлайне для эффекта.');
       return;
     }
-    final start = TimelineEffectEditing.findAvailableEffectStart(
+    final start = TimelineEditing.findAvailableEffectStart(
       effects: effectClips.map((item) => TimelineEffectRange(item.type, item.start, item.end)).toList(),
       preferred: playheadSeconds,
       length: length,
@@ -3760,7 +3760,7 @@ try {
     final effect = effectClips[_effectClipMoveIndex];
     final length = effect.duration;
     final desiredStart = _effectClipMoveStart + _effectClipMovePointerX / zoom;
-    final nextStart = TimelineEffectEditing.findAvailableEffectStart(
+    final nextStart = TimelineEditing.findAvailableEffectStart(
       effects: effectClips.map((item) => TimelineEffectRange(item.type, item.start, item.end)).toList(),
       preferred: desiredStart,
       length: length,
@@ -3802,7 +3802,7 @@ try {
     final ranges = effectClips
         .map((item) => TimelineEffectRange(item.type, item.start, item.end))
         .toList();
-    final resized = TimelineEffectEditing.resizeEffectEdge(
+    final resized = TimelineEditing.resizeEffectEdge(
       effects: ranges,
       index: index,
       requestedTime: requested,
