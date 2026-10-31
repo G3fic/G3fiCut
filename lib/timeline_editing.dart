@@ -18,6 +18,21 @@ class TimelineEditing {
     return result;
   }
 
+  /// Returns true when two timeline clips are adjacent slices of the same
+  /// source frames. In this case the player must keep running through the
+  /// split instead of seeking to the same timestamp again.
+  static bool canContinuePlaybackWithoutSeek({
+    required double currentSourceEnd,
+    required double nextSourceStart,
+    required double currentTimelineEnd,
+    required double nextTimelineStart,
+    double sourceTolerance = 0.025,
+    double timelineTolerance = 0.025,
+  }) {
+    return (currentSourceEnd - nextSourceStart).abs() <= sourceTolerance &&
+        (currentTimelineEnd - nextTimelineStart).abs() <= timelineTolerance;
+  }
+
   static List<TimelineClipRange> duplicateAfter(List<TimelineClipRange> clips, int index) {
     _requireIndex(clips, index);
     final selected = clips[index];
