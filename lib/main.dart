@@ -2685,6 +2685,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     _timelineHistory.record(before: before, after: after);
     _clipMoveBefore = null;
     _clipMoveIndex = -1;
+    // Re-evaluate the playhead against the new clip positions immediately:
+    // moving a clip away can leave the playhead in a black gap.
+    unawaited(seek(position));
   }
 
   Future<void> showColorAdjustments() async {
