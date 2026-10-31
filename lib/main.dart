@@ -142,7 +142,7 @@ class PhotoOverlay {
 }
 
 class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.69');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.70');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -937,7 +937,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   Future<void> importPhotoOverlay() async {
     if (busy) return;
     try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.image, allowMultiple: false, dialogTitle: 'Выберите изображение поверх видео', allowedExtensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp']);
+      final result = await FilePicker.platform.pickFiles(type: FileType.image, allowMultiple: false, dialogTitle: 'Выберите изображение для слоя фото', allowedExtensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp']);
       if (result == null || result.files.isEmpty) return;
       final path = result.files.single.path;
       if (path == null || !await File(path).exists()) { setStatus('Не удалось прочитать изображение.'); return; }
@@ -1752,7 +1752,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                   mediaItem(Icons.image_outlined, p.basename(photoOverlays[i].path), 'Фото · слой ${i + 1}', accent,
                     imagePath: photoOverlays[i].path,
                     selected: selectedPhotoOverlay == i,
-                    onTap: () => setState(() => selectedPhotoOverlay = i)),
+                    onTap: () => setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; })),
                 ],
               ],
             ],
@@ -2733,7 +2733,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
   Future<void> showClipMenu(Offset position, int index) async {
     if (index < 0 || index >= videoClips.length) return;
-    setState(() { selectedClipIndex = index; projectDirty = true; });
+    _selectVideoClip(index);
     final action = await showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx + 1, position.dy + 1),
