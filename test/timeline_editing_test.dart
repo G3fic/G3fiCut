@@ -115,7 +115,7 @@ void main() {
           length: 3,
           timelineEnd: 10,
         ),
-        0,
+        isNull,
       );
       expect(
         TimelineEffectEditing.findAvailableEffectStart(
