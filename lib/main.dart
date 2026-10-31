@@ -283,7 +283,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   bool _showVerticalSnapGuide = false;
   bool _showHorizontalSnapGuide = false;
   String aspectRatioPreset = '16:9';
-  static const double _timelineLabelWidth = 112;
+  static const double _timelineLabelWidth = 0;
   double _aspectRatioValue(String preset) => switch (preset) {
     '9:16' => 9 / 16, '1:1' => 1, '4:3' => 4 / 3,
     '4:5' => 4 / 5, '3:2' => 3 / 2, _ => 16 / 9,
@@ -3986,7 +3986,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                     SizedBox(
                       height: 32,
                       child: Row(children: [
-                        Container(width: _timelineLabelWidth, padding: const EdgeInsets.only(left: 14), alignment: Alignment.centerLeft, color: const Color(0xFF171820), child: const Text('ВРЕМЯ', style: TextStyle(color: muted, fontSize: 9, letterSpacing: 1.1, fontWeight: FontWeight.w800))),
+                        const SizedBox.shrink(),
                         SizedBox(width: timelineWidth, child: CustomPaint(painter: RulerPainter(seconds: timelineSeconds, pixelsPerSecond: zoom), child: const SizedBox.expand())),
                       ]),
                     ),
@@ -4023,23 +4023,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         width: _timelineLabelWidth + timelineWidth,
         height: 54,
         child: Row(children: [
-          Container(
-            width: _timelineLabelWidth, height: 54, padding: const EdgeInsets.symmetric(horizontal: 9),
-            decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
-            child: Row(children: [
-              const Icon(Icons.auto_awesome_outlined, size: 16, color: Color(0xFFB18CFF)),
-              const SizedBox(width: 6),
-              const Expanded(child: Text('Эффекты', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700))),
-              IconButton(
-                tooltip: 'Добавить эффект на таймлайн',
-                visualDensity: VisualDensity.compact,
-                constraints: const BoxConstraints.tightFor(width: 28, height: 30),
-                padding: EdgeInsets.zero,
-                onPressed: busy || videoClips.isEmpty ? null : addTimelineEffect,
-                icon: const Icon(Icons.add, size: 16),
-              ),
-            ]),
-          ),
+          const SizedBox.shrink(),
           SizedBox(
             width: timelineWidth, height: 54,
             child: Stack(clipBehavior: Clip.hardEdge, children: [
@@ -4144,23 +4128,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         width: _timelineLabelWidth + timelineWidth,
         height: 42,
         child: Row(children: [
-          Container(
-            width: _timelineLabelWidth, height: 42, padding: const EdgeInsets.symmetric(horizontal: 9),
-            decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
-            child: Row(children: [
-              const Icon(Icons.compare_arrows, size: 16, color: Color(0xFFFFC56B)),
-              const SizedBox(width: 6),
-              const Expanded(child: Text('Переходы', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700))),
-              IconButton(
-                tooltip: 'Добавить переход на ближайший стык',
-                visualDensity: VisualDensity.compact,
-                constraints: const BoxConstraints.tightFor(width: 28, height: 28),
-                padding: EdgeInsets.zero,
-                onPressed: busy || videoClips.length < 2 ? null : addTimelineTransition,
-                icon: const Icon(Icons.add, size: 16),
-              ),
-            ]),
-          ),
+          const SizedBox.shrink(),
           SizedBox(
             width: timelineWidth, height: 42,
             child: Stack(clipBehavior: Clip.hardEdge, children: [
@@ -4249,15 +4217,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         width: _timelineLabelWidth + timelineWidth,
         height: 54,
         child: Row(children: [
-          Container(
-            width: _timelineLabelWidth, height: 54, padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
-            child: const Row(children: [
-              Icon(Icons.image_outlined, size: 17, color: Color(0xFFB18CFF)),
-              SizedBox(width: 8),
-              Expanded(child: Text('Фото / оверлеи', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700))),
-            ]),
-          ),
+          const SizedBox.shrink(),
           SizedBox(
             width: timelineWidth, height: 54,
             child: Stack(children: [
@@ -4301,17 +4261,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         width: _timelineLabelWidth + timelineWidth,
         height: 54,
         child: Row(children: [
-          Container(
-            width: _timelineLabelWidth,
-            height: 54,
-            padding: const EdgeInsets.symmetric(horizontal: 9),
-            decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
-            child: const Row(children: [
-              Icon(Icons.title, size: 17, color: Color(0xFFFFC56B)),
-              SizedBox(width: 7),
-              Expanded(child: Text('Текст', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700))),
-            ]),
-          ),
+          const SizedBox.shrink(),
           SizedBox(
             width: timelineWidth,
             height: 54,
@@ -4368,21 +4318,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       width: _timelineLabelWidth + timelineWidth,
       height: 63,
       child: Row(children: [
-        Container(
-          width: _timelineLabelWidth,
-          height: 63,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
-          child: Row(children: [
-            Icon(audio ? Icons.graphic_eq : Icons.movie_outlined, size: 17, color: color),
-            const SizedBox(width: 8),
-            Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(audio ? 'Аудио 1' : 'Видео 1', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 2),
-              Text(audio ? 'Звуковая дорожка' : 'Видеодорожка', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9, color: muted)),
-            ])),
-          ]),
-        ),
+        const SizedBox.shrink(),
         SizedBox(
           width: timelineWidth,
           height: 63,
