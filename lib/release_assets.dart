@@ -1,4 +1,4 @@
-/// Release-version and installer-asset helpers used by GifCut's updater.
+// Release-version and installer-asset helpers used by GifCut's updater.
 
 /// Accepts the numeric MAJOR.MINOR.PATCH version format used by pubspec and
 /// GitHub release tags after the optional leading "v" has been removed.
