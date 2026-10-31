@@ -2127,59 +2127,80 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             height: 43,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
-            child: LayoutBuilder(builder: (context, constraints) => SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(width: math.max(720.0, constraints.maxWidth), child: Row(children: [
-              const Icon(Icons.view_timeline_outlined, size: 17, color: accent),
-              const SizedBox(width: 8),
-              const Text('ТАЙМЛАЙН', style: TextStyle(fontSize: 11, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
-              const SizedBox(width: 12),
-              Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4), decoration: BoxDecoration(color: const Color(0xFF292A36), borderRadius: BorderRadius.circular(5)), child: const Text('V1', style: TextStyle(fontSize: 9, color: Color(0xFFB8B6D4), fontWeight: FontWeight.w800))),
-              const SizedBox(width: 8),
-              IconButton(
-                key: const ValueKey('timeline-snap'),
-                tooltip: snappingEnabled ? 'Привязка включена' : 'Привязка выключена',
-                visualDensity: VisualDensity.compact,
-                onPressed: () => setState(() {
-                  snappingEnabled = !snappingEnabled;
-                  _timelineSnapAt = null;
-                }),
-                icon: Icon(snappingEnabled ? Icons.push_pin : Icons.push_pin_outlined,
-                  size: 17, color: snappingEnabled ? accent : muted),
+            child: LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  width: math.max(720.0, constraints.maxWidth),
+                  child: Row(children: [
+                    const Icon(Icons.view_timeline_outlined, size: 17, color: accent),
+                    const SizedBox(width: 8),
+                    const Text('ТАЙМЛАЙН', style: TextStyle(fontSize: 11, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
+                    const SizedBox(width: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                      decoration: BoxDecoration(color: const Color(0xFF292A36), borderRadius: BorderRadius.circular(5)),
+                      child: const Text('V1', style: TextStyle(fontSize: 9, color: Color(0xFFB8B6D4), fontWeight: FontWeight.w800)),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      key: const ValueKey('timeline-snap'),
+                      tooltip: snappingEnabled ? 'Привязка включена' : 'Привязка выключена',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => setState(() {
+                        snappingEnabled = !snappingEnabled;
+                        _timelineSnapAt = null;
+                      }),
+                      icon: Icon(snappingEnabled ? Icons.push_pin : Icons.push_pin_outlined,
+                        size: 17, color: snappingEnabled ? accent : muted),
+                    ),
+                    IconButton(
+                      key: const ValueKey('timeline-undo'),
+                      tooltip: 'Отменить (Ctrl+Z)',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: _timelineHistory.canUndo ? undoTimelineEdit : null,
+                      icon: const Icon(Icons.undo_rounded, size: 17),
+                    ),
+                    IconButton(
+                      key: const ValueKey('timeline-redo'),
+                      tooltip: 'Повторить (Ctrl+Y)',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: _timelineHistory.canRedo ? redoTimelineEdit : null,
+                      icon: const Icon(Icons.redo_rounded, size: 17),
+                    ),
+                    IconButton(
+                      tooltip: 'Разделить клип (Ctrl+B)',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: videoClips.isEmpty ? null : splitSelectedClip,
+                      icon: const Icon(Icons.content_cut_rounded, size: 17),
+                    ),
+                    IconButton(
+                      tooltip: 'Удалить выбранный клип',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: videoClips.isEmpty ? null : deleteSelectedClip,
+                      icon: const Icon(Icons.delete_outline_rounded, size: 17),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      tooltip: 'Уменьшить масштаб',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => setTimelineZoom(zoom - 4),
+                      icon: const Icon(Icons.remove, size: 17),
+                    ),
+                    SizedBox(
+                      width: 48,
+                      child: Text('${zoom.toInt()} px/s', textAlign: TextAlign.center, style: const TextStyle(color: muted, fontSize: 10)),
+                    ),
+                    IconButton(
+                      tooltip: 'Увеличить масштаб',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => setTimelineZoom(zoom + 4),
+                      icon: const Icon(Icons.add, size: 17),
+                    ),
+                  ]),
+                ),
               ),
-              IconButton(
-                key: const ValueKey('timeline-undo'),
-                tooltip: 'Отменить (Ctrl+Z)',
-                visualDensity: VisualDensity.compact,
-                onPressed: _timelineHistory.canUndo ? undoTimelineEdit : null,
-                icon: const Icon(Icons.undo_rounded, size: 17),
-              ),
-              IconButton(
-                key: const ValueKey('timeline-redo'),
-                tooltip: 'Повторить (Ctrl+Y)',
-                visualDensity: VisualDensity.compact,
-                onPressed: _timelineHistory.canRedo ? redoTimelineEdit : null,
-                icon: const Icon(Icons.redo_rounded, size: 17),
-              ),
-              IconButton(
-                tooltip: 'Разделить клип (Ctrl+B)',
-                visualDensity: VisualDensity.compact,
-                onPressed: videoClips.isEmpty ? null : splitSelectedClip,
-                icon: const Icon(Icons.content_cut_rounded, size: 17),
-              ),
-              IconButton(
-                tooltip: 'Удалить выбранный клип',
-                visualDensity: VisualDensity.compact,
-                onPressed: videoClips.isEmpty ? null : deleteSelectedClip,
-                icon: const Icon(Icons.delete_outline_rounded, size: 17),
-              ),
-              const Spacer(),
-              IconButton(tooltip: 'Уменьшить масштаб', visualDensity: VisualDensity.compact, onPressed: () => setTimelineZoom(zoom - 4), icon: const Icon(Icons.remove, size: 17)),
-              SizedBox(width: 48, child: Text('${zoom.toInt()} px/s', textAlign: TextAlign.center, style: const TextStyle(color: muted, fontSize: 10))),
-              IconButton(tooltip: 'Увеличить масштаб', visualDensity: VisualDensity.compact, onPressed: () => setTimelineZoom(zoom + 4), icon: const Icon(Icons.add, size: 17)),
-            ])
-              ])),
-            )),,
+            ),
           ),
           Expanded(
             child: Listener(
