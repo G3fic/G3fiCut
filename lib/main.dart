@@ -171,7 +171,7 @@ class ExportTimelineSegment {
 }
 
 class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.76');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.77');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -601,29 +601,33 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         throw StateError('Контрольная сумма установщика не совпала. Установка отменена.');
       }
 
-      // Launch the normal Inno Setup executable. It displays its own progress,
-      // requests elevation when required, closes the running app and installs
-      // into the existing GifCut installation directory.
+      // Launch through the Windows shell. Inno Setup may require elevation;
+      // cmd's "start" delegates to the shell so Windows can display the UAC prompt.
+      // Keep GifCut alive: Process.start only reports that a child was created,
+      // not that the installer UI was actually shown. Inno Setup's Restart
+      // Manager can close the editor when it is ready to replace its files.
       if (mounted) {
-        setStatus('Запускаю установщик GifCut $version…');
+        setStatus('Открываю установщик GifCut $version…');
       }
-      await Process.start(
-        installer.path,
-        const [],
-        mode: ProcessStartMode.detached,
+      final commandProcessor = Platform.environment['COMSPEC'] ?? 'cmd.exe';
+      final launchArguments = ['/c', 'start', '', installer.path];
+      final launchResult = await Process.run(
+        commandProcessor,
+        launchArguments,
+        runInShell: false,
       );
-
-      // The installer now owns the update flow. Release media_kit resources,
-      // but never turn a successful installer launch into an update failure.
-      final activePlayer = player;
-      if (activePlayer != null) {
-        try {
-          await activePlayer.dispose();
-        } catch (_) {
-          // The OS will reclaim player resources when this process exits.
-        }
+      if (launchResult.exitCode != 0) {
+        throw StateError(
+          'Windows не смогла открыть установщик: '
+          '${launchResult.stderr.toString().trim()}',
+        );
       }
-      exit(0);
+      if (mounted) {
+        setStatus(
+          'Установщик GifCut $version передан Windows. '
+          'Завершите установку в открывшемся окне.',
+        );
+      }
     } catch (e) {
       if (mounted) {
         setStatus('Не удалось запустить установщик: ${e.toString().replaceFirst('Bad state: ', '')}');
