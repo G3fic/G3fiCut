@@ -22,6 +22,8 @@ ProjectDocument makeProject({
   int playheadMs = 6200,
   List<ProjectEffectClip> effectClips = const [],
   List<ProjectTransition> transitions = const [],
+  List<ProjectTextOverlay> textOverlays = const [],
+  List<String> mediaLibraryPaths = const [],
 }) =>
     ProjectDocument(
       format: format,
@@ -39,6 +41,8 @@ ProjectDocument makeProject({
       playheadMs: playheadMs,
       effectClips: effectClips,
       transitions: transitions,
+      textOverlays: textOverlays,
+      mediaLibraryPaths: mediaLibraryPaths,
     );
 
 void main() {
@@ -117,6 +121,25 @@ void main() {
 
       expect(decoded.effectClips, original.effectClips);
       expect(decoded.transitions, original.transitions);
+    });
+
+    test('roundtrip preserves editable text overlays and imported media paths', () {
+      final original = makeProject(
+        textOverlays: const [
+          ProjectTextOverlay(text: 'Заголовок', start: 1.5, end: 5.0, fontSize: 54, x: 0.1, y: -0.2),
+          ProjectTextOverlay(text: 'Подпись', start: 6.0, end: 9.0, fontSize: 28),
+        ],
+        mediaLibraryPaths: const [
+          r'C:\media\intro.mp4',
+          r'C:\media\cover.png',
+          r'C:\media\music.wav',
+        ],
+      );
+
+      final decoded = ProjectDocument.decode(original.encode());
+
+      expect(decoded.textOverlays, original.textOverlays);
+      expect(decoded.mediaLibraryPaths, original.mediaLibraryPaths);
     });
 
     test('schema v2 projects migrate without timeline annotations', () {
