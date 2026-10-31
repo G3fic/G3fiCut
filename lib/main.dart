@@ -276,21 +276,36 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   }[videoEffect] ?? const <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0];
 
   ({Color color, double opacity}) get previewTransitionOverlay {
-    if (transitionEffect == 'Нет' || videoClips.length < 2) {
-      return (color: Colors.black, opacity: 0);
-    }
     final seconds = position.inMilliseconds / 1000;
     var opacity = 0.0;
-    for (var i = 0; i < videoClips.length; i++) {
-      final clip = videoClips[i];
-      if (i > 0 && seconds >= clip.timelineStart && seconds < clip.timelineStart + transitionDuration) {
-        opacity = math.max(opacity, 1 - (seconds - clip.timelineStart) / transitionDuration).toDouble();
-      }
-      if (i < videoClips.length - 1 && seconds > clip.timelineEnd - transitionDuration && seconds <= clip.timelineEnd) {
-        opacity = math.max(opacity, (seconds - (clip.timelineEnd - transitionDuration)) / transitionDuration).toDouble();
+    var color = Colors.black;
+    for (final transition in timelineTransitions) {
+      final half = transition.duration / 2;
+      final progress = 1 - (seconds - transition.at).abs() / math.max(0.05, half);
+      if (progress <= 0) continue;
+      if (transition.type == 'Белая вспышка') color = Colors.white;
+      if (transition.type == 'Затемнение' || transition.type == 'Растворение') color = Colors.black;
+      if (transition.type == 'Белая вспышка' ||
+          transition.type == 'Затемнение' ||
+          transition.type == 'Растворение') {
+        opacity = math.max(opacity, progress.clamp(0.0, 1.0)).toDouble();
       }
     }
-    return (color: transitionEffect == 'Белая вспышка' ? Colors.white : Colors.black, opacity: opacity.clamp(0.0, 1.0).toDouble());
+    // Keep the legacy inspector transition as a fallback for projects that
+    // use the global transition setting but have no per-cut transition clips.
+    if (timelineTransitions.isEmpty && transitionEffect != 'Нет' && videoClips.length > 1) {
+      for (var i = 0; i < videoClips.length; i++) {
+        final clip = videoClips[i];
+        if (i > 0 && seconds >= clip.timelineStart && seconds < clip.timelineStart + transitionDuration) {
+          opacity = math.max(opacity, 1 - (seconds - clip.timelineStart) / transitionDuration).toDouble();
+        }
+        if (i < videoClips.length - 1 && seconds > clip.timelineEnd - transitionDuration && seconds <= clip.timelineEnd) {
+          opacity = math.max(opacity, (seconds - (clip.timelineEnd - transitionDuration)) / transitionDuration).toDouble();
+        }
+      }
+      color = transitionEffect == 'Белая вспышка' ? Colors.white : Colors.black;
+    }
+    return (color: color, opacity: opacity.clamp(0.0, 1.0).toDouble());
   }
   String inspectorTab = 'video';
   List<String> videoThumbnails = [];
@@ -1933,6 +1948,57 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildPreviewVideo() {
+    Widget result = Video(
+      controller: videoController!,
+      controls: NoVideoControls,
+      fit: BoxFit.cover,
+    );
+    final activeEffects = effectClips.where((effect) =>
+        playheadSeconds >= effect.start && playheadSeconds < effect.end);
+    for (final effect in activeEffects) {
+      if (effect.type == 'Размытие') {
+        result = ImageFiltered(
+          imageFilter: ui.ImageFilter.blur(sigmaX: 5.5, sigmaY: 5.5),
+          child: result,
+        );
+      } else {
+        result = ColorFiltered(
+          colorFilter: ColorFilter.matrix(_timelineEffectColorMatrix(effect.type)),
+          child: result,
+        );
+      }
+    }
+    return result;
+  }
+
+  List<double> _timelineEffectColorMatrix(String type) => const {
+    'Чёрно-белый': <double>[0.213,0.715,0.072,0,0, 0.213,0.715,0.072,0,0, 0.213,0.715,0.072,0,0, 0,0,0,1,0],
+    'Сепия': <double>[0.393,0.769,0.189,0,0, 0.349,0.686,0.168,0,0, 0.272,0.534,0.131,0,0, 0,0,0,1,0],
+    'Негатив': <double>[-1,0,0,0,255, 0,-1,0,0,255, 0,0,-1,0,255, 0,0,0,1,0],
+    'Тёплый тон': <double>[1.12,0,0,0,0, 0,1,0,0,0, 0,0,0.94,0,0, 0,0,0,1,0],
+    'Холодный тон': <double>[0.96,0,0,0,0, 0,1,0,0,0, 0,0,1.12,0,0, 0,0,0,1,0],
+    'Высокий контраст': <double>[1.45,0,0,0,-56, 0,1.45,0,0,-56, 0,0,1.45,0,-56, 0,0,0,1,0],
+  }[type] ?? const <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0];
+
+  String _effectExportFilter(String type) => const {
+    'Чёрно-белый': 'hue=s=0',
+    'Сепия': 'colorchannelmixer=.393:.769:.189:0:0:.349:.686:.168:0:0:.272:.534:.131:0:0',
+    'Негатив': 'negate',
+    'Тёплый тон': 'colorbalance=rs=0.12:bs=-0.06',
+    'Холодный тон': 'colorbalance=rs=-0.04:bs=0.12',
+    'Размытие': 'gblur=sigma=5.5',
+    'Высокий контраст': 'eq=contrast=1.65:saturation=1.15',
+  }[type] ?? 'null';
+
+  String _transitionFilterName(String type) => const {
+    'Затемнение': 'fadeblack',
+    'Белая вспышка': 'fadewhite',
+    'Растворение': 'dissolve',
+    'Смахивание влево': 'wipeleft',
+    'Смахивание вправо': 'wiperight',
+  }[type] ?? 'fadeblack';
+
   Widget previewPanel() => Container(
         color: const Color(0xFF101217),
         child: Column(children: [
@@ -2037,7 +2103,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                                                   sigmaX: (videoEffect == 'Мягкое размытие' ? 2.0 : 0.0) + (motionBlurEnabled ? 1.2 : 0.0),
                                                                   sigmaY: (videoEffect == 'Мягкое размытие' ? 2.0 : 0.0) + (motionBlurEnabled ? 1.2 : 0.0),
                                                                 ),
-                                                                child: Video(controller: videoController!, controls: NoVideoControls, fit: BoxFit.cover),
+                                                                child: _buildPreviewVideo(),
                                                               ),
                                                             ),
                                                           ),
