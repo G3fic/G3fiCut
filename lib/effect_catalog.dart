@@ -7,6 +7,7 @@ const Map<String, String> builtinTransitionFilters = {
   'Затемнение': 'fadeblack',
   'Белая вспышка': 'fadewhite',
   'Растворение': 'dissolve',
+  'Плавное смешивание': 'fade',
   'Смахивание влево': 'wipeleft',
   'Смахивание вправо': 'wiperight',
   'Смахивание вверх': 'wipeup',
