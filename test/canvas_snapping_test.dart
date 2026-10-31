@@ -81,4 +81,20 @@ void main() {
     });
   });
 
+  group('Right-angle rotation snapping', () {
+    const snapper = AngleSnapper(stepDegrees: 90, catchDistance: 5);
+
+    test('snaps close rotations to horizontal and vertical orientations', () {
+      expect(snapper.snap(87), 90);
+      expect(snapper.snap(178), 180);
+      expect(snapper.snap(271), 270);
+      expect(snapper.snap(359), 360);
+    });
+
+    test('does not snap rotations outside the right-angle catch distance', () {
+      expect(snapper.snap(84), 84);
+      expect(snapper.snap(96), 96);
+    });
+  });
+
 }
