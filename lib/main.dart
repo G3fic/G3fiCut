@@ -2537,7 +2537,7 @@ try {
                                 borderRadius: BorderRadius.circular(8),
                                 child: ClipRect(
                                   child: Stack(key: _previewCanvasKey, fit: StackFit.expand, children: [
-                                    const ColoredBox(color: Colors.black),
+                                    const ColoredBox(color: Color(previewLetterboxColorValue)),
                                     if (_showVerticalSnapGuide)
                                       Positioned(left: bounds.maxWidth / 2 - .5, top: 0, bottom: 0, child: IgnorePointer(child: Container(width: 1, color: const Color(0xFFB18CFF)))),
                                     if (_showHorizontalSnapGuide)
@@ -4593,7 +4593,7 @@ try {
       if (dimensions != null) {
         final parts = dimensions.split(':');
         filters.add('scale=${parts[0]}:${parts[1]}:force_original_aspect_ratio=decrease');
-        filters.add('pad=${parts[0]}:${parts[1]}:(ow-iw)/2:(oh-ih)/2:black');
+        filters.add('pad=${parts[0]}:${parts[1]}:(ow-iw)/2:(oh-ih)/2:0x292C34');
       }
     }
     if (videoScaleX != 1.0 || videoScaleY != 1.0) filters.add('scale=iw*${videoScaleX.toStringAsFixed(3)}:ih*${videoScaleY.toStringAsFixed(3)}');
