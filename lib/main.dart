@@ -2586,26 +2586,29 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               scrollDirection: Axis.horizontal,
               child: SizedBox(
                 width: 140 + timelineWidth,
-                child: Column(children: [
-                  SizedBox(
-                    height: 32,
-                    child: Row(children: [
-                      Container(width: 140, padding: const EdgeInsets.only(left: 14), alignment: Alignment.centerLeft, color: const Color(0xFF171820), child: const Text('ВРЕМЯ', style: TextStyle(color: muted, fontSize: 9, letterSpacing: 1.1, fontWeight: FontWeight.w800))),
-                      SizedBox(width: timelineWidth, child: CustomPaint(painter: RulerPainter(seconds: timelineSeconds, pixelsPerSecond: zoom), child: const SizedBox.expand())),
-                    ]),
-                  ),
-                  trackRow(audio: false),
-                  const SizedBox(height: 5),
-                  trackRow(audio: true),
-                  const SizedBox(height: 5),
-                  effectTrackRow(),
-                  const SizedBox(height: 4),
-                  transitionTrackRow(),
-                  if (photoOverlays.isNotEmpty) ...[
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.vertical,
+                  child: Column(children: [
+                    SizedBox(
+                      height: 32,
+                      child: Row(children: [
+                        Container(width: 140, padding: const EdgeInsets.only(left: 14), alignment: Alignment.centerLeft, color: const Color(0xFF171820), child: const Text('ВРЕМЯ', style: TextStyle(color: muted, fontSize: 9, letterSpacing: 1.1, fontWeight: FontWeight.w800))),
+                        SizedBox(width: timelineWidth, child: CustomPaint(painter: RulerPainter(seconds: timelineSeconds, pixelsPerSecond: zoom), child: const SizedBox.expand())),
+                      ]),
+                    ),
+                    trackRow(audio: false),
                     const SizedBox(height: 5),
-                    photoTrackRow(),
-                  ],
-                ]),
+                    trackRow(audio: true),
+                    const SizedBox(height: 5),
+                    effectTrackRow(),
+                    const SizedBox(height: 4),
+                    transitionTrackRow(),
+                    if (photoOverlays.isNotEmpty) ...[
+                      const SizedBox(height: 5),
+                      photoTrackRow(),
+                    ],
+                  ]),
+                ),
               ),
               ),
             ),
