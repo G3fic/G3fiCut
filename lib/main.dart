@@ -47,10 +47,12 @@ class ContinuousPointerDrag extends StatefulWidget {
     required this.onDelta,
     required this.child,
     this.onEnd,
+    this.onStart,
   });
 
   final ValueChanged<Offset> onDelta;
   final VoidCallback? onEnd;
+  final VoidCallback? onStart;
   final Widget child;
 
   @override
@@ -65,6 +67,7 @@ class _ContinuousPointerDragState extends State<ContinuousPointerDrag> {
     if (_activePointer != null || (event.buttons & kPrimaryButton) == 0) return;
     _activePointer = event.pointer;
     _lastGlobalPosition = event.position;
+    widget.onStart?.call();
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
@@ -139,7 +142,7 @@ class PhotoOverlay {
 }
 
 class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.68');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.69');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -179,13 +182,18 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   Stopwatch? _gapPlaybackClock;
   double _gapPlaybackStartSeconds = 0;
   double _gapPlaybackEndSeconds = 0;
+  final GlobalKey _previewCanvasKey = GlobalKey();
+  String _selectedCanvasObject = 'video';
+  double _videoRotateStartAngle = 0;
+  double _videoRotateStartRotation = 0;
+  final Map<int, double> _photoRotateStartAngles = {};
+  final Map<int, double> _photoRotateStartRotations = {};
   int _gapNextClipIndex = -1;
   bool _gapResumePending = false;
   bool _suppressPlayerStateEvents = false;
   double _mediaPanelWidth = 188;
   double _inspectorPanelWidth = 220;
   double _timelinePanelHeight = 276;
-  Offset? _videoRotateLastGlobal;
   final Map<String, Offset> _resizeHandleLastGlobal = {};
   double frameRate = 30.0;
   bool snappingEnabled = true;
@@ -1236,6 +1244,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     _edgeDragPointerX = 0;
     setState(() {
       selectedClipIndex = index;
+      _selectedCanvasObject = 'video';
+      selectedPhotoOverlay = -1;
       _timelineSnapAt = null;
     });
   }
@@ -1747,13 +1757,14 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             final radians = videoRotation * math.pi / 180;
             final localDx = (screenDelta.dx * math.cos(radians) + screenDelta.dy * math.sin(radians)) / math.max(.1, previewZoom);
             final localDy = (-screenDelta.dx * math.sin(radians) + screenDelta.dy * math.cos(radians)) / math.max(.1, previewZoom);
+            final uniformScale = (videoScaleX + videoScaleY) / 2;
+            final signedDelta = horizontalDirection != 0 && verticalDirection != 0
+                ? (localDx * horizontalDirection + localDy * verticalDirection) / 2
+                : horizontalDirection != 0 ? localDx * horizontalDirection : localDy * verticalDirection;
+            final nextScale = (uniformScale + signedDelta * 2 / math.max(1, canvasSize.shortestSide)).clamp(.2, 4.0).toDouble();
             setState(() {
-              if (horizontalDirection != 0) {
-                videoScaleX = (videoScaleX + localDx * horizontalDirection * 2 / math.max(1, canvasSize.width)).clamp(.2, 4.0).toDouble();
-              }
-              if (verticalDirection != 0) {
-                videoScaleY = (videoScaleY + localDy * verticalDirection * 2 / math.max(1, canvasSize.height)).clamp(.2, 4.0).toDouble();
-              }
+              videoScaleX = nextScale;
+              videoScaleY = nextScale;
               projectDirty = true;
             });
           },
@@ -1823,7 +1834,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                               return ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
                                 child: ClipRect(
-                                  child: Stack(fit: StackFit.expand, children: [
+                                  child: Stack(key: _previewCanvasKey, fit: StackFit.expand, children: [
                                     const ColoredBox(color: Colors.black),
                                     if (_showVerticalSnapGuide)
                                       Positioned(left: bounds.maxWidth / 2 - .5, top: 0, bottom: 0, child: IgnorePointer(child: Container(width: 1, color: const Color(0xFFB18CFF)))),
@@ -1849,11 +1860,17 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                                       cursor: SystemMouseCursors.move,
                                                       child: ContinuousPointerDrag(
                                                         key: const ValueKey('video-canvas-drag-surface'),
+                                                        onStart: () => setState(() { _selectedCanvasObject = 'video'; selectedPhotoOverlay = -1; }),
                                                         onDelta: (screenDelta) => setState(() {
-                                                          videoOffsetX += screenDelta.dx / math.max(1, bounds.maxWidth);
-                                                          videoOffsetY += screenDelta.dy / math.max(1, bounds.maxHeight);
-                                                          _showVerticalSnapGuide = videoOffsetX.abs() < 0.014;
-                                                          _showHorizontalSnapGuide = videoOffsetY.abs() < 0.014;
+                                                          var nextX = videoOffsetX + screenDelta.dx / math.max(1, bounds.maxWidth);
+                                                          var nextY = videoOffsetY + screenDelta.dy / math.max(1, bounds.maxHeight);
+                                                          _showVerticalSnapGuide = nextX.abs() < 0.035;
+                                                          _showHorizontalSnapGuide = nextY.abs() < 0.035;
+                                                          if (nextX.abs() < 0.035) nextX *= 0.72;
+                                                          if (nextY.abs() < 0.035) nextY *= 0.72;
+                                                          if (nextX.abs() < 0.002) nextX = 0;
+                                                          if (nextY.abs() < 0.002) nextY = 0;
+                                                          videoOffsetX = nextX; videoOffsetY = nextY;
                                                           projectDirty = true;
                                                         }),
                                                         onEnd: () => setState(() {
@@ -1885,6 +1902,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                                       ),
                                                     ),
                                                   ),
+                                                  if (_selectedCanvasObject == 'video') ...[
                                                   _videoResizeHandle(canvasSize: Size(bounds.maxWidth, bounds.maxHeight), x: 0, y: 0, horizontalDirection: -1, verticalDirection: -1, id: 'top-left'),
                                                   _videoResizeHandle(canvasSize: Size(bounds.maxWidth, bounds.maxHeight), x: bounds.maxWidth / 2, y: 0, horizontalDirection: 0, verticalDirection: -1, id: 'top'),
                                                   _videoResizeHandle(canvasSize: Size(bounds.maxWidth, bounds.maxHeight), x: bounds.maxWidth, y: 0, horizontalDirection: 1, verticalDirection: -1, id: 'top-right'),
@@ -1903,15 +1921,23 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                                       child: GestureDetector(
                                                         key: const ValueKey('video-rotate-handle'),
                                                         behavior: HitTestBehavior.opaque,
-                                                        onPanStart: (details) => _videoRotateLastGlobal = details.globalPosition,
-                                                        onPanUpdate: (details) => setState(() {
-                                                          final previous = _videoRotateLastGlobal ?? details.globalPosition;
-                                                          final screenDelta = details.globalPosition - previous;
-                                                          _videoRotateLastGlobal = details.globalPosition;
-                                                          videoRotation = (videoRotation + (screenDelta.dx - screenDelta.dy) * .7) % 360;
-                                                          projectDirty = true;
-                                                        }),
-                                                        onPanEnd: (_) => _videoRotateLastGlobal = null,
+                                                        onPanStart: (details) {
+                                                          final box = _previewCanvasKey.currentContext?.findRenderObject() as RenderBox?;
+                                                          if (box == null) return;
+                                                          final center = box.localToGlobal(Offset(box.size.width / 2 + videoOffsetX * box.size.width, box.size.height / 2 + videoOffsetY * box.size.height));
+                                                          _videoRotateStartAngle = math.atan2(details.globalPosition.dy - center.dy, details.globalPosition.dx - center.dx);
+                                                          _videoRotateStartRotation = videoRotation;
+                                                        },
+                                                        onPanUpdate: (details) {
+                                                          final box = _previewCanvasKey.currentContext?.findRenderObject() as RenderBox?;
+                                                          if (box == null) return;
+                                                          final center = box.localToGlobal(Offset(box.size.width / 2 + videoOffsetX * box.size.width, box.size.height / 2 + videoOffsetY * box.size.height));
+                                                          final angle = math.atan2(details.globalPosition.dy - center.dy, details.globalPosition.dx - center.dx);
+                                                          var delta = (angle - _videoRotateStartAngle) * 180 / math.pi;
+                                                          if (delta > 180) delta -= 360;
+                                                          if (delta < -180) delta += 360;
+                                                          setState(() { videoRotation = (_videoRotateStartRotation + delta) % 360; projectDirty = true; });
+                                                        },
                                                         child: Container(
                                                           decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white, width: 1.5), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 4)]),
                                                           child: const Icon(Icons.rotate_90_degrees_ccw, size: 17, color: Colors.white),
@@ -1919,6 +1945,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                                       ),
                                                     ),
                                                   ),
+                                                  ],
                                                 ],
                                               ),
                                             ),
@@ -1933,17 +1960,17 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                         width: shortSide * .36 * photoOverlays[i].scale,
                                         height: shortSide * .36 * photoOverlays[i].scale,
                                         child: GestureDetector(
-                                          onTap: () => setState(() => selectedPhotoOverlay = i),
-                                          onPanStart: (_) => setState(() => selectedPhotoOverlay = i),
+                                          onTap: () => setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; }),
+                                          onPanStart: (_) => setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; }),
                                           onPanUpdate: (d) => setState(() {
                                             var nextX = (photoOverlays[i].x + d.delta.dx / bounds.maxWidth).clamp(-1.5, 1.5).toDouble();
                                             var nextY = (photoOverlays[i].y + d.delta.dy / bounds.maxHeight).clamp(-1.5, 1.5).toDouble();
                                             _showVerticalSnapGuide = nextX.abs() < 0.022;
                                             _showHorizontalSnapGuide = nextY.abs() < 0.022;
-                                            if (nextX.abs() < 0.022) nextX *= 0.42;
-                                            if (nextY.abs() < 0.022) nextY *= 0.42;
-                                            if (nextX.abs() < 0.0025) nextX = 0;
-                                            if (nextY.abs() < 0.0025) nextY = 0;
+                                            if (nextX.abs() < 0.035) nextX *= 0.72;
+                                            if (nextY.abs() < 0.035) nextY *= 0.72;
+                                            if (nextX.abs() < 0.002) nextX = 0;
+                                            if (nextY.abs() < 0.002) nextY = 0;
                                             photoOverlays[i].x = nextX;
                                             photoOverlays[i].y = nextY;
                                             projectDirty = true;
@@ -1957,6 +1984,50 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                                 decoration: BoxDecoration(border: selectedPhotoOverlay == i ? Border.all(color: accent, width: 2) : null),
                                                 child: Stack(fit: StackFit.expand, children: [
                                                   Image.file(File(photoOverlays[i].path), fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined)),
+                                                  if (selectedPhotoOverlay == i)
+                                                    Align(
+                                                      alignment: Alignment.topCenter,
+                                                      child: Transform.translate(
+                                                        offset: const Offset(0, -19),
+                                                        child: GestureDetector(
+                                                          key: ValueKey('photo-rotate-$i'),
+                                                          behavior: HitTestBehavior.opaque,
+                                                          onPanStart: (details) {
+                                                            final box = _previewCanvasKey.currentContext?.findRenderObject() as RenderBox?;
+                                                            if (box == null) return;
+                                                            final centerLocal = Offset(
+                                                              bounds.maxWidth / 2 + photoOverlays[i].x * bounds.maxWidth,
+                                                              bounds.maxHeight / 2 + photoOverlays[i].y * bounds.maxHeight,
+                                                            );
+                                                            final center = box.localToGlobal(centerLocal);
+                                                            _photoRotateStartAngles[i] = math.atan2(details.globalPosition.dy - center.dy, details.globalPosition.dx - center.dx);
+                                                            _photoRotateStartRotations[i] = photoOverlays[i].rotation;
+                                                          },
+                                                          onPanUpdate: (details) {
+                                                            final box = _previewCanvasKey.currentContext?.findRenderObject() as RenderBox?;
+                                                            if (box == null) return;
+                                                            final centerLocal = Offset(
+                                                              bounds.maxWidth / 2 + photoOverlays[i].x * bounds.maxWidth,
+                                                              bounds.maxHeight / 2 + photoOverlays[i].y * bounds.maxHeight,
+                                                            );
+                                                            final center = box.localToGlobal(centerLocal);
+                                                            final angle = math.atan2(details.globalPosition.dy - center.dy, details.globalPosition.dx - center.dx);
+                                                            var delta = (angle - (_photoRotateStartAngles[i] ?? angle)) * 180 / math.pi;
+                                                            if (delta > 180) delta -= 360;
+                                                            if (delta < -180) delta += 360;
+                                                            setState(() {
+                                                              photoOverlays[i].rotation = ((_photoRotateStartRotations[i] ?? photoOverlays[i].rotation) + delta) % 360;
+                                                              projectDirty = true;
+                                                            });
+                                                          },
+                                                          child: Container(
+                                                            width: 26, height: 26,
+                                                            decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white, width: 1.5)),
+                                                            child: const Icon(Icons.rotate_right, size: 15, color: Colors.white),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
                                                   if (selectedPhotoOverlay == i)
                                                     for (final point in const [Alignment.topLeft, Alignment.topCenter, Alignment.topRight, Alignment.centerLeft, Alignment.centerRight, Alignment.bottomLeft, Alignment.bottomCenter, Alignment.bottomRight])
                                                       Align(alignment: point, child: GestureDetector(
@@ -2130,7 +2201,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                     if (selectedPhotoOverlay >= photoOverlays.length) selectedPhotoOverlay = photoOverlays.length - 1;
                     projectDirty = true;
                   }), icon: const Icon(Icons.delete_outline, size: 16)),
-                  onTap: () => setState(() => selectedPhotoOverlay = i),
+                  onTap: () => setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; }),
                 ),
               if (selectedPhotoOverlay >= 0 && selectedPhotoOverlay < photoOverlays.length) ...[
                 _adjustmentSlider('Размер фото', photoOverlays[selectedPhotoOverlay].scale, 0.2, 3, (v) => setState(() { photoOverlays[selectedPhotoOverlay].scale = v; projectDirty = true; })),
@@ -2408,7 +2479,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                     width: math.max(12.0, videoClips[i].length * zoom - 2).toDouble(),
                     child: GestureDetector(
                       onTapDown: (d) => seekTimeline(videoClips[i].timelineStart * zoom + d.localPosition.dx),
-                      onTap: () => setState(() { selectedClipIndex = i; projectDirty = true; }),
+                      onTap: () => setState(() { selectedClipIndex = i; selectedPhotoOverlay = -1; _selectedCanvasObject = 'video'; projectDirty = true; }),
                       onSecondaryTapDown: (details) => showClipMenu(details.globalPosition, i),
                       onHorizontalDragStart: (_) => _startClipMove(i),
                       onHorizontalDragUpdate: _updateClipMove,
