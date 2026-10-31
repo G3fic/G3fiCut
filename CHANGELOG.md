@@ -1,5 +1,13 @@
 # Changelog
 
+## GifCut v0.3.72 — 2026-10-31
+
+- Preserve the source video's aspect ratio when changing the preview frame, including during export.
+- Zoom the timeline with the mouse wheel around the cursor position.
+- Move standard effects and transitions into the Media panel's Effects tab; timeline lanes appear only after the first item is added.
+- Apply the timeline snapping toggle to rotation-angle snapping and keep clip source ranges fixed while moving.
+- Standardize the desktop application and installer branding as GifCut while retaining legacy installer asset names for existing installations.
+
 ## G3fiCut v0.3.68 — 2026-10-31
 
 - Replace the video canvas pan recognizer with pointer-level drag tracking so media_kit gestures cannot cancel movement mid-drag.
