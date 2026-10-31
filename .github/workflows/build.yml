@@ -134,6 +134,15 @@ jobs:
           Copy-Item "build/installer/GifCut-Setup-$env:GIFCUT_VERSION.exe" "build/installer/G3fiCut-Setup-$env:GIFCUT_VERSION.exe" -Force
           Copy-Item "build/installer/GifCut-Setup-$env:GIFCUT_VERSION.exe" "build/installer/ClipForge-Setup-$env:GIFCUT_VERSION.exe" -Force
 
+      - name: Package portable app archive for in-app updates
+        shell: pwsh
+        run: |
+          $release = Join-Path $PWD 'build/windows/x64/runner/Release'
+          $archive = Join-Path $PWD "build/installer/GifCut-$env:GIFCUT_VERSION-win-x64.zip"
+          if (-not (Test-Path (Join-Path $release 'gifcut.exe'))) { throw 'gifcut.exe is missing from the Windows release directory.' }
+          Compress-Archive -Path (Join-Path $release '*') -DestinationPath $archive -CompressionLevel Optimal -Force
+          if (-not (Test-Path $archive)) { throw "Portable update archive was not created: $archive" }
+
       - uses: actions/upload-artifact@v4
         with:
           name: GifCut-Windows-Installer
@@ -141,6 +150,7 @@ jobs:
             build/installer/GifCut-Setup-${{ env.GIFCUT_VERSION }}.exe
             build/installer/G3fiCut-Setup-${{ env.GIFCUT_VERSION }}.exe
             build/installer/ClipForge-Setup-${{ env.GIFCUT_VERSION }}.exe
+            build/installer/GifCut-${{ env.GIFCUT_VERSION }}-win-x64.zip
           if-no-files-found: error
           retention-days: 30
 
@@ -182,4 +192,5 @@ jobs:
             release-assets/GifCut-Setup-${{ needs.windows.outputs.release_version }}.exe
             release-assets/G3fiCut-Setup-${{ needs.windows.outputs.release_version }}.exe
             release-assets/ClipForge-Setup-${{ needs.windows.outputs.release_version }}.exe
+            release-assets/GifCut-${{ needs.windows.outputs.release_version }}-win-x64.zip
           fail_on_unmatched_files: true
