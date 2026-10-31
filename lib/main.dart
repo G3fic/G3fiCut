@@ -20,6 +20,7 @@ import 'timeline_history.dart';
 import 'timeline_editing.dart';
 import 'project_document.dart';
 import 'canvas_snapping.dart';
+import 'effect_catalog.dart';
 import 'release_assets.dart';
 
 void main() {
@@ -219,11 +220,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   final Map<int, double> _photoRotateStartRotations = {};
   double _videoDragRawX = 0;
   double _videoDragRawY = 0;
-  bool _videoSnapXActive = false;
-  bool _videoSnapYActive = false;
+  CanvasGuide? _videoSnapXGuide;
+  CanvasGuide? _videoSnapYGuide;
   final Map<int, Offset> _photoDragRawOffsets = {};
-  final Set<int> _photoSnapXActive = {};
-  final Set<int> _photoSnapYActive = {};
+  final Map<int, CanvasGuide> _photoSnapXGuides = {};
+  final Map<int, CanvasGuide> _photoSnapYGuides = {};
+  double? _verticalSnapGuidePosition;
+  double? _horizontalSnapGuidePosition;
   int _gapNextClipIndex = -1;
   bool _gapResumePending = false;
   bool _suppressPlayerStateEvents = false;
@@ -254,25 +257,41 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   static const _timelineEffectTypes = ProjectEffectClip.supportedTypes;
   static const _timelineTransitionTypes = ProjectTransition.supportedTypes;
 
-  String get _exportEffectFilter => const {
-    'Оригинал': 'null',
-    'Чёрно-белый': 'hue=s=0',
-    'Сепия': 'colorchannelmixer=.393:.769:.189:0:0:.349:.686:.168:0:0:.272:.534:.131:0:0',
-    'Холодный': 'colorbalance=rs=-0.04:bs=0.12',
-    'Тёплый': 'colorbalance=rs=0.12:bs=-0.06',
-    'Негатив': 'negate',
-    'Мягкое размытие': 'gblur=sigma=2',
-  }[videoEffect] ?? 'null';
+  String get _exportEffectFilter => _filterForEffect(videoEffect);
 
-  List<double> get effectColorMatrix => const {
-    'Оригинал': <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0],
-    'Чёрно-белый': <double>[0.213,0.715,0.072,0,0, 0.213,0.715,0.072,0,0, 0.213,0.715,0.072,0,0, 0,0,0,1,0],
-    'Сепия': <double>[0.393,0.769,0.189,0,0, 0.349,0.686,0.168,0,0, 0.272,0.534,0.131,0,0, 0,0,0,1,0],
-    'Холодный': <double>[0.96,0,0,0,0, 0,1,0,0,0, 0,0,1.12,0,0, 0,0,0,1,0],
-    'Тёплый': <double>[1.12,0,0,0,0, 0,1,0,0,0, 0,0,0.94,0,0, 0,0,0,1,0],
-    'Негатив': <double>[-1,0,0,0,255, 0,-1,0,0,255, 0,0,-1,0,255, 0,0,0,1,0],
-    'Мягкое размытие': <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0],
-  }[videoEffect] ?? const <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0];
+  String _filterForEffect(String type) {
+    final lutName = builtinLutFiles[type];
+    if (lutName != null) {
+      final lutFile = File(p.join(
+        p.dirname(Platform.resolvedExecutable),
+        'luts',
+        lutName,
+      ));
+      if (!lutFile.existsSync()) return 'null';
+      final escapedPath = lutFile.absolute.path
+          .replaceAll(r'\\', '/')
+          .replaceAll("'", r"\\'");
+      return "lut3d=file='$escapedPath':interp=tetrahedral";
+    }
+
+    const legacyNames = <String, String>{
+      'Холодный': 'Холодный тон',
+      'Тёплый': 'Тёплый тон',
+      'Мягкое размытие': 'Размытие',
+    };
+    const legacyFilters = <String, String>{
+      'Холодный': 'colorbalance=rs=-0.04:bs=0.12',
+      'Тёплый': 'colorbalance=rs=0.12:bs=-0.06',
+      'Мягкое размытие': 'gblur=sigma=2',
+    };
+    return legacyFilters[type] ??
+        builtinEffectExportFilters[legacyNames[type] ?? type] ??
+        'null';
+  }
+
+  List<double> get effectColorMatrix =>
+      lutPreviewMatrices[videoEffect] ??
+      _previewEffectMatrix(videoEffect);
 
   ({Color color, double opacity}) get previewTransitionOverlay {
     final seconds = position.inMilliseconds / 1000;
@@ -1188,24 +1207,44 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     return result;
   }
 
-  ({double value, bool snapped}) _snapToCenterAxis(
+  CanvasGuideSnapResult _snapToCanvasGuide(
     double rawOffset,
     double canvasExtent,
-    bool wasSnapped,
-  ) {
-    final result = const CenterAxisSnapper().update(
-      rawOffset: rawOffset,
-      canvasExtent: canvasExtent,
-      wasSnapped: wasSnapped,
-    );
-    return (value: result.offset, snapped: result.isSnapped);
+    double objectExtent,
+    CanvasGuide? previousGuide,
+  ) =>
+      const CanvasGuideSnapper().update(
+        rawOffset: rawOffset,
+        canvasExtent: canvasExtent,
+        objectExtent: objectExtent,
+        previousGuide: previousGuide,
+        enabled: snappingEnabled,
+      );
+
+  double? _canvasGuidePosition(CanvasGuide? guide, double extent) =>
+      switch (guide) {
+        CanvasGuide.leading => 0,
+        CanvasGuide.center => extent / 2,
+        CanvasGuide.trailing => extent,
+        null => null,
+      };
+
+  void _clearCanvasSnapGuides() {
+    _videoSnapXGuide = null;
+    _videoSnapYGuide = null;
+    _photoSnapXGuides.clear();
+    _photoSnapYGuides.clear();
+    _showVerticalSnapGuide = false;
+    _showHorizontalSnapGuide = false;
+    _verticalSnapGuidePosition = null;
+    _horizontalSnapGuidePosition = null;
   }
 
   void _startVideoCanvasDrag() {
     _videoDragRawX = videoOffsetX;
     _videoDragRawY = videoOffsetY;
-    _videoSnapXActive = false;
-    _videoSnapYActive = false;
+    _videoSnapXGuide = null;
+    _videoSnapYGuide = null;
     _selectVideoAtPlayhead();
   }
 
@@ -2231,6 +2270,23 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildPreviewBackdrop() => ClipRect(
+        child: ImageFiltered(
+          imageFilter: ui.ImageFilter.blur(sigmaX: 26, sigmaY: 26),
+          child: ColorFiltered(
+            colorFilter: ColorFilter.mode(
+              Colors.black.withValues(alpha: 0.38),
+              BlendMode.srcATop,
+            ),
+            child: Video(
+              controller: videoController!,
+              controls: NoVideoControls,
+              fit: BoxFit.cover,
+            ),
+          ),
+        ),
+      );
+
   Widget _buildPreviewVideo() {
     Widget result = Video(
       controller: videoController!,
@@ -2255,37 +2311,28 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     return result;
   }
 
-  List<double> _timelineEffectColorMatrix(String type) => const {
-    'Чёрно-белый': <double>[0.213,0.715,0.072,0,0, 0.213,0.715,0.072,0,0, 0.213,0.715,0.072,0,0, 0,0,0,1,0],
-    'Сепия': <double>[0.393,0.769,0.189,0,0, 0.349,0.686,0.168,0,0, 0.272,0.534,0.131,0,0, 0,0,0,1,0],
-    'Негатив': <double>[-1,0,0,0,255, 0,-1,0,0,255, 0,0,-1,0,255, 0,0,0,1,0],
-    'Тёплый тон': <double>[1.12,0,0,0,0, 0,1,0,0,0, 0,0,0.94,0,0, 0,0,0,1,0],
-    'Холодный тон': <double>[0.96,0,0,0,0, 0,1,0,0,0, 0,0,1.12,0,0, 0,0,0,1,0],
-    'Высокий контраст': <double>[1.45,0,0,0,-56, 0,1.45,0,0,-56, 0,0,1.45,0,-56, 0,0,0,1,0],
-  }[type] ?? const <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0];
+  List<double> _timelineEffectColorMatrix(String type) =>
+      lutPreviewMatrices[type] ?? const <String, List<double>>{
+        'Чёрно-белый': <double>[0.213,0.715,0.072,0,0, 0.213,0.715,0.072,0,0, 0.213,0.715,0.072,0,0, 0,0,0,1,0],
+        'Сепия': <double>[0.393,0.769,0.189,0,0, 0.349,0.686,0.168,0,0, 0.272,0.534,0.131,0,0, 0,0,0,1,0],
+        'Негатив': <double>[-1,0,0,0,255, 0,-1,0,0,255, 0,0,-1,0,255, 0,0,0,1,0],
+        'Тёплый тон': <double>[1.12,0,0,0,0, 0,1,0,0,0, 0,0,0.94,0,0, 0,0,0,1,0],
+        'Холодный тон': <double>[0.96,0,0,0,0, 0,1,0,0,0, 0,0,1.12,0,0, 0,0,0,1,0],
+        'Высокий контраст': <double>[1.45,0,0,0,-56, 0,1.45,0,0,-56, 0,0,1.45,0,-56, 0,0,0,1,0],
+        'Кинематографичный': <double>[1.08,0.01,0,0,2, 0.01,1,0,0,1, 0,0,0.96,0,-2, 0,0,0,1,0],
+        'Плёночное зерно': <double>[1.04,0.01,0,0,0, 0,1.02,0,0,0, 0,0,0.98,0,0, 0,0,0,1,0],
+        'Старая плёнка': <double>[0.90,0.08,0.02,0,10, 0.06,0.9,0.04,0,8, 0.02,0.08,0.88,0,6, 0,0,0,1,0],
+        'VHS': <double>[1.04,0,0.02,0,0, 0.01,0.92,0.01,0,0, 0.02,0,1.05,0,0, 0,0,0,1,0],
+        'Глитч RGB': <double>[1.08,0,-0.04,0,0, -0.04,1.05,0,0,0, 0,0.02,1.08,0,0, 0,0,0,1,0],
+        'Виньетка': <double>[0.92,0,0,0,0, 0,0.92,0,0,0, 0,0,0.92,0,0, 0,0,0,1,0],
+        'Резкость': <double>[1.04,0,0,0,-4, 0,1.04,0,0,-4, 0,0,1.04,0,-4, 0,0,0,1,0],
+        'Пастель': <double>[0.94,0.03,0.03,0,12, 0.03,0.94,0.03,0,12, 0.03,0.03,0.94,0,12, 0,0,0,1,0],
+        'Холодная ночь': <double>[0.90,0,0.06,0,0, 0,0.98,0.03,0,0, 0,0.05,1.16,0,0, 0,0,0,1,0],
+      }[type] ?? const <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0];
 
-  String _effectExportFilter(String type) => const {
-    'Чёрно-белый': 'hue=s=0',
-    'Сепия': 'colorchannelmixer=.393:.769:.189:0:0:.349:.686:.168:0:0:.272:.534:.131:0:0',
-    'Негатив': 'negate',
-    'Тёплый тон': 'colorbalance=rs=0.12:bs=-0.06',
-    'Холодный тон': 'colorbalance=rs=-0.04:bs=0.12',
-    'Размытие': 'gblur=sigma=5.5',
-    'Высокий контраст': 'eq=contrast=1.65:saturation=1.15',
-  }[type] ?? 'null';
+  String _effectExportFilter(String type) => _filterForEffect(type);
 
-  String _transitionFilterName(String type) => const {
-    'Затемнение': 'fadeblack', 'Белая вспышка': 'fadewhite',
-    'Растворение': 'dissolve', 'Смахивание влево': 'wipeleft',
-    'Смахивание вправо': 'wiperight', 'Смахивание вверх': 'wipeup',
-    'Смахивание вниз': 'wipedown', 'Сдвиг влево': 'slideleft',
-    'Сдвиг вправо': 'slideright', 'Сдвиг вверх': 'slideup',
-    'Сдвиг вниз': 'slidedown', 'Круговое открытие': 'circleopen',
-    'Круговое закрытие': 'circleclose', 'Пикселизация': 'pixelize',
-    'Диагональное стирание': 'diagtl',
-    'Растворение через чёрный': 'fadeblack',
-    'Растворение через белый': 'fadewhite',
-  }[type] ?? 'fadeblack';
+  String _transitionFilterName(String type) => transitionFilterName(type);
 
   Widget previewPanel() => Container(
         color: const Color(0xFF101217),
@@ -2339,10 +2386,14 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                 child: ClipRect(
                                   child: Stack(key: _previewCanvasKey, fit: StackFit.expand, children: [
                                     const ColoredBox(color: Colors.black),
-                                    if (_showVerticalSnapGuide)
-                                      Positioned(left: bounds.maxWidth / 2 - .5, top: 0, bottom: 0, child: IgnorePointer(child: Container(width: 1, color: const Color(0xFFB18CFF)))),
-                                    if (_showHorizontalSnapGuide)
-                                      Positioned(top: bounds.maxHeight / 2 - .5, left: 0, right: 0, child: IgnorePointer(child: Container(height: 1, color: const Color(0xFF35D7FF)))),
+                                    if (videoController != null)
+                                      Positioned.fill(
+                                        child: IgnorePointer(child: _buildPreviewBackdrop()),
+                                      ),
+                                    if (_showVerticalSnapGuide && _verticalSnapGuidePosition != null)
+                                      Positioned(left: _verticalSnapGuidePosition! - .5, top: 0, bottom: 0, child: IgnorePointer(child: Container(width: 1, color: const Color(0xFFB18CFF)))),
+                                    if (_showHorizontalSnapGuide && _horizontalSnapGuidePosition != null)
+                                      Positioned(top: _horizontalSnapGuidePosition! - .5, left: 0, right: 0, child: IgnorePointer(child: Container(height: 1, color: const Color(0xFF35D7FF)))),
                                     Positioned.fill(
                                       child: Transform.translate(
                                         offset: Offset(videoOffsetX * bounds.maxWidth, videoOffsetY * bounds.maxHeight),
@@ -2367,20 +2418,36 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                                         onDelta: (screenDelta) => setState(() {
                                                           _videoDragRawX += screenDelta.dx / math.max(1, bounds.maxWidth);
                                                           _videoDragRawY += screenDelta.dy / math.max(1, bounds.maxHeight);
-                                                          final snapX = _snapToCenterAxis(_videoDragRawX, bounds.maxWidth, _videoSnapXActive);
-                                                          final snapY = _snapToCenterAxis(_videoDragRawY, bounds.maxHeight, _videoSnapYActive);
-                                                          _videoSnapXActive = snapX.snapped;
-                                                          _videoSnapYActive = snapY.snapped;
-                                                          _showVerticalSnapGuide = snapX.snapped;
-                                                          _showHorizontalSnapGuide = snapY.snapped;
-                                                          videoOffsetX = snapX.value;
-                                                          videoOffsetY = snapY.value;
+                                                          final radians = videoRotation * math.pi / 180;
+                                                          final scaleX = (videoScaleX * previewZoom).abs();
+                                                          final scaleY = (videoScaleY * previewZoom).abs();
+                                                          final objectWidth = bounds.maxWidth * scaleX * math.cos(radians).abs() +
+                                                              bounds.maxHeight * scaleY * math.sin(radians).abs();
+                                                          final objectHeight = bounds.maxHeight * scaleY * math.cos(radians).abs() +
+                                                              bounds.maxWidth * scaleX * math.sin(radians).abs();
+                                                          final snapX = _snapToCanvasGuide(
+                                                            _videoDragRawX,
+                                                            bounds.maxWidth,
+                                                            objectWidth,
+                                                            _videoSnapXGuide,
+                                                          );
+                                                          final snapY = _snapToCanvasGuide(
+                                                            _videoDragRawY,
+                                                            bounds.maxHeight,
+                                                            objectHeight,
+                                                            _videoSnapYGuide,
+                                                          );
+                                                          _videoSnapXGuide = snapX.guide;
+                                                          _videoSnapYGuide = snapY.guide;
+                                                          _showVerticalSnapGuide = snapX.isSnapped;
+                                                          _showHorizontalSnapGuide = snapY.isSnapped;
+                                                          _verticalSnapGuidePosition = _canvasGuidePosition(snapX.guide, bounds.maxWidth);
+                                                          _horizontalSnapGuidePosition = _canvasGuidePosition(snapY.guide, bounds.maxHeight);
+                                                          videoOffsetX = snapX.offset;
+                                                          videoOffsetY = snapY.offset;
                                                           projectDirty = true;
                                                         }),
-                                                        onEnd: () => setState(() {
-                                                          _showVerticalSnapGuide = false;
-                                                          _showHorizontalSnapGuide = false;
-                                                        }),
+                                                        onEnd: () => setState(_clearCanvasSnapGuides),
                                                         child: IgnorePointer(
                                                           child: ColorFiltered(
                                                             colorFilter: ColorFilter.matrix(filtersEnabled ? previewColorMatrix : const <double>[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0]),
@@ -2474,30 +2541,53 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                     }),
                                           onPanStart: (_) {
                                             _photoDragRawOffsets[i] = Offset(photoOverlays[i].x, photoOverlays[i].y);
-                                            _photoSnapXActive.remove(i);
-                                            _photoSnapYActive.remove(i);
+                                            _photoSnapXGuides.remove(i);
+                                            _photoSnapYGuides.remove(i);
                                             setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; });
                                           },
                                           onPanUpdate: (d) => setState(() {
                                             final raw = _photoDragRawOffsets[i] ?? Offset(photoOverlays[i].x, photoOverlays[i].y);
                                             final rawX = (raw.dx + d.delta.dx / bounds.maxWidth).clamp(-1.5, 1.5).toDouble();
                                             final rawY = (raw.dy + d.delta.dy / bounds.maxHeight).clamp(-1.5, 1.5).toDouble();
-                                            final snapX = _snapToCenterAxis(rawX, bounds.maxWidth, _photoSnapXActive.contains(i));
-                                            final snapY = _snapToCenterAxis(rawY, bounds.maxHeight, _photoSnapYActive.contains(i));
+                                            final angle = photoOverlays[i].rotation * math.pi / 180;
+                                            final photoExtent = shortSide * .36 * photoOverlays[i].scale *
+                                                (math.cos(angle).abs() + math.sin(angle).abs());
+                                            final snapX = _snapToCanvasGuide(
+                                              rawX,
+                                              bounds.maxWidth,
+                                              photoExtent,
+                                              _photoSnapXGuides[i],
+                                            );
+                                            final snapY = _snapToCanvasGuide(
+                                              rawY,
+                                              bounds.maxHeight,
+                                              photoExtent,
+                                              _photoSnapYGuides[i],
+                                            );
                                             _photoDragRawOffsets[i] = Offset(rawX, rawY);
-                                            if (snapX.snapped) { _photoSnapXActive.add(i); } else { _photoSnapXActive.remove(i); }
-                                            if (snapY.snapped) { _photoSnapYActive.add(i); } else { _photoSnapYActive.remove(i); }
-                                            _showVerticalSnapGuide = snapX.snapped;
-                                            _showHorizontalSnapGuide = snapY.snapped;
-                                            photoOverlays[i].x = snapX.value;
-                                            photoOverlays[i].y = snapY.value;
+                                            if (snapX.guide == null) {
+                                              _photoSnapXGuides.remove(i);
+                                            } else {
+                                              _photoSnapXGuides[i] = snapX.guide!;
+                                            }
+                                            if (snapY.guide == null) {
+                                              _photoSnapYGuides.remove(i);
+                                            } else {
+                                              _photoSnapYGuides[i] = snapY.guide!;
+                                            }
+                                            _showVerticalSnapGuide = snapX.isSnapped;
+                                            _showHorizontalSnapGuide = snapY.isSnapped;
+                                            _verticalSnapGuidePosition = _canvasGuidePosition(snapX.guide, bounds.maxWidth);
+                                            _horizontalSnapGuidePosition = _canvasGuidePosition(snapY.guide, bounds.maxHeight);
+                                            photoOverlays[i].x = snapX.offset;
+                                            photoOverlays[i].y = snapY.offset;
                                             projectDirty = true;
                                           }),
                                           onPanEnd: (_) {
                                             _photoDragRawOffsets.remove(i);
-                                            _photoSnapXActive.remove(i);
-                                            _photoSnapYActive.remove(i);
-                                            setState(() { _showVerticalSnapGuide = false; _showHorizontalSnapGuide = false; });
+                                            _photoSnapXGuides.remove(i);
+                                            _photoSnapYGuides.remove(i);
+                                            setState(_clearCanvasSnapGuides);
                                           },
                                           child: Transform.rotate(
                                             angle: photoOverlays[i].rotation * math.pi / 180,
@@ -2758,7 +2848,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                 isExpanded: true,
                 initialValue: videoEffect,
                 decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9)),
-                items: const ['Оригинал', 'Чёрно-белый', 'Сепия', 'Холодный', 'Тёплый', 'Негатив', 'Мягкое размытие'].map((v) => DropdownMenuItem(value: v, child: Text(v, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)))).toList(),
+                items: globalVideoEffectOptions.map((v) => DropdownMenuItem(value: v, child: Text(v, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)))).toList(),
                 onChanged: (value) => setState(() { videoEffect = value ?? 'Оригинал'; projectDirty = true; }),
               ),
               const SizedBox(height: 8),
