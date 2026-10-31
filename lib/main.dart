@@ -584,7 +584,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       }
       final latestVersion = latestTag.replaceFirst(RegExp(r'^[vV]'), '');
       if (!isNumericSemanticVersion(latestVersion)) {
-        throw FormatException('Некорректный номер версии GitHub Release: $latestTag. Ожидается формат MAJOR.MINOR.PATCH, например 0.3.74.');
+        throw FormatException('Некорректный номер версии GitHub Release: $latestTag. Ожидается формат MAJOR.MINOR.PATCH, например 0.3.75.');
       }
       if (!isVersionNewer(latestVersion, appVersion)) {
         if (showNoUpdateMessage && mounted) setStatus('Установлена последняя версия GifCut $appVersion.');
@@ -2134,7 +2134,13 @@ try {
                             mediaItem(Icons.image_outlined, p.basename(photoOverlays[i].path), 'Фото · слой \${i + 1}', accent,
                               imagePath: photoOverlays[i].path,
                               selected: selectedPhotoOverlay == i,
-                              onTap: () => setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; })),
+                              onTap: () => setState(() {
+                                selectedPhotoOverlay = i;
+                                selectedAudioClip = false;
+                                selectedEffectClipIndex = -1;
+                                selectedTransitionIndex = -1;
+                                _selectedCanvasObject = 'photo';
+                              })),
                           ],
                         ],
                       ],
