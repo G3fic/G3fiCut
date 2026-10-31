@@ -4362,16 +4362,6 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
   String _buildExportVideoFilter(int index, TimelineClip clip) {
     final filters = <String>[];
-    if (videoScaleX != 1.0 || videoScaleY != 1.0) {
-      filters.add(
-        'scale=iw*${videoScaleX.toStringAsFixed(3)}:ih*${videoScaleY.toStringAsFixed(3)}:flags=lanczos',
-      );
-    }
-    if (videoRotation.abs() > 0.01) {
-      filters.add(
-        'rotate=${(videoRotation * math.pi / 180).toStringAsFixed(5)}:c=none:ow=rotw(iw):oh=roth(ih)',
-      );
-    }
     if (filtersEnabled) {
       filters.add(
         'eq=brightness=${brightness.toStringAsFixed(3)}:contrast=${contrast.toStringAsFixed(3)}:saturation=${saturation.toStringAsFixed(3)}',
@@ -4594,17 +4584,26 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         final outputWidth = dimensionParts[0];
         final outputHeight = dimensionParts[1];
         final foregroundEffects = _buildExportVideoFilter(i, clip);
-        final foregroundChain = foregroundEffects == 'null'
-            ? 'format=rgba'
-            : 'format=rgba,$foregroundEffects';
+        final effectPrefix = foregroundEffects == 'null'
+            ? ''
+            : '$foregroundEffects,';
+        final foregroundTransforms = <String>[
+          'format=rgba',
+          if (videoScaleX != 1.0 || videoScaleY != 1.0)
+            'scale=iw*${videoScaleX.toStringAsFixed(3)}:ih*${videoScaleY.toStringAsFixed(3)}:flags=lanczos',
+          if (videoRotation.abs() > 0.01)
+            'rotate=${(videoRotation * math.pi / 180).toStringAsFixed(5)}:c=none:ow=rotw(iw):oh=roth(ih)',
+          'scale=$outputWidth:$outputHeight:force_original_aspect_ratio=decrease',
+          'format=rgba',
+          'pad=$outputWidth:$outputHeight:(ow-iw)/2:(oh-ih)/2:color=black@0',
+          'setsar=1',
+        ].join(',');
         final graph = <String>[
           '[0:v]split=2[fitSource][backdropSource]',
           '[backdropSource]scale=$outputWidth:$outputHeight:force_original_aspect_ratio=increase,'
               'crop=$outputWidth:$outputHeight,boxblur=26:12,'
               'eq=brightness=-0.30:saturation=0.82[backdrop]',
-          '[fitSource]scale=$outputWidth:$outputHeight:force_original_aspect_ratio=decrease,'
-              'format=rgba,pad=$outputWidth:$outputHeight:(ow-iw)/2:(oh-ih)/2:color=black@0,'
-              'setsar=1,$foregroundChain[foreground]',
+          '[fitSource]$effectPrefix$foregroundTransforms[foreground]',
           '[backdrop][foreground]overlay=(W-w)/2:(H-h)/2:shortest=1[base0]',
         ];
         var previous = 'base0';
