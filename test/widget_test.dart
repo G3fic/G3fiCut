@@ -90,6 +90,27 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('workspace panes can be resized with their splitters', (tester) async {
+    await tester.pumpWidget(const G3fiCutApp());
+    await tester.pump();
+
+    final mediaSplitter = find.byKey(const ValueKey('media-panel-splitter'));
+    final inspectorSplitter = find.byKey(const ValueKey('inspector-panel-splitter'));
+    final timelineSplitter = find.byKey(const ValueKey('timeline-panel-splitter'));
+    expect(mediaSplitter, findsOneWidget);
+    expect(inspectorSplitter, findsOneWidget);
+    expect(timelineSplitter, findsOneWidget);
+
+    await tester.drag(mediaSplitter, const Offset(28, 0));
+    await tester.pump();
+    await tester.drag(inspectorSplitter, const Offset(-24, 0));
+    await tester.pump();
+    await tester.drag(timelineSplitter, const Offset(0, -24));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('inspector switches render without Material or ink errors', (tester) async {
     await tester.pumpWidget(const G3fiCutApp());
     await tester.pump();
