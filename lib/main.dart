@@ -1218,20 +1218,329 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   Future<void> importPhotoOverlay() async {
     if (busy) return;
     try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.image, allowMultiple: false, dialogTitle: 'Выберите изображение для слоя фото', allowedExtensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp']);
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: true,
+        dialogTitle: 'Выберите изображения',
+        allowedExtensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'],
+      );
+      if (result == null || result.files.isEmpty) return;
+      for (final picked in result.files) {
+        final path = picked.path;
+        if (path != null) await _importPhotoFromPath(path);
+      }
+    } catch (e) {
+      setStatus('Не удалось импортировать фото: $e');
+    }
+  }
+
+  Future<void> _importPhotoFromPath(String path) async {
+    if (!await File(path).exists()) {
+      setStatus('Не удалось прочитать изображение: ${p.basename(path)}');
+      return;
+    }
+    final start = position.inMilliseconds / 1000;
+    final end = math.max(start + 3, timelineSeconds).toDouble();
+    if (!mounted) return;
+    setState(() {
+      photoOverlays.add(PhotoOverlay(path: path, start: start, end: end));
+      selectedPhotoOverlay = photoOverlays.length - 1;
+      selectedTextOverlay = -1;
+      selectedAudioClip = false;
+      selectedEffectClipIndex = -1;
+      selectedTransitionIndex = -1;
+      _selectedCanvasObject = 'photo';
+      projectDirty = true;
+      status = 'Фото добавлено на дорожку изображений.';
+    });
+  }
+
+  Future<void> importAudioFile() async {
+    if (busy) return;
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.audio,
+        allowMultiple: false,
+        dialogTitle: 'Выберите аудиофайл',
+      );
       if (result == null || result.files.isEmpty) return;
       final path = result.files.single.path;
-      if (path == null || !await File(path).exists()) { setStatus('Не удалось прочитать изображение.'); return; }
+      if (path != null) await _importAudioFromPath(path);
+    } catch (e) {
+      setStatus('Не удалось импортировать аудио: $e');
+    }
+  }
+
+  Future<Duration> _probeMediaDuration(String path) async {
+    try {
+      final ffmpeg = await findFfmpeg();
+      final result = await Process.run(ffmpeg, ['-hide_banner', '-i', path]);
+      final output = '${result.stdout}\\n${result.stderr}';
+      final match = RegExp(r'Duration:\\s*(\\d+):(\\d+):(\\d+(?:\\.\\d+)?)').firstMatch(output);
+      if (match == null) return Duration.zero;
+      final hours = int.parse(match.group(1)!);
+      final minutes = int.parse(match.group(2)!);
+      final seconds = double.parse(match.group(3)!);
+      return Duration(milliseconds: ((hours * 3600 + minutes * 60 + seconds) * 1000).round());
+    } catch (_) {
+      return Duration.zero;
+    }
+  }
+
+  Future<void> _importAudioFromPath(String path) async {
+    if (!await File(path).exists()) {
+      setStatus('Аудиофайл не найден: ${p.basename(path)}');
+      return;
+    }
+    final detectedDuration = await _probeMediaDuration(path);
+    final waveform = await _readWaveform(path);
+    if (!mounted) return;
+    setState(() {
+      audioPath = path;
+      audioDuration = detectedDuration;
+      audioClipStart = 0;
+      audioClipEnd = detectedDuration.inMilliseconds > 0
+          ? detectedDuration.inMilliseconds / 1000
+          : timelineSeconds;
+      audioWaveform = waveform;
+      selectedAudioClip = true;
+      selectedPhotoOverlay = -1;
+      selectedTextOverlay = -1;
+      selectedEffectClipIndex = -1;
+      selectedTransitionIndex = -1;
+      inspectorTab = 'audio';
+      _selectedCanvasObject = 'audio';
+      projectDirty = true;
+      status = 'Аудио добавлено на дорожку: ${p.basename(path)}';
+    });
+  }
+
+  Future<void> addTextOverlay({String initialText = 'Ваш текст'}) async {
+    if (busy) return;
+    final controller = TextEditingController(text: initialText);
+    final value = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Добавить текст'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            labelText: 'Текст на видео',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (text) => Navigator.of(dialogContext).pop(text),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Отмена')),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(controller.text), child: const Text('Добавить')),
+        ],
+      ),
+    );
+    controller.dispose();
+    final text = value?.trim() ?? '';
+    if (text.isEmpty || !mounted) return;
+    final start = position.inMilliseconds / 1000;
+    final end = math.max(start + 3, timelineSeconds).toDouble();
+    setState(() {
+      textOverlays.add(TextOverlay(text: text, start: start, end: end));
+      selectedTextOverlay = textOverlays.length - 1;
+      selectedPhotoOverlay = -1;
+      selectedAudioClip = false;
+      selectedEffectClipIndex = -1;
+      selectedTransitionIndex = -1;
+      inspectorTab = 'text';
+      _selectedCanvasObject = 'text';
+      projectDirty = true;
+      status = 'Текстовый слой добавлен. Перемещайте его в окне предпросмотра.';
+    });
+  }
+
+  double _parseSubtitleTime(String value) {
+    final normalized = value.trim().replaceAll(',', '.');
+    final parts = normalized.split(':');
+    if (parts.length == 3) {
+      return int.parse(parts[0]) * 3600 +
+          int.parse(parts[1]) * 60 +
+          double.parse(parts[2]);
+    }
+    if (parts.length == 2) {
+      return int.parse(parts[0]) * 60 + double.parse(parts[1]);
+    }
+    return 0;
+  }
+
+  Future<void> _importSubtitleFile(String path) async {
+    final source = await File(path).readAsString();
+    final blocks = source.replaceAll('\\r', '').split(RegExp(r'\\n\\s*\\n'));
+    final parsed = <TextOverlay>[];
+    final timing = RegExp(r'(\\d{1,2}:\\d{2}(?::\\d{2})?[,.]\\d{3})\\s*-->\\s*(\\d{1,2}:\\d{2}(?::\\d{2})?[,.]\\d{3})');
+    for (final block in blocks) {
+      final lines = block.split('\\n').map((line) => line.trim()).where((line) => line.isNotEmpty).toList();
+      if (lines.isEmpty) continue;
+      final timingIndex = lines.indexWhere((line) => timing.hasMatch(line));
+      if (timingIndex < 0) continue;
+      final match = timing.firstMatch(lines[timingIndex]);
+      if (match == null) continue;
+      final textLines = lines.skip(timingIndex + 1)
+          .map((line) => line.replaceAll(RegExp(r'<[^>]*>'), '').trim())
+          .where((line) => line.isNotEmpty);
+      final caption = textLines.join(' ');
+      if (caption.isEmpty) continue;
+      final start = _parseSubtitleTime(match.group(1)!);
+      final end = _parseSubtitleTime(match.group(2)!);
+      if (end <= start) continue;
+      parsed.add(TextOverlay(text: caption, start: start, end: end));
+    }
+    if (!mounted || parsed.isEmpty) {
+      if (mounted && parsed.isEmpty) setStatus('В файле субтитров не найдено временных меток SRT/VTT.');
+      return;
+    }
+    setState(() {
+      textOverlays.addAll(parsed);
+      selectedTextOverlay = textOverlays.length - 1;
+      selectedPhotoOverlay = -1;
+      selectedAudioClip = false;
+      inspectorTab = 'text';
+      _selectedCanvasObject = 'text';
+      projectDirty = true;
+      status = 'Импортировано субтитров: ${parsed.length}.';
+    });
+  }
+
+  Future<void> _loadDroppedVideo(String path) async {
+    if (busy) return;
+    final previousPath = videoPath;
+    final previousPosition = position;
+    setState(() {
+      busy = true;
+      _switchingMedia = true;
+      _switchingMediaDuration = null;
+      status = 'Открываю видео из перетаскивания…';
+    });
+    try {
+      final activePlayer = ensurePlayer();
+      await activePlayer.stop();
+      await activePlayer.open(Media(path), play: false);
+      var openedDuration = activePlayer.state.duration;
+      if (openedDuration <= Duration.zero) {
+        openedDuration = await activePlayer.stream.duration
+            .firstWhere((value) => value > Duration.zero)
+            .timeout(const Duration(seconds: 12));
+      }
+      if (!mounted) return;
+      _timelineHistory.clear();
       setState(() {
-        photoOverlays.add(PhotoOverlay(path: path));
-        selectedPhotoOverlay = photoOverlays.length - 1;
-        _selectedCanvasObject = 'photo';
+        videoPath = path;
+        duration = openedDuration;
+        position = Duration.zero;
+        playing = false;
+        audioPath = null;
+        audioDuration = Duration.zero;
+        audioClipStart = 0;
+        audioClipEnd = 0;
+        audioWaveform = const [];
+        videoClips
+          ..clear()
+          ..add(TimelineClip(start: 0, end: openedDuration.inMilliseconds / 1000, timelineStart: 0));
+        effectClips.clear();
+        timelineTransitions.clear();
+        photoOverlays.clear();
+        textOverlays.clear();
+        selectedClipIndex = 0;
+        selectedPhotoOverlay = -1;
+        selectedTextOverlay = -1;
+        selectedEffectClipIndex = -1;
+        selectedTransitionIndex = -1;
+        selectedAudioClip = false;
+        _activePlaybackClipIndex = 0;
+        _playheadInGap = false;
+        projectFilePath = null;
         projectDirty = true;
-        status = videoPath == null
-            ? 'Фото загружено. Добавьте видео, чтобы разместить его поверх.'
-            : 'Фото добавлено поверх видео.';
+        status = 'Видео добавлено. Можно добавить фото, аудио и субтитры.';
       });
-    } catch (e) { setStatus('Не удалось импортировать фото: $e'); }
+      unawaited(_generateVideoThumbnails(path, openedDuration));
+    } catch (e) {
+      if (previousPath != null) {
+        try {
+          final activePlayer = ensurePlayer();
+          await activePlayer.open(Media(previousPath), play: false);
+          await activePlayer.seek(previousPosition);
+        } catch (_) {}
+      }
+      if (mounted) {
+        setState(() {
+          position = previousPosition;
+          status = 'Не удалось открыть перетащенное видео: $e';
+        });
+      }
+    } finally {
+      _switchingMedia = false;
+      _switchingMediaDuration = null;
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _importDroppedFiles(List<String> paths) async {
+    final existing = paths.where((path) => File(path).existsSync()).toSet().toList();
+    if (existing.isEmpty) return;
+    final videoExt = {'.mp4', '.mov', '.mkv', '.avi', '.webm', '.m4v', '.wmv'};
+    final imageExt = {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif'};
+    final audioExt = {'.wav', '.mp3', '.m4a', '.aac', '.flac', '.ogg', '.opus', '.wma'};
+    final subtitleExt = {'.srt', '.vtt'};
+    final videos = existing.where((path) => videoExt.contains(p.extension(path).toLowerCase())).toList();
+    final images = existing.where((path) => imageExt.contains(p.extension(path).toLowerCase())).toList();
+    final audios = existing.where((path) => audioExt.contains(p.extension(path).toLowerCase())).toList();
+    final subtitles = existing.where((path) => subtitleExt.contains(p.extension(path).toLowerCase())).toList();
+
+    if (videos.isNotEmpty) {
+      if (!await _confirmReplaceIfDirty()) return;
+      await _loadDroppedVideo(videos.first);
+      if (videos.length > 1 && mounted) {
+        setStatus('Открыт первый видеоролик. Несколько независимых видеоисточников пока не поддерживаются.');
+      }
+    }
+    for (final path in images) {
+      await _importPhotoFromPath(path);
+    }
+    if (audios.isNotEmpty) {
+      await _importAudioFromPath(audios.first);
+      if (audios.length > 1 && mounted) {
+        setStatus('Добавлен первый аудиофайл. Независимых аудиодорожек пока одна.');
+      }
+    }
+    for (final path in subtitles) {
+      await _importSubtitleFile(path);
+    }
+  }
+
+  Future<void> _handleExternalDrop(PerformDropEvent event) async {
+    final paths = <String>[];
+    for (final item in event.session.items) {
+      final reader = item.dataReader;
+      if (reader == null || !reader.canProvide(Formats.fileUri)) continue;
+      final completer = Completer<Uri?>();
+      reader.getValue<Uri>(
+        Formats.fileUri,
+        (value) {
+          if (!completer.isCompleted) completer.complete(value);
+        },
+        onError: (_) {
+          if (!completer.isCompleted) completer.complete(null);
+        },
+      );
+      final uri = await completer.future.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => null,
+      );
+      if (uri != null && uri.scheme == 'file') {
+        try {
+          paths.add(uri.toFilePath(windows: Platform.isWindows));
+        } catch (_) {}
+      }
+    }
+    await _importDroppedFiles(paths);
   }
 
   Future<List<double>> _readWaveform(String path, {int buckets = 1800}) async {
