@@ -1446,8 +1446,6 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           ..add(TimelineClip(start: 0, end: openedDuration.inMilliseconds / 1000, timelineStart: 0));
         effectClips.clear();
         timelineTransitions.clear();
-        photoOverlays.clear();
-        textOverlays.clear();
         selectedClipIndex = 0;
         selectedPhotoOverlay = -1;
         selectedTextOverlay = -1;
@@ -2419,14 +2417,15 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                           ]),
                         ),
                       ),
-                      if (videoPath != null) ...[
+                      if (videoPath != null || audioPath != null || photoOverlays.isNotEmpty || textOverlays.isNotEmpty) ...[
                         const SizedBox(height: 14),
                         const Text('ФАЙЛЫ ПРОЕКТА', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.1, fontWeight: FontWeight.w700)),
                         const SizedBox(height: 8),
-                        mediaItem(Icons.movie_outlined, p.basename(videoPath!), 'Видео · исходник', videoBlue,
-                          imagePath: videoThumbnails.isNotEmpty ? videoThumbnails.first : null,
-                          selected: _selectedCanvasObject == 'video',
-                          onTap: () => _selectVideoClip(selectedClipIndex.clamp(0, videoClips.isEmpty ? 0 : videoClips.length - 1).toInt())),
+                        if (videoPath != null)
+                          mediaItem(Icons.movie_outlined, p.basename(videoPath!), 'Видео · исходник', videoBlue,
+                            imagePath: videoThumbnails.isNotEmpty ? videoThumbnails.first : null,
+                            selected: _selectedCanvasObject == 'video',
+                            onTap: () => _selectVideoClip(selectedClipIndex.clamp(0, videoClips.isEmpty ? 0 : videoClips.length - 1).toInt())),
                         if (audioPath != null) ...[
                           const SizedBox(height: 7),
                           mediaItem(Icons.graphic_eq, p.basename(audioPath!), 'Извлечённое аудио', audioGreen,
@@ -2442,7 +2441,29 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                             mediaItem(Icons.image_outlined, p.basename(photoOverlays[i].path), 'Фото · слой \${i + 1}', accent,
                               imagePath: photoOverlays[i].path,
                               selected: selectedPhotoOverlay == i,
-                              onTap: () => setState(() { selectedPhotoOverlay = i; _selectedCanvasObject = 'photo'; })),
+                              onTap: () => setState(() {
+                                selectedPhotoOverlay = i;
+                                selectedTextOverlay = -1;
+                                selectedAudioClip = false;
+                                _selectedCanvasObject = 'photo';
+                              })),
+                          ],
+                        ],
+                        if (textOverlays.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          const Text('ТЕКСТ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.1, fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 7),
+                          for (var i = 0; i < textOverlays.length; i++) ...[
+                            if (i > 0) const SizedBox(height: 6),
+                            mediaItem(Icons.title, textOverlays[i].text, 'Текстовый слой', const Color(0xFFFFC56B),
+                              selected: selectedTextOverlay == i,
+                              onTap: () => setState(() {
+                                selectedTextOverlay = i;
+                                selectedPhotoOverlay = -1;
+                                selectedAudioClip = false;
+                                inspectorTab = 'text';
+                                _selectedCanvasObject = 'text';
+                              })),
                           ],
                         ],
                       ],
