@@ -4387,7 +4387,12 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       final localEnd = (overlapEnd - clip.timelineStart).clamp(0.0, clip.length).toDouble();
       final filter = _effectExportFilter(effect.type);
       if (filter != 'null') {
-        filters.add("$filter:enable='between(t,${localStart.toStringAsFixed(3)},${localEnd.toStringAsFixed(3)})'");
+        filters.add(
+          applyEnableToFilterChain(
+            filter,
+            "between(t,${localStart.toStringAsFixed(3)},${localEnd.toStringAsFixed(3)})",
+          ),
+        );
       }
     }
     if (transitionEffect != 'Нет' && videoClips.length > 1) {
