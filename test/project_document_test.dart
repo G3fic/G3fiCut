@@ -110,7 +110,7 @@ void main() {
         playheadMs: 4500,
         effectClips: const [
           ProjectEffectClip(type: 'Сепия', start: 1.5, end: 3.25),
-          ProjectEffectClip(type: 'Размытие', start: 6, end: 8),
+          ProjectEffectClip(type: 'Размытие', start: 6, end: 7.4),
         ],
         transitions: const [
           ProjectTransition(type: 'Растворение', at: 4, duration: 0.5),
