@@ -37,26 +37,37 @@ Multiple independent video sources on separate tracks, simultaneous multi-track 
 4. When you accept an update, GifCut downloads the published installer, verifies its SHA-256 digest from the GitHub Releases API, and launches the installer. Windows may request administrator permission.
 5. When upgrading from GifCut 0.3.75 or earlier, download and run the new installer manually once. Those older versions use the previous ZIP-based updater and cannot reliably install this updater fix. Future in-app updates launch the verified Windows installer directly.
 
-Updates are published from semantic version tags. For example, push a tag named **v0.2.2** to trigger a Windows build and publish the installer to GitHub Releases. The built-in updater uses the public endpoint https://api.github.com/repos/G3fic/G3fiCut/releases/latest, so the repository must be public for unauthenticated clients to read release metadata and download assets.
+The updater reads the public endpoint https://api.github.com/repos/G3fic/G3fiCut/releases/latest and downloads the versioned installer from that release. The repository must remain public so unauthenticated clients can read release metadata and download assets.
 
-## Publish a release
+## Build and publish on Windows
 
-Create and push a new semantic version tag on the validated commit to publish a stable release. For example:
+The Windows installer is now built locally instead of by GitHub Actions. GitHub Actions only runs Flutter analysis and tests; it does not package or publish Windows installers.
 
-    git tag v0.3.80
-    git push origin v0.3.80
+See **[docs/RELEASE_WINDOWS.md](docs/RELEASE_WINDOWS.md)** for the one-time Windows setup and release instructions. Once Git, Flutter 3.47.9, Visual Studio 2022 with Desktop development for C++, Inno Setup 6, and GitHub CLI are installed and GitHub CLI is authenticated, publish a new release with:
 
-Use a new vMAJOR.MINOR.PATCH value for every release. GitHub Actions will analyze the Dart code, run tests, build the Windows application and installer, and attach the matching installer to the release. Check the Actions run before announcing the update.
+    .\scripts\release-windows.ps1 -Publish
 
-## Build on GitHub
+The script checks the project, builds the Windows app, downloads and verifies the FFmpeg runtime and licensed LUT presets, smoke-tests FFmpeg features, creates the installer and portable archive, then publishes the release to GitHub. It reads the semantic version from `pubspec.yaml` and refuses to publish uncommitted or unpushed changes or reuse an existing tag.
 
-For pull requests, feature branches and release branches, GitHub Actions produces a downloadable installer artifact for testing. Open the Actions tab, select the latest successful **Build GifCut for Windows** run, and download the **GifCut-Windows-Installer** artifact.
+To create a local test installer without publishing, run:
 
-For local development, install Flutter stable and Visual Studio with the **Desktop development with C++** workload. Run flutter pub get, then flutter run -d windows. For local audio extraction, put ffmpeg.exe in the app's executable folder or add FFmpeg to PATH.
+    .\scripts\release-windows.ps1
+
+Output files are saved in `build\installer\`. The in-app updater continues to use the existing GitHub Releases mechanism and the `GifCut-Setup-X.Y.Z.exe` asset name.
+
+## Local development
+
+Install Flutter 3.47.9 and Visual Studio 2022 with the **Desktop development with C++** workload. Run:
+
+    flutter pub get
+    flutter run -d windows
+
+For local audio extraction during development, put `ffmpeg.exe` in the app's executable folder or add FFmpeg to PATH. The release script automatically bundles its own FFmpeg runtime with the installer.
 
 ## Technical notes
 
 - Video preview uses media_kit / media_kit_video.
 - Audio extraction runs FFmpeg as a local process and writes WAV files to Documents/GifCut/Media.
-- The release workflow packages an FFmpeg LGPL Windows binary alongside the application. Review the upstream FFmpeg legal page and the included runtime notice before redistribution.
+- The release script packages an FFmpeg LGPL Windows binary alongside the application. Review the upstream FFmpeg legal page and the included runtime notice before redistribution.
+- Cinematic LUT presets are bundled from slaycamera/luts under CC BY 4.0 with attribution.
 - The updater only reads public GitHub Releases and contains no GitHub access token.
