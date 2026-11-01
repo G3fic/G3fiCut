@@ -1,0 +1,100 @@
+name: GifCut Windows Release
+
+on:
+  push:
+    branches:
+      - release/v0.3.80-capcut-workspace
+    paths:
+      - '**'
+      - '!docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gifcut-windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    name: Build Windows installer and publish release
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Flutter 3.47.9
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+
+      - name: Verify Windows build tools
+        shell: pwsh
+        run: |
+          flutter --version
+          flutter doctor -v
+          git --version
+
+      - name: Install Inno Setup 6
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            throw "Inno Setup compiler was not installed."
+          }
+
+      - name: Read release version
+        id: release
+        shell: pwsh
+        run: |
+          $match = [regex]::Match((Get-Content pubspec.yaml -Raw), '(?m)^version:\s*(\d+\.\d+\.\d+)(?:\+\d+)?\s*$')
+          if (-not $match.Success) { throw "Could not read version from pubspec.yaml" }
+          $version = $match.Groups[1].Value
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=v$version" >> $env:GITHUB_OUTPUT
+
+      - name: Check whether this version is already published
+        id: existing
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${{ steps.release.outputs.tag }}" --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            "exists=true" >> $env:GITHUB_OUTPUT
+            Write-Host "Release ${{ steps.release.outputs.tag }} already exists; this run will validate and upload build artifacts only."
+          } else {
+            "exists=false" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Build and publish new version
+        if: steps.existing.outputs.exists == 'false'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .\scripts\release-windows.ps1 -Publish
+
+      - name: Build existing version for verification
+        if: steps.existing.outputs.exists == 'true'
+        shell: pwsh
+        run: .\scripts\release-windows.ps1
+
+      - name: Upload installer artifacts
+        if: always() && success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GifCut-Windows-${{ steps.release.outputs.version }}
+          path: |
+            build/installer/GifCut-Setup-*.exe
+            build/installer/G3fiCut-Setup-*.exe
+            build/installer/ClipForge-Setup-*.exe
+            build/installer/GifCut-*-win-x64.zip
+          if-no-files-found: error
+          retention-days: 14
