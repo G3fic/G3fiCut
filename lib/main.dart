@@ -1006,6 +1006,10 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         }
         videoPath = path;
         _transitionPreviewFrames.clear();
+        _transitionPlaybackTimer?.cancel();
+        _transitionPlaybackTimer = null;
+        _transitionPlaybackClock?.stop();
+        _transitionPlaybackIndex = -1;
         projectFilePath = null;
         projectDirty = true;
         audioPath = null;
@@ -1450,6 +1454,26 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         playing = false;
         status = 'Проект открыт: ${p.basename(selectedPath)}';
       });
+      _transitionPlaybackTimer?.cancel();
+      _transitionPlaybackTimer = null;
+      _transitionPlaybackClock?.stop();
+      _transitionPlaybackIndex = -1;
+      // Older project files recorded a transition at a hard cut. Migrate
+      // those cuts to the same overlap geometry used by new transitions.
+      for (final transition in timelineTransitions) {
+        final pair = _transitionPairForAt(transition.at);
+        if (pair != null &&
+            (pair.incoming.timelineStart - transition.at).abs() <= TransitionTimeline.epsilon) {
+          final maximum = _maxTransitionDurationAt(transition.at);
+          if (maximum >= TransitionTimeline.minimumDuration) {
+            transition.duration = transition.duration
+                .clamp(TransitionTimeline.minimumDuration, maximum)
+                .toDouble();
+            pair.incoming.timelineStart = transition.at - transition.duration;
+          }
+        }
+      }
+      _reconcileTimelineAnnotations();
       _transitionPreviewFrames.clear();
       unawaited(_prepareAllTransitionPreviewFrames());
       if (document.audioPath != null) {
@@ -5424,17 +5448,6 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         );
       }
     }
-    if (transitionEffect != 'Нет' && videoClips.length > 1) {
-      final durationForClip = math.min(transitionDuration, math.max(0.1, clip.length / 2)).toDouble();
-      final color = transitionEffect == 'Белая вспышка' ? 'white' : 'black';
-      final hasIncomingOverride = timelineTransitions.any((value) => (value.at - clip.timelineStart).abs() <= 0.025);
-      final hasOutgoingOverride = timelineTransitions.any((value) => (value.at - clip.timelineEnd).abs() <= 0.025);
-      if (index > 0 && !hasIncomingOverride) filters.add('fade=t=in:st=0:d=${durationForClip.toStringAsFixed(2)}:color=$color');
-      if (index < videoClips.length - 1 && !hasOutgoingOverride) {
-        final start = math.max(0, clip.length - durationForClip).toDouble();
-        filters.add('fade=t=out:st=${start.toStringAsFixed(2)}:d=${durationForClip.toStringAsFixed(2)}:color=$color');
-      }
-    }
     return filters.isEmpty ? 'null' : filters.join(',');
   }
 
@@ -5585,9 +5598,20 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       for (var i = 0; i < orderedClips.length; i++) {
         final clip = orderedClips[i];
         if (clip.timelineStart < sequenceCursor - 0.015) {
-          throw StateError(
-            'Клипы перекрываются на таймлайне. Разместите их последовательно перед экспортом.',
-          );
+          final overlapDuration = sequenceCursor - clip.timelineStart;
+          final previousSegment = exportSegments.isEmpty
+              ? null
+              : exportSegments.last;
+          final transition = timelineTransitions.where((candidate) =>
+              previousSegment != null &&
+              !previousSegment.isGap &&
+              (candidate.at - previousSegment.end).abs() <= TransitionTimeline.epsilon &&
+              (candidate.duration - overlapDuration).abs() <= TransitionTimeline.epsilon);
+          if (transition.isEmpty) {
+            throw StateError(
+              'На таймлайне найдено перекрытие без перехода. Выберите стык и добавьте переход перед экспортом.',
+            );
+          }
         }
         if (clip.timelineStart > sequenceCursor + 0.015) {
           await appendGapSegment(clip.timelineStart - sequenceCursor);
@@ -5803,29 +5827,38 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           final previousSegment = exportSegments[i - 1];
           final currentSegment = exportSegments[i];
           TimelineTransition? transition;
-          if (!previousSegment.isGap &&
-              !currentSegment.isGap &&
-              (previousSegment.end - currentSegment.start).abs() <= 0.025) {
+          final overlapDuration = previousSegment.isGap || currentSegment.isGap
+              ? 0.0
+              : previousSegment.end - currentSegment.start;
+          if (overlapDuration > TransitionTimeline.epsilon) {
             for (final candidate in timelineTransitions) {
-              if ((candidate.at - currentSegment.start).abs() <= 0.025) {
+              if ((candidate.at - previousSegment.end).abs() <= TransitionTimeline.epsilon &&
+                  (candidate.duration - overlapDuration).abs() <= TransitionTimeline.epsilon) {
                 transition = candidate;
                 break;
               }
+            }
+            if (transition == null) {
+              throw StateError('Перекрытие клипов не связано с переходом на дорожке.');
             }
           }
 
           final durationForTransition = transition == null
               ? 0.0
-              : math.min(
-                  transition.duration,
+              : overlapDuration.clamp(
+                  TransitionTimeline.minimumDuration,
                   math.min(previousSegment.duration / 2, currentSegment.duration / 2),
                 ).toDouble();
-          final canTransition = transition != null && durationForTransition >= 0.05;
+          final canTransition = transition != null &&
+              durationForTransition >= TransitionTimeline.minimumDuration;
           final videoOutput = 'vjoin$i';
           final audioOutput = 'ajoin$i';
           if (canTransition) {
             final name = _transitionFilterName(transition.type);
-            final offset = math.max(0.0, accumulatedDuration - durationForTransition).toDouble();
+            final offset = TransitionTimeline.xfadeOffset(
+              composedDuration: accumulatedDuration,
+              transitionDuration: durationForTransition,
+            );
             graph.add(
               '[$activeVideo][v$i]xfade=transition=$name:duration=${durationForTransition.toStringAsFixed(3)}:offset=${offset.toStringAsFixed(3)}[$videoOutput]',
             );
@@ -5834,7 +5867,11 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                 '[$activeAudio][a$i]acrossfade=d=${durationForTransition.toStringAsFixed(3)}:c1=tri:c2=tri[$audioOutput]',
               );
             }
-            accumulatedDuration += currentSegment.duration - durationForTransition;
+            accumulatedDuration = TransitionTimeline.composedDurationAfterTransition(
+              composedDuration: accumulatedDuration,
+              incomingDuration: currentSegment.duration,
+              transitionDuration: durationForTransition,
+            );
           } else {
             graph.add('[$activeVideo][v$i]concat=n=2:v=1:a=0[$videoOutput]');
             if (sourceHasAudio) {
