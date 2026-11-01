@@ -947,7 +947,26 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   }
 
   Future<void> _prepareAllTransitionPreviewFrames() async {
-    for (final transition in List<TimelineTransition>.of(timelineTransitions)) {
+    final transitions = List<TimelineTransition>.of(timelineTransitions);
+    if (transitions.isEmpty && transitionEffect != 'Нет') {
+      final ordered = List<TimelineClip>.of(videoClips)
+        ..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
+      for (var i = 1; i < ordered.length; i++) {
+        final previous = ordered[i - 1];
+        final next = ordered[i];
+        if ((previous.timelineEnd - next.timelineStart).abs() > 0.025) continue;
+        final maxDuration = math.min(previous.length / 2, next.length / 2);
+        final duration = math.min(transitionDuration, maxDuration).toDouble();
+        if (duration >= 0.05) {
+          transitions.add(TimelineTransition(
+            type: transitionEffect,
+            at: next.timelineStart,
+            duration: duration,
+          ));
+        }
+      }
+    }
+    for (final transition in transitions) {
       await _prepareTransitionPreviewFrames(transition);
     }
   }
@@ -3405,7 +3424,15 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                 initialValue: transitionEffect,
                 decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9)),
                 items: ['Нет', ...(_timelineTransitionTypes.toList()..sort())].map((v) => DropdownMenuItem(value: v, child: Text(v, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)))).toList(),
-                onChanged: (value) => setState(() { transitionEffect = value ?? 'Нет'; projectDirty = true; }),
+                onChanged: (value) {
+                  setState(() {
+                    transitionEffect = value ?? 'Нет';
+                    projectDirty = true;
+                  });
+                  if (transitionEffect != 'Нет') {
+                    unawaited(_prepareAllTransitionPreviewFrames());
+                  }
+                },
               ),
               if (transitionEffect != 'Нет')
                 _adjustmentSlider('Длительность перехода', transitionDuration, 0.2, 1.0, (value) => setState(() { transitionDuration = value; projectDirty = true; })),
