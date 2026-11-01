@@ -39,7 +39,7 @@ jobs:
         shell: pwsh
         run: |
           flutter --version
-          flutter doctor -v
+          # The actual Windows release build below is the authoritative toolchain check.
           git --version
 
       - name: Install Inno Setup 6
