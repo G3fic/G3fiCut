@@ -949,7 +949,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     final count = accepted.length;
     setStatus(count == 0
         ? 'Новых поддерживаемых медиафайлов не найдено.'
-        : 'Добавлено в медиатеку: $count. Выберите файл и нажмите «Добавить на таймлайн».' + (rejected > 0 ? ' Пропущено: $rejected.' : ''));
+        : 'Добавлено в медиатеку: $count. Выберите файл и нажмите «Добавить на таймлайн».${rejected > 0 ? ' Пропущено: $rejected.' : ''}');
   }
 
   Future<void> _addMediaAssetToTimeline(String path) async {
@@ -983,7 +983,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   Future<void> _attachAudioFile(String path) async {
     try {
       final result = await Process.run(await findFfmpeg(), ['-hide_banner', '-i', path]);
-      final diagnostic = result.stdout.toString() + '\\n' + result.stderr.toString();
+      final diagnostic = '${result.stdout}\n${result.stderr}';
       final match = RegExp(r'Duration:\\s*(\\d+):(\\d+):([\\d.]+)').firstMatch(diagnostic);
       if (match == null) throw const FormatException('Не удалось определить длительность аудиофайла.');
       final hours = int.parse(match.group(1)!);
@@ -5079,7 +5079,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           final fontClause = fontPath.isNotEmpty && await File(fontPath).exists()
               ? "fontfile='${fontPath.replaceAll('\\', '\\\\').replaceAll(':', '\\:')}':"
               : '';
-          final textColor = Color(overlay.colorValue).value.toRadixString(16).padLeft(8, '0').substring(2);
+          final textColor = Color(overlay.colorValue).toARGB32().toRadixString(16).padLeft(8, '0').substring(2);
           final textStart = (globalStart - clip.timelineStart).toStringAsFixed(3);
           final textEnd = (globalEnd - clip.timelineStart).toStringAsFixed(3);
           final outputLabel = 'text$textIndex';
