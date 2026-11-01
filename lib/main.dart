@@ -276,7 +276,6 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     '4:5' => 4 / 5, '3:2' => 3 / 2, _ => 16 / 9,
   };
   String videoEffect = 'Оригинал';
-  String transitionEffect = 'Нет';
   double transitionDuration = 0.4;
   static const _timelineEffectTypes = ProjectEffectClip.supportedTypes;
   static final _timelineTransitionTypes = ProjectTransition.supportedTypes;
@@ -2706,7 +2705,12 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           const SizedBox(height: 8),
           Wrap(spacing: gap, runSpacing: gap, children: [for (final type in values) _presetCard(type, transition: transitions, width: width)]),
           const SizedBox(height: 10),
-          const Text('Выберите карточку — настройки откроются справа. Затем нажмите «Добавить на таймлайн».', style: TextStyle(color: muted, fontSize: 9, height: 1.4)),
+          Text(
+            transitions
+                ? 'Перетащите переход на стык клипов в дорожке «Переходы» или выберите карточку и добавьте его кнопкой справа.'
+                : 'Выберите эффект и нажмите «Добавить на таймлайн» в настройках справа.',
+            style: const TextStyle(color: muted, fontSize: 9, height: 1.4),
+          ),
         ]),
       );
     });
@@ -2716,7 +2720,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     final key = '${transition ? 'transition' : 'effect'}:$type';
     final selected = selectedLibraryPreset == type && selectedLibraryPresetKind == (transition ? 'transition' : 'effect');
     final paths = videoThumbnails;
-    return SizedBox(
+    final card = SizedBox(
       width: width,
       child: MouseRegion(
         onEnter: (_) => setState(() => _hoveredLibraryPreview = key),
@@ -2724,37 +2728,81 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           if (_hoveredLibraryPreview == key) setState(() => _hoveredLibraryPreview = null);
         },
         child: InkWell(
-        key: ValueKey('preset-card-$key'),
-        borderRadius: BorderRadius.circular(7),
-        onTap: () => setState(() {
-          selectedLibraryPreset = type;
-          selectedLibraryPresetKind = transition ? 'transition' : 'effect';
-          inspectorTab = 'video';
-          selectedEffectClipIndex = -1;
-          selectedTransitionIndex = -1;
-          selectedPhotoOverlay = -1;
-          selectedTextOverlay = -1;
-          selectedAudioClip = false;
-        }),
-        child: Container(
-          padding: const EdgeInsets.all(5),
-          decoration: BoxDecoration(color: selected ? const Color(0xFF302A41) : const Color(0xFF20232B), borderRadius: BorderRadius.circular(7), border: Border.all(color: selected ? accent : const Color(0xFF393C48), width: selected ? 1.5 : 1)),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            AnimatedPresetThumbnail(
-              key: ValueKey('preset-thumbnail-$key'),
-              firstFramePath: paths.isNotEmpty ? paths.first : null,
-              secondFramePath: paths.length > 1 ? paths.last : null,
-              type: type,
-              transition: transition,
-              active: selected || _hoveredLibraryPreview == key,
-              colorMatrix: transition ? null : _timelineEffectColorMatrix(type),
+          key: ValueKey('preset-card-$key'),
+          borderRadius: BorderRadius.circular(7),
+          onTap: () => setState(() {
+            selectedLibraryPreset = type;
+            selectedLibraryPresetKind = transition ? 'transition' : 'effect';
+            inspectorTab = 'video';
+            selectedEffectClipIndex = -1;
+            selectedTransitionIndex = -1;
+            selectedPhotoOverlay = -1;
+            selectedTextOverlay = -1;
+            selectedAudioClip = false;
+          }),
+          child: Container(
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              color: selected ? const Color(0xFF302A41) : const Color(0xFF20232B),
+              borderRadius: BorderRadius.circular(7),
+              border: Border.all(
+                color: selected ? accent : const Color(0xFF393C48),
+                width: selected ? 1.5 : 1,
+              ),
             ),
-            const SizedBox(height: 5),
-            Text(type, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 9, color: selected ? Colors.white : const Color(0xFFD9DBE5), fontWeight: FontWeight.w700)),
-          ]),
-        ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              AnimatedPresetThumbnail(
+                key: ValueKey('preset-thumbnail-$key'),
+                firstFramePath: paths.isNotEmpty ? paths.first : null,
+                secondFramePath: paths.length > 1 ? paths.last : null,
+                type: type,
+                transition: transition,
+                active: selected || _hoveredLibraryPreview == key,
+                colorMatrix: transition ? null : _timelineEffectColorMatrix(type),
+              ),
+              const SizedBox(height: 5),
+              Row(children: [
+                Expanded(child: Text(
+                  type,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: selected ? Colors.white : const Color(0xFFD9DBE5),
+                    fontWeight: FontWeight.w700,
+                  ),
+                )),
+                if (transition)
+                  const Icon(Icons.drag_indicator, size: 13, color: Color(0xFFFFD28D)),
+              ]),
+            ]),
+          ),
         ),
       ),
+    );
+    if (!transition) return card;
+    return Draggable<String>(
+      data: type,
+      maxSimultaneousDrags: 1,
+      dragAnchorStrategy: pointerDragAnchorStrategy,
+      feedback: Material(
+        color: const Color(0xFF25202F),
+        elevation: 8,
+        borderRadius: BorderRadius.circular(7),
+        child: SizedBox(
+          width: width,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.compare_arrows, color: Color(0xFFFFD28D), size: 17),
+              const SizedBox(width: 7),
+              Flexible(child: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis)),
+            ]),
+          ),
+        ),
+      ),
+      childWhenDragging: Opacity(opacity: 0.35, child: card),
+      child: Tooltip(message: 'Перетащите на стык двух видеоклипов', child: card),
     );
   }
 
@@ -3407,7 +3455,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         }
       })),
       if (transition)
-        const Text('Переход будет установлен на ближайший стык двух соседних видеоклипов без разрыва.', style: TextStyle(color: muted, fontSize: 10, height: 1.4))
+        const Text('Перетащите карточку перехода на стык двух клипов. Кнопка ниже добавит его на ближайший стык.', style: TextStyle(color: muted, fontSize: 10, height: 1.4))
       else
         const Text('Эффект займёт свободный участок дорожки эффектов рядом с текущей позицией курсора.', style: TextStyle(color: muted, fontSize: 10, height: 1.4)),
       const SizedBox(height: 12),
@@ -3594,25 +3642,14 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                 onChanged: (value) => setState(() { aspectRatioPreset = value ?? '16:9'; projectDirty = true; }),
               ),
               const SizedBox(height: 10),
-              const Text('ПЕРЕХОД МЕЖДУ КЛИПАМИ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 6),
-              DropdownButtonFormField<String>(
-                isExpanded: true,
-                initialValue: transitionEffect,
-                decoration: const InputDecoration(isDense: true, border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 9)),
-                items: ['Нет', ...(_timelineTransitionTypes.toList()..sort())].map((v) => DropdownMenuItem(value: v, child: Text(v, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)))).toList(),
-                onChanged: (value) {
-                  setState(() {
-                    transitionEffect = value ?? 'Нет';
-                    projectDirty = true;
-                  });
-                  if (transitionEffect != 'Нет') {
-                    unawaited(_prepareAllTransitionPreviewFrames());
-                  }
-                },
+              const Text(
+                'ПЕРЕХОДЫ',
+                style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800),
               ),
-              if (transitionEffect != 'Нет')
-                _adjustmentSlider('Длительность перехода', transitionDuration, 0.2, 1.0, (value) => setState(() { transitionDuration = value; projectDirty = true; })),
+              const Text(
+                'Выберите переход в библиотеке и перетащите его на стык клипов. Длительность можно менять прямо на дорожке.',
+                style: TextStyle(color: muted, fontSize: 9, height: 1.4),
+              ),
               const SizedBox(height: 8),
               Row(children: [
                 const Expanded(child: Text('ФОТО ПОВЕРХ ВИДЕО', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800))),
@@ -3874,7 +3911,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                       const SizedBox(height: 5),
                       effectTrackRow(),
                     ],
-                    if (timelineTransitions.isNotEmpty) ...[
+                    if (videoClips.length > 1) ...[
                       const SizedBox(height: 4),
                       transitionTrackRow(),
                     ],
@@ -4072,11 +4109,16 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
   Widget transitionTrackRow() => SizedBox(
         width: _timelineLabelWidth + timelineWidth,
-        height: 42,
+        height: 48,
         child: Row(children: [
           Container(
-            width: _timelineLabelWidth, height: 42, padding: const EdgeInsets.symmetric(horizontal: 9),
-            decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
+            width: _timelineLabelWidth,
+            height: 48,
+            padding: const EdgeInsets.symmetric(horizontal: 9),
+            decoration: const BoxDecoration(
+              color: Color(0xFF191A22),
+              border: Border(bottom: BorderSide(color: Color(0xFF292B36))),
+            ),
             child: Row(children: [
               const Icon(Icons.compare_arrows, size: 16, color: Color(0xFFFFC56B)),
               const SizedBox(width: 6),
@@ -4092,13 +4134,61 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             ]),
           ),
           SizedBox(
-            width: timelineWidth, height: 42,
+            width: timelineWidth,
+            height: 48,
             child: Stack(clipBehavior: Clip.hardEdge, children: [
-              Positioned.fill(child: CustomPaint(painter: TimelineGridPainter(seconds: timelineSeconds, pixelsPerSecond: zoom))),
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: TimelineGridPainter(seconds: timelineSeconds, pixelsPerSecond: zoom),
+                ),
+              ),
+              for (var cut = 1; cut < videoClips.length; cut++)
+                if (_transitionPairForAt(videoClips[cut - 1].timelineEnd) != null)
+                  Positioned(
+                    left: (videoClips[cut - 1].timelineEnd * zoom - 18)
+                        .clamp(0.0, math.max(0.0, timelineWidth - 36))
+                        .toDouble(),
+                    top: 4,
+                    bottom: 4,
+                    width: 36,
+                    child: DragTarget<String>(
+                      onWillAcceptWithDetails: (details) =>
+                          !busy && details.data.isNotEmpty &&
+                          _transitionPairForAt(videoClips[cut - 1].timelineEnd) != null,
+                      onAcceptWithDetails: (details) => _applyTimelineTransitionAt(
+                        details.data,
+                        videoClips[cut - 1].timelineEnd,
+                      ),
+                      builder: (context, candidates, rejected) => AnimatedContainer(
+                        duration: const Duration(milliseconds: 100),
+                        decoration: BoxDecoration(
+                          color: candidates.isNotEmpty
+                              ? const Color(0xAAE6B75E)
+                              : const Color(0x223A3D48),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: candidates.isNotEmpty
+                                ? const Color(0xFFFFE2A6)
+                                : const Color(0x446D7281),
+                            width: candidates.isNotEmpty ? 2 : 1,
+                          ),
+                        ),
+                        child: Icon(
+                          candidates.isNotEmpty ? Icons.add : Icons.compare_arrows,
+                          size: 17,
+                          color: candidates.isNotEmpty
+                              ? const Color(0xFF2A2111)
+                              : const Color(0x667F8495),
+                        ),
+                      ),
+                    ),
+                  ),
               for (var i = 0; i < timelineTransitions.length; i++)
                 Positioned(
-                  left: (timelineTransitions[i].at * zoom - 24).clamp(0.0, math.max(0.0, timelineWidth - 48)).toDouble(),
-                  top: 3, bottom: 3, width: 48,
+                  left: (timelineTransitions[i].at - timelineTransitions[i].duration) * zoom + 1,
+                  top: 5,
+                  bottom: 5,
+                  width: math.max(24.0, timelineTransitions[i].duration * zoom - 2).toDouble(),
                   child: GestureDetector(
                     onTap: () => setState(() {
                       selectedTransitionIndex = i;
@@ -4109,18 +4199,87 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                       _selectedCanvasObject = 'timeline-transition';
                     }),
                     onSecondaryTapUp: (details) {
-                      if (!_timelinePanMoved) showTimelineTransitionMenu(details.globalPosition, i);
+                      if (!_timelinePanMoved) {
+                        showTimelineTransitionMenu(details.globalPosition, i);
+                      }
                     },
                     child: Container(
                       decoration: BoxDecoration(
-                        color: const Color(0xCC9A7138),
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF9D7131), Color(0xFFE0B96B), Color(0xFF9D7131)],
+                        ),
                         borderRadius: BorderRadius.circular(5),
-                        border: Border.all(color: selectedTransitionIndex == i ? Colors.white : const Color(0xFFFFD28D), width: selectedTransitionIndex == i ? 2 : 1),
+                        border: Border.all(
+                          color: selectedTransitionIndex == i
+                              ? Colors.white
+                              : const Color(0xFFFFD994),
+                          width: selectedTransitionIndex == i ? 2 : 1,
+                        ),
+                        boxShadow: selectedTransitionIndex == i
+                            ? const [BoxShadow(color: Color(0x66FFC56B), blurRadius: 7)]
+                            : null,
                       ),
-                      child: const Center(child: Icon(Icons.compare_arrows, size: 17, color: Colors.white)),
+                      child: Stack(children: [
+                        Center(
+                          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            const Icon(Icons.compare_arrows, size: 13, color: Color(0xFF241B0E)),
+                            if (timelineTransitions[i].duration * zoom > 64) ...[
+                              const SizedBox(width: 3),
+                              Flexible(child: Text(
+                                timelineTransitions[i].type,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Color(0xFF241B0E),
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              )),
+                            ],
+                          ]),
+                        ),
+                        Positioned(
+                          left: 0,
+                          top: 0,
+                          bottom: 0,
+                          width: 10,
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.resizeLeftRight,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onHorizontalDragStart: (_) => _startTransitionResize(i),
+                              onHorizontalDragUpdate: _updateTransitionResize,
+                              onHorizontalDragEnd: (_) => _finishTransitionResize(),
+                              onHorizontalDragCancel: _finishTransitionResize,
+                              child: const Center(
+                                child: SizedBox(
+                                  width: 2,
+                                  height: 18,
+                                  child: ColoredBox(color: Color(0xFF3C2B13)),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ]),
                     ),
                   ),
                 ),
+              if (_timelineSnapAt != null)
+                Positioned(
+                  left: _timelineSnapAt! * zoom,
+                  top: 0,
+                  bottom: 0,
+                  width: 1,
+                  child: const ColoredBox(color: Color(0xFFB18CFF)),
+                ),
+              Positioned(
+                left: (playheadSeconds * zoom - 1).clamp(0.0, timelineWidth - 2).toDouble(),
+                top: 0,
+                bottom: 0,
+                width: 2,
+                child: const ColoredBox(color: Colors.white),
+              ),
             ]),
           ),
         ]),
@@ -4316,39 +4475,6 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                             ),
                           ],
                         ],
-                      ),
-                    ),
-                  ),
-              if (!audio)
-                for (var i = 0; i < timelineTransitions.length; i++)
-                  Positioned(
-                    left: (timelineTransitions[i].at - timelineTransitions[i].duration / 2) * zoom + 4,
-                    top: 9,
-                    bottom: 9,
-                    width: math.max(16.0, timelineTransitions[i].duration * zoom - 1).toDouble(),
-                    child: GestureDetector(
-                      onTap: () => setState(() {
-                        selectedTransitionIndex = i;
-                        selectedEffectClipIndex = -1;
-                        selectedAudioClip = false;
-                        selectedPhotoOverlay = -1;
-                        _selectedCanvasObject = 'timeline-transition';
-                      }),
-                      onSecondaryTapUp: (details) {
-                        if (!_timelinePanMoved) showTimelineTransitionMenu(details.globalPosition, i);
-                      },
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: const Color(0x66FFFFFF),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(
-                            color: selectedTransitionIndex == i ? Colors.white : const Color(0xCCFFFFFF),
-                            width: selectedTransitionIndex == i ? 2 : 1,
-                          ),
-                        ),
-                        child: const Center(
-                          child: Icon(Icons.compare_arrows, size: 12, color: Colors.white),
-                        ),
                       ),
                     ),
                   ),
