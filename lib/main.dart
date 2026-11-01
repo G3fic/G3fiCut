@@ -1810,7 +1810,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     final transition = timelineTransitions[index];
     final pair = _transitionPairForAt(transition.at);
     if (pair == null) return;
-    final sourceSeconds = pair.outgoing.start +
+    final sourceSeconds = pair.outgoing.end - transition.duration +
         (sequenceSeconds - (transition.at - transition.duration));
     _seekingAcrossCut = true;
     try {
