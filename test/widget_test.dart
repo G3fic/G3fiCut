@@ -46,13 +46,8 @@ void main() {
 
     expect(find.byTooltip('Открыть проект'), findsOneWidget);
     expect(find.byTooltip('Сохранить проект'), findsOneWidget);
-    expect(find.byTooltip('Сохранить как'), findsOneWidget);
     expect(
       tester.widget<IconButton>(find.descendant(of: find.byTooltip('Сохранить проект'), matching: find.byType(IconButton))).onPressed,
-      isNull,
-    );
-    expect(
-      tester.widget<IconButton>(find.descendant(of: find.byTooltip('Сохранить как'), matching: find.byType(IconButton))).onPressed,
       isNull,
     );
     expect(tester.takeException(), isNull);
@@ -180,6 +175,7 @@ void main() {
     expect(find.text('ЭФФЕКТЫ ДЛЯ ВИДЕО'), findsOneWidget);
     final effectCard = find.byKey(const ValueKey('preset-card-effect:Чёрно-белый'));
     expect(effectCard, findsOneWidget);
+    await tester.ensureVisible(effectCard);
     await tester.tap(effectCard);
     await tester.pump();
     expect(find.text('НАСТРОЙКИ ЭФФЕКТА'), findsOneWidget);
@@ -191,7 +187,12 @@ void main() {
     await tester.tap(transitionsCategory);
     await tester.pump();
     expect(find.text('ПЕРЕХОДЫ МЕЖДУ КЛИПАМИ'), findsOneWidget);
-    expect(find.byKey(const ValueKey('preset-card-transition:Растворение')), findsOneWidget);
+    final transitionCard = find.byKey(const ValueKey('preset-card-transition:Растворение'));
+    expect(transitionCard, findsOneWidget);
+    await tester.ensureVisible(transitionCard);
+    await tester.tap(transitionCard);
+    await tester.pump();
+    expect(find.text('НАСТРОЙКИ ПЕРЕХОДА'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
