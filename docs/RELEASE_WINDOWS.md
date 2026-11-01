@@ -29,9 +29,11 @@ Clone the repository once:
 ```powershell
 git clone https://github.com/G3fic/G3fiCut.git
 cd G3fiCut
+git fetch origin
+git checkout -b release/v0.3.80-capcut-workspace origin/release/v0.3.80-capcut-workspace
 ```
 
-Use the branch containing the changes you intend to release. Before publishing, make sure the latest code is committed and pushed to GitHub.
+The checkout command selects the working branch that currently contains the local release script and the GifCut 0.3.80 editor changes. When these changes are later merged to `main`, use `main` instead. Before publishing, make sure the latest code is committed and pushed to GitHub.
 
 ## Build an installer without publishing
 
