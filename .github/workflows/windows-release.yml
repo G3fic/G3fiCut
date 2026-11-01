@@ -66,8 +66,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view "${{ steps.release.outputs.tag }}" --repo "${{ github.repository }}" *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $releases = gh release list --repo "${{ github.repository }}" --limit 1000 --json tagName | ConvertFrom-Json
+          $alreadyPublished = @($releases | Where-Object { $_.tagName -eq "${{ steps.release.outputs.tag }}" }).Count -gt 0
+          if ($alreadyPublished) {
             "exists=true" >> $env:GITHUB_OUTPUT
             Write-Host "Release ${{ steps.release.outputs.tag }} already exists; this run will validate and upload build artifacts only."
           } else {
