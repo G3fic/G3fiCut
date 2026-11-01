@@ -93,3 +93,15 @@ The script stops and names the missing tool. Common fixes:
 - **Git says the branch is not pushed:** commit and push the current changes, then rerun the command.
 
 The script downloads FFmpeg and LUT files at build time, so an internet connection is required. The installer is built locally; GitHub Actions is not involved in packaging or publishing it.
+
+
+## Publish manually without GitHub CLI
+
+When the local build has completed without `-Publish`, open the repository's **Releases** page and choose **Draft a new release**. Create a new tag named `vX.Y.Z` from the same pushed branch/commit used for the build, then attach all four files from `build\\installer\\`:
+
+- `GifCut-Setup-X.Y.Z.exe`
+- `G3fiCut-Setup-X.Y.Z.exe`
+- `ClipForge-Setup-X.Y.Z.exe`
+- `GifCut-X.Y.Z-win-x64.zip`
+
+Replace `X.Y.Z` with the exact version read from `pubspec.yaml`, and publish the release (do not leave it as a draft). The updater needs the `GifCut-Setup-X.Y.Z.exe` asset specifically. The release tag must point at the source commit used to build the installer.
