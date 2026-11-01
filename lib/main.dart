@@ -5379,7 +5379,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           const SizedBox(width: 8),
           Expanded(child: Text(status, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFFB9BAC8), fontSize: 10))),
           const SizedBox(width: 10),
-          const Text('GifCut $appVersion · Windows', style: TextStyle(color: Color(0xFF676A7A), fontSize: 9)),
+          const Text('GifCut v$appVersion · Windows', style: TextStyle(color: Color(0xFF676A7A), fontSize: 9)),
         ]),
       );
 }
