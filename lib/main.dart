@@ -183,7 +183,7 @@ class ExportTimelineSegment {
 }
 
 class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.82');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.83');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -2466,7 +2466,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           const SizedBox(width: 9),
           const Text('GifCut', style: TextStyle(fontSize: 17, letterSpacing: -.5, fontWeight: FontWeight.w900)),
           const SizedBox(width: 6),
-          const Text('v0.3.82', style: TextStyle(color: accent, fontSize: 10, fontWeight: FontWeight.w800)),
+          const Text('v0.3.83', style: TextStyle(color: accent, fontSize: 10, fontWeight: FontWeight.w800)),
           const SizedBox(width: 18),
           Flexible(child: Text(
             (projectFilePath == null ? 'Новый проект' : p.basenameWithoutExtension(projectFilePath!)) + (projectDirty ? ' •' : ''),
