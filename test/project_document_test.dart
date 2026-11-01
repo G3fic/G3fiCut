@@ -104,7 +104,7 @@ void main() {
       final original = makeProject(
         videoClips: const [
           ProjectClipRange(0, 4, timelineStart: 0),
-          ProjectClipRange(5, 9, timelineStart: 4),
+          ProjectClipRange(5, 9, timelineStart: 3.5),
         ],
         selectedClipIndex: 1,
         playheadMs: 4500,
@@ -183,6 +183,20 @@ void main() {
         ),
         throwsFormatException,
       );
+    });
+
+    test('accepts legacy hard-cut transition projects for migration', () {
+      final legacy = makeProject(
+        videoClips: const [
+          ProjectClipRange(0, 4, timelineStart: 0),
+          ProjectClipRange(5, 9, timelineStart: 4),
+        ],
+        transitions: const [
+          ProjectTransition(type: 'Растворение', at: 4, duration: 0.5),
+        ],
+      );
+
+      expect(ProjectDocument.decode(legacy.encode()).transitions.single.at, 4);
     });
 
     test('accepts and roundtrips all built-in transition types', () {
