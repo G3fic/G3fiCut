@@ -1680,6 +1680,19 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   Future<void> togglePlayback() async {
     final activePlayer = player;
     if (videoPath == null || activePlayer == null || videoClips.isEmpty) return;
+
+    if (_transitionPlaybackIndex >= 0) {
+      if (playing) {
+        _transitionPlaybackTimer?.cancel();
+        _transitionPlaybackTimer = null;
+        _transitionPlaybackClock?.stop();
+        setState(() => playing = false);
+      } else {
+        _runTransitionPlaybackTimer(_transitionPlaybackIndex);
+      }
+      return;
+    }
+
     if (playing) {
       if (_playheadInGap) {
         _stopGapPlayback();
@@ -1692,6 +1705,17 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       }
       return;
     }
+
+    final transitionIndex = _transitionIndexAtTimelineTime(playheadSeconds);
+    if (transitionIndex >= 0) {
+      await _startTransitionPreview(
+        transitionIndex,
+        fromSeconds: playheadSeconds,
+        resumePlayback: true,
+      );
+      return;
+    }
+
     if (_playheadInGap || _clipIndexAtTimelineTime(playheadSeconds) < 0) {
       final nextIndex = _gapNextClipIndex >= 0
           ? _gapNextClipIndex
@@ -1707,9 +1731,127 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     await activePlayer.play();
   }
 
+  int _transitionIndexAtTimelineTime(double seconds) {
+    for (var i = 0; i < timelineTransitions.length; i++) {
+      final transition = timelineTransitions[i];
+      final start = transition.at - transition.duration;
+      if (seconds >= start - 0.001 && seconds < transition.at - 0.001) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  Future<void> _startTransitionPreview(
+    int index, {
+    required double fromSeconds,
+    required bool resumePlayback,
+  }) async {
+    if (index < 0 || index >= timelineTransitions.length || player == null) return;
+    final transition = timelineTransitions[index];
+    final start = transition.at - transition.duration;
+    final requested = fromSeconds.clamp(start, transition.at).toDouble();
+
+    _transitionPlaybackTimer?.cancel();
+    _transitionPlaybackTimer = null;
+    _transitionPlaybackClock?.stop();
+    setState(() {
+      _transitionPlaybackIndex = index;
+      position = Duration(milliseconds: (requested * 1000).round());
+      _playheadInGap = false;
+      playing = resumePlayback;
+    });
+
+    _suppressPlayerStateEvents = true;
+    try {
+      await player!.pause();
+      await _prepareTransitionPreviewFrames(transition);
+    } finally {
+      _suppressPlayerStateEvents = false;
+    }
+    if (!mounted || _transitionPlaybackIndex != index) return;
+    if (resumePlayback) _runTransitionPlaybackTimer(index);
+  }
+
+  void _runTransitionPlaybackTimer(int index) {
+    if (!mounted || index < 0 || index >= timelineTransitions.length) return;
+    final transition = timelineTransitions[index];
+    _transitionPlaybackTimer?.cancel();
+    _transitionPlaybackStartAt = playheadSeconds.clamp(
+      transition.at - transition.duration,
+      transition.at,
+    ).toDouble();
+    _transitionPlaybackClock = Stopwatch()..start();
+    if (!playing) setState(() => playing = true);
+    _transitionPlaybackTimer = Timer.periodic(
+      const Duration(milliseconds: 16),
+      (timer) {
+        if (!mounted || !playing || _transitionPlaybackIndex != index) {
+          timer.cancel();
+          _transitionPlaybackTimer = null;
+          _transitionPlaybackClock?.stop();
+          return;
+        }
+        final elapsed = (_transitionPlaybackClock?.elapsedMicroseconds ?? 0) / 1000000;
+        final nextSeconds = math.min(
+          transition.at,
+          _transitionPlaybackStartAt + elapsed,
+        ).toDouble();
+        setState(() {
+          position = Duration(milliseconds: (nextSeconds * 1000).round());
+        });
+        if (nextSeconds >= transition.at - 0.001) {
+          timer.cancel();
+          _transitionPlaybackTimer = null;
+          _transitionPlaybackClock?.stop();
+          unawaited(_finishTransitionPlayback(index));
+        }
+      },
+    );
+  }
+
+  Future<void> _finishTransitionPlayback(int index) async {
+    if (!mounted || index < 0 || index >= timelineTransitions.length ||
+        _transitionPlaybackIndex != index) {
+      return;
+    }
+    final transition = timelineTransitions[index];
+    final resumePlayback = playing;
+    final pair = _transitionPairForAt(transition.at);
+    _transitionPlaybackTimer?.cancel();
+    _transitionPlaybackTimer = null;
+    _transitionPlaybackClock?.stop();
+    setState(() {
+      _transitionPlaybackIndex = -1;
+      position = Duration(milliseconds: (transition.at * 1000).round());
+      if (pair != null) _activePlaybackClipIndex = pair.rightIndex;
+    });
+    if (pair == null) {
+      if (mounted) setState(() => playing = false);
+      return;
+    }
+
+    final sourceSeconds = pair.incoming.start + transition.duration;
+    _seekingAcrossCut = true;
+    try {
+      await player?.seek(Duration(milliseconds: (sourceSeconds * 1000).round()));
+      if (resumePlayback && mounted) {
+        await player?.play();
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => playing = false);
+        status = 'Не удалось продолжить видео после перехода: $error';
+      }
+    } finally {
+      _seekingAcrossCut = false;
+    }
+  }
+
   Future<void> _handlePlayerPosition(Duration sourcePosition) async {
     final activePlayer = player;
     if (!mounted || _switchingMedia || _seekingAcrossCut || _playheadInGap ||
+        _transitionPlaybackIndex >= 0 ||
         activePlayer == null || videoPath == null || videoClips.isEmpty) {
       return;
     }
@@ -1722,6 +1864,25 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       _activePlaybackClipIndex = index;
     }
     final clip = videoClips[index];
+
+    final transitionIndex = timelineTransitions.indexWhere((transition) =>
+        (transition.at - clip.timelineEnd).abs() <= TransitionTimeline.epsilon &&
+        sourceSeconds >= clip.end - transition.duration - 0.035);
+    if (transitionIndex >= 0 && playing) {
+      final transition = timelineTransitions[transitionIndex];
+      final currentSequence = clip.timelineStart +
+          math.max(0, sourceSeconds - clip.start);
+      await _startTransitionPreview(
+        transitionIndex,
+        fromSeconds: currentSequence.clamp(
+          transition.at - transition.duration,
+          transition.at,
+        ).toDouble(),
+        resumePlayback: true,
+      );
+      return;
+    }
+
     if (sourceSeconds >= clip.end - 0.045) {
       if (playing && index + 1 < videoClips.length) {
         final next = videoClips[index + 1];
@@ -1731,8 +1892,6 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         }
         _activePlaybackClipIndex = index + 1;
         if ((next.start - clip.end).abs() <= 0.05) {
-          // Split clips share a contiguous source range; seeking here causes
-          // a visible frame flash and a brief audio dropout in media_kit.
           setState(() => position = Duration(milliseconds: (next.timelineStart * 1000).round()));
           return;
         }
@@ -1843,7 +2002,43 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     final maxMs = timelineDuration.inMilliseconds;
     final ms = target.inMilliseconds.clamp(0, maxMs > 0 ? maxMs : duration.inMilliseconds).toInt();
     final sequenceSeconds = ms / 1000;
+    final resumeAfterTransitionSeek = _transitionPlaybackIndex >= 0 && playing;
     final resumeAfterGapSeek = _playheadInGap && playing;
+    final wasPlaying = playing;
+
+    final transitionIndex = _transitionIndexAtTimelineTime(sequenceSeconds);
+    if (transitionIndex >= 0) {
+      _stopGapPlayback();
+      _transitionPlaybackTimer?.cancel();
+      _transitionPlaybackTimer = null;
+      _transitionPlaybackClock?.stop();
+      setState(() {
+        _transitionPlaybackIndex = transitionIndex;
+        position = Duration(milliseconds: ms);
+        _playheadInGap = false;
+        playing = false;
+      });
+      _suppressPlayerStateEvents = true;
+      try {
+        await activePlayer.pause();
+        await _prepareTransitionPreviewFrames(timelineTransitions[transitionIndex]);
+      } finally {
+        _suppressPlayerStateEvents = false;
+      }
+      if (wasPlaying || resumeAfterTransitionSeek) {
+        _runTransitionPlaybackTimer(transitionIndex);
+      }
+      return;
+    }
+
+    _transitionPlaybackTimer?.cancel();
+    _transitionPlaybackTimer = null;
+    _transitionPlaybackClock?.stop();
+    final wasInTransition = _transitionPlaybackIndex >= 0;
+    if (wasInTransition) {
+      setState(() => _transitionPlaybackIndex = -1);
+    }
+
     final index = _clipIndexAtTimelineTime(sequenceSeconds);
     if (index < 0) {
       _stopGapPlayback();
@@ -1859,6 +2054,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       _suppressPlayerStateEvents = false;
       return;
     }
+
     _stopGapPlayback(clearNext: true);
     final clip = videoClips[index];
     final sourceSeconds = clip.start + sequenceSeconds - clip.timelineStart;
@@ -1866,13 +2062,15 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     setState(() {
       position = Duration(milliseconds: ms);
       _playheadInGap = false;
+      if (wasInTransition) playing = false;
     });
     _seekingAcrossCut = true;
     try {
       await activePlayer.seek(Duration(milliseconds: (sourceSeconds * 1000).round()));
-      if (resumeAfterGapSeek) {
-        _suppressPlayerStateEvents = false;
+      if ((resumeAfterTransitionSeek || resumeAfterGapSeek) && mounted) {
         await activePlayer.play();
+      } else if (wasInTransition) {
+        await activePlayer.pause();
       }
     } finally {
       _seekingAcrossCut = false;
