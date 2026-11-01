@@ -46,10 +46,12 @@ void main() {
 
     expect(find.byTooltip('Открыть проект'), findsOneWidget);
     expect(find.byTooltip('Сохранить проект'), findsOneWidget);
-    expect(
-      tester.widget<IconButton>(find.descendant(of: find.byTooltip('Сохранить проект'), matching: find.byType(IconButton))).onPressed,
-      isNull,
+    final saveButton = find.ancestor(
+      of: find.byIcon(Icons.save_outlined),
+      matching: find.byType(IconButton),
     );
+    expect(saveButton, findsOneWidget);
+    expect(tester.widget<IconButton>(saveButton).onPressed, isNull);
     expect(tester.takeException(), isNull);
   });
 
