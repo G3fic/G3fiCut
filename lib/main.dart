@@ -2207,8 +2207,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
                     decoration: BoxDecoration(color: const Color(0xFF202630), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF454958))),
-                    child: SingleChildScrollView(
-                      child: const Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
+                    child: const SingleChildScrollView(
+                      child: Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
                         Icon(Icons.cloud_upload_outlined, size: 34, color: accent),
                         SizedBox(height: 9),
                         Text('Перетащите файлы', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
