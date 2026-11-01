@@ -274,8 +274,9 @@ class ProjectDocument {
       }
       final hasJoin = videoClips.any((left) => videoClips.any((right) =>
           (left.timelineEnd - transition.at).abs() < 0.025 &&
-          (right.timelineStart - transition.at).abs() < 0.025 &&
-          left.timelineStart != right.timelineStart));
+          ((right.timelineStart - (transition.at - transition.duration)).abs() < 0.025 ||
+              (right.timelineStart - transition.at).abs() < 0.025) &&
+          left.timelineStart < right.timelineStart + 0.001));
       if (!hasJoin) {
         throw FormatException('Переход ${i + 1} не привязан к стыку двух видеоклипов.');
       }
