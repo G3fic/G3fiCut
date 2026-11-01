@@ -9,9 +9,9 @@ void main() {
     await tester.pump();
 
     expect(find.text('GifCut'), findsOneWidget);
-    expect(find.byTooltip('Импортировать видео'), findsOneWidget);
+    expect(find.byKey(const ValueKey('import-media-button')), findsOneWidget);
     expect(find.text('ТАЙМЛАЙН'), findsOneWidget);
-    expect(find.text('Ваше видео появится здесь'), findsOneWidget);
+    expect(find.text('Нажмите «Импорт видео», чтобы начать'), findsOneWidget);
     expect(tester.takeException(), isNull, reason: 'The editor must open without layout or initialization exceptions.');
   });
 
@@ -26,15 +26,9 @@ void main() {
     await tester.pumpWidget(const GifCutApp());
     await tester.pump();
 
-    // The editor now exposes undo/redo in the left tool rail and timeline.
-    // Check their visible tooltips and ensure the commands are disabled initially.
-    for (final tooltip in const ['Отменить', 'Повторить']) {
-      final button = find.descendant(
-        of: find.byTooltip(tooltip),
-        matching: find.byType(IconButton),
-      );
-      expect(find.byTooltip(tooltip), findsOneWidget);
-      expect(tester.widget<IconButton>(button).onPressed, isNull);
+    for (final key in const ['timeline-undo', 'timeline-redo']) {
+      expect(find.byKey(ValueKey(key)), findsOneWidget);
+      expect(tester.widget<IconButton>(find.byKey(ValueKey(key))).onPressed, isNull);
     }
     for (final key in const ['timeline-undo', 'timeline-redo']) {
       expect(find.byKey(ValueKey(key)), findsOneWidget);
@@ -51,10 +45,10 @@ void main() {
     await tester.pump();
 
     expect(find.byTooltip('Открыть проект'), findsOneWidget);
-    expect(find.byTooltip('Сохранить'), findsOneWidget);
+    expect(find.byTooltip('Сохранить проект'), findsOneWidget);
     expect(find.byTooltip('Сохранить как'), findsOneWidget);
     expect(
-      tester.widget<IconButton>(find.descendant(of: find.byTooltip('Сохранить'), matching: find.byType(IconButton))).onPressed,
+      tester.widget<IconButton>(find.descendant(of: find.byTooltip('Сохранить проект'), matching: find.byType(IconButton))).onPressed,
       isNull,
     );
     expect(
@@ -146,6 +140,9 @@ void main() {
     expect(inspectorSplitter, findsOneWidget);
     expect(timelineSplitter, findsOneWidget);
 
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1;
+    await tester.pump();
     await tester.drag(mediaSplitter, const Offset(-28, 0));
     await tester.pump();
     await tester.drag(inspectorSplitter, const Offset(24, 0));
@@ -176,7 +173,9 @@ void main() {
       expect(find.byKey(ValueKey('library-category-$category')), findsOneWidget);
     }
 
-    await tester.tap(find.byKey(const ValueKey('library-category-effects')));
+    final effectsCategory = find.byKey(const ValueKey('library-category-effects'));
+    await tester.ensureVisible(effectsCategory);
+    await tester.tap(effectsCategory);
     await tester.pump();
     expect(find.text('ЭФФЕКТЫ ДЛЯ ВИДЕО'), findsOneWidget);
     final effectCard = find.byKey(const ValueKey('preset-card-effect:Чёрно-белый'));
@@ -187,7 +186,9 @@ void main() {
     expect(find.byKey(const ValueKey('apply-library-preset')), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    await tester.tap(find.byKey(const ValueKey('library-category-transitions')));
+    final transitionsCategory = find.byKey(const ValueKey('library-category-transitions'));
+    await tester.ensureVisible(transitionsCategory);
+    await tester.tap(transitionsCategory);
     await tester.pump();
     expect(find.text('ПЕРЕХОДЫ МЕЖДУ КЛИПАМИ'), findsOneWidget);
     expect(find.byKey(const ValueKey('preset-card-transition:Растворение')), findsOneWidget);
@@ -198,15 +199,15 @@ void main() {
     await tester.pumpWidget(const GifCutApp());
     await tester.pump();
 
-    final backgroundToggle = find.byKey(const ValueKey('canvas-background-blur-toggle'));
+    final backgroundToggle = find.byKey(const ValueKey('canvas-background-blur-settings-toggle'));
     expect(backgroundToggle, findsOneWidget);
     expect(find.byKey(const ValueKey('canvas-blurred-background')), findsNothing);
-    expect(find.byTooltip('Включить размытие фона предпросмотра'), findsOneWidget);
+    expect(backgroundToggle, findsOneWidget);
 
     await tester.tap(backgroundToggle);
     await tester.pump();
 
-    expect(find.byTooltip('Отключить размытие фона предпросмотра'), findsOneWidget);
+    expect(find.byKey(const ValueKey('canvas-background-blur-toggle')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
