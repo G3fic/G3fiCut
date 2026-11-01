@@ -1718,6 +1718,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         _transitionPlaybackTimer = null;
         _transitionPlaybackClock?.stop();
         setState(() => playing = false);
+        unawaited(player?.pause());
       } else {
         _runTransitionPlaybackTimer(_transitionPlaybackIndex);
       }
@@ -1804,6 +1805,28 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     if (resumePlayback) _runTransitionPlaybackTimer(index);
   }
 
+  Future<void> _playTransitionSourceAudio(int index, double sequenceSeconds) async {
+    if (index < 0 || index >= timelineTransitions.length || player == null) return;
+    final transition = timelineTransitions[index];
+    final pair = _transitionPairForAt(transition.at);
+    if (pair == null) return;
+    final sourceSeconds = pair.outgoing.start +
+        (sequenceSeconds - (transition.at - transition.duration));
+    _seekingAcrossCut = true;
+    try {
+      await player!.seek(Duration(milliseconds: (sourceSeconds * 1000).round()));
+      if (mounted && _transitionPlaybackIndex == index && playing) {
+        await player!.play();
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => status = 'Не удалось воспроизвести звук перехода: $error');
+      }
+    } finally {
+      _seekingAcrossCut = false;
+    }
+  }
+
   void _runTransitionPlaybackTimer(int index) {
     if (!mounted || index < 0 || index >= timelineTransitions.length) return;
     final transition = timelineTransitions[index];
@@ -1814,6 +1837,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     ).toDouble();
     _transitionPlaybackClock = Stopwatch()..start();
     if (!playing) setState(() => playing = true);
+    unawaited(_playTransitionSourceAudio(index, _transitionPlaybackStartAt));
     _transitionPlaybackTimer = Timer.periodic(
       const Duration(milliseconds: 16),
       (timer) {
