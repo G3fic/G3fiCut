@@ -364,7 +364,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     final blackFade = lower.contains('затемн') || lower.contains('чёр') ||
         lower.contains('черн') || lower.contains('black');
     if (whiteFlash || blackFade) {
-      final peak = (1 - (progress - 0.5).abs() * 2).clamp(0.0, 1.0);
+      final peak = (1 - (progress - 0.5).abs() * 2)
+          .clamp(0.0, 1.0)
+          .toDouble();
       final color = whiteFlash ? Colors.white : Colors.black;
       return Positioned.fill(
         child: IgnorePointer(
@@ -406,8 +408,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       transitionLayer = ClipRect(
         child: Align(
           alignment: alignment,
-          widthFactor: vertical ? 1 : amount.clamp(0.001, 1.0),
-          heightFactor: vertical ? amount.clamp(0.001, 1.0) : 1,
+          widthFactor: vertical ? 1 : amount.clamp(0.001, 1.0).toDouble(),
+          heightFactor: vertical ? amount.clamp(0.001, 1.0).toDouble() : 1,
           child: SizedBox.expand(child: image),
         ),
       );
@@ -924,7 +926,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             destination,
           ]);
 
-      final frameOffset = math.min(0.04, 1 / math.max(1, frameRate));
+      final frameOffset = math.min(0.04, 1 / math.max(1, frameRate)).toDouble();
       final results = await Future.wait([
         extractFrame(math.max(0, outgoing.end - frameOffset), outgoingPath),
         extractFrame(incoming.start + frameOffset, incomingPath),
