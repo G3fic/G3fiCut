@@ -892,8 +892,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       final filterName = _transitionFilterName(transition.type);
       final scaleFilter =
           'settb=AVTB,setpts=PTS-STARTPTS,fps=$previewFps,'
-          'scale=720:405:force_original_aspect_ratio=decrease,'
-          'pad=720:405:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1';
+          'scale=720:404:force_original_aspect_ratio=decrease,'
+          'pad=720:404:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1';
       final result = await Process.run(ffmpeg, [
         '-hide_banner',
         '-loglevel', 'error',
