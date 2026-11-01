@@ -3464,8 +3464,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           items: (_timelineTransitionTypes.toList()..sort()).map((v) => DropdownMenuItem(value: v, child: Text(v, style: const TextStyle(fontSize: 11)))).toList(),
           onChanged: (v) { if (v != null) _performTimelineEdit(() { t.type = v; status = 'Переход изменён: $v'; }); },
         ),
-        _adjustmentSlider('Длительность', t.duration, 0.1, maxDuration, (v) => _performTimelineEdit(() { t.duration = v; })),
-        property('Стык', '${t.at.toStringAsFixed(2)} с'),
+        _adjustmentSlider('Длительность', t.duration, TransitionTimeline.minimumDuration, maxDuration, (v) => _setTransitionDuration(selectedTransitionIndex, v)),
+        property('Участок', '${(t.at - t.duration).toStringAsFixed(2)}–${t.at.toStringAsFixed(2)} с'),
         TextButton.icon(onPressed: deleteSelectedTimelineItem, icon: const Icon(Icons.delete_outline), label: const Text('Удалить переход')),
         const Divider(),
       ]);
@@ -4433,11 +4433,22 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     effectClips.removeWhere((effect) => effect.end <= effect.start + 0.05);
 
     timelineTransitions.removeWhere((transition) {
-      final maximum = _maxTransitionDurationAt(transition.at);
-      if (maximum < 0.1) return true;
-      if (transition.duration > maximum) transition.duration = maximum;
+      final pair = _transitionPairForAt(transition.at);
+      if (pair == null ||
+          _maxTransitionDurationAt(transition.at) < TransitionTimeline.minimumDuration) {
+        return true;
+      }
       return false;
     });
+    for (final transition in timelineTransitions) {
+      final pair = _transitionPairForAt(transition.at);
+      if (pair == null) continue;
+      final maximum = _maxTransitionDurationAt(transition.at);
+      transition.duration = transition.duration
+          .clamp(TransitionTimeline.minimumDuration, maximum)
+          .toDouble();
+      pair.incoming.timelineStart = transition.at - transition.duration;
+    }
     if (selectedEffectClipIndex >= effectClips.length) selectedEffectClipIndex = -1;
     if (selectedTransitionIndex >= timelineTransitions.length) selectedTransitionIndex = -1;
   }
@@ -4598,53 +4609,39 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     });
   }
 
-  Future<void> addTimelineTransition([String? selectedType]) async {
-    if (videoClips.length < 2 || busy) {
-      setStatus('Для перехода нужны два видеоклипа на таймлайне.');
-      return;
-    }
-    final clips = List<TimelineClip>.of(videoClips)..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
-    final joins = <({double at, TimelineClip left, TimelineClip right})>[];
-    for (var i = 1; i < clips.length; i++) {
-      final previous = clips[i - 1];
-      final next = clips[i];
-      if ((previous.timelineEnd - next.timelineStart).abs() <= 0.025) {
-        joins.add((at: next.timelineStart, left: previous, right: next));
-      }
-    }
-    if (joins.isEmpty) {
+  void _applyTimelineTransitionAt(String type, double at, {double? requestedDuration}) {
+    if (busy || videoClips.length < 2) return;
+    final pair = _transitionPairForAt(at);
+    if (pair == null) {
       setStatus('Переход можно поставить только на стык двух клипов без разрыва.');
       return;
     }
-    joins.sort((a, b) => (a.at - playheadSeconds).abs().compareTo((b.at - playheadSeconds).abs()));
-    final join = joins.first;
-    final type = selectedType ?? await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => SimpleDialog(
-        title: Text('Переход на ${time(Duration(milliseconds: (join.at * 1000).round()))}'),
-        children: [
-          for (final value in _timelineTransitionTypes)
-            SimpleDialogOption(onPressed: () => Navigator.of(dialogContext).pop(value), child: Text(value)),
-        ],
-      ),
-    );
-    if (!mounted || type == null) return;
-    final limit = math.min(join.left.length / 2, join.right.length / 2);
-    if (limit < 0.1) {
-      setStatus('Эти клипы слишком короткие для перехода. Увеличьте их длину.');
+    final maximum = _maxTransitionDurationAt(at);
+    if (maximum < TransitionTimeline.minimumDuration) {
+      setStatus('Клипы слишком короткие для перехода.');
       return;
     }
-    final length = math.min(transitionDuration, limit).toDouble();
+    final existing = timelineTransitions.indexWhere(
+      (item) => (item.at - at).abs() <= TransitionTimeline.epsilon,
+    );
+    final duration = (requestedDuration ??
+            (existing >= 0 ? timelineTransitions[existing].duration : transitionDuration))
+        .clamp(TransitionTimeline.minimumDuration, maximum)
+        .toDouble();
+
     late TimelineTransition addedTransition;
     _performTimelineEdit(() {
-      final existing = timelineTransitions.indexWhere((item) => (item.at - join.at).abs() <= 0.025);
-      final transition = TimelineTransition(type: type, at: join.at, duration: length);
-      addedTransition = transition;
+      _replaceClipRanges(TransitionTimeline.apply(
+        clips: _clipRanges(),
+        leftIndex: pair.leftIndex,
+        duration: duration,
+      ));
+      addedTransition = TimelineTransition(type: type, at: at, duration: duration);
       if (existing >= 0) {
-        timelineTransitions[existing] = transition;
+        timelineTransitions[existing] = addedTransition;
         selectedTransitionIndex = existing;
       } else {
-        timelineTransitions.add(transition);
+        timelineTransitions.add(addedTransition);
         selectedTransitionIndex = timelineTransitions.length - 1;
       }
       selectedEffectClipIndex = -1;
@@ -4654,21 +4651,138 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       selectedLibraryPreset = '';
       selectedLibraryPresetKind = '';
       _selectedCanvasObject = 'timeline-transition';
-      status = 'Переход «$type» добавлен между видеоклипами.';
+      status = 'Переход «$type» добавлен на стык клипов.';
     });
     unawaited(_prepareTransitionPreviewFrames(addedTransition));
   }
 
-  double _maxTransitionDurationAt(double at) {
-    final ordered = List<TimelineClip>.of(videoClips)..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
-    for (var i = 1; i < ordered.length; i++) {
-      final left = ordered[i - 1];
-      final right = ordered[i];
-      if ((left.timelineEnd - at).abs() <= 0.025 && (right.timelineStart - at).abs() <= 0.025) {
-        return math.min(5.0, math.min(left.length / 2, right.length / 2)).toDouble();
-      }
+  Future<void> addTimelineTransition([String? selectedType]) async {
+    if (videoClips.length < 2 || busy) {
+      setStatus('Для перехода нужны два видеоклипа на таймлайне.');
+      return;
     }
-    return 0.0;
+    final joins = <double>[];
+    for (var i = 1; i < videoClips.length; i++) {
+      final at = videoClips[i - 1].timelineEnd;
+      if (_transitionPairForAt(at) != null) joins.add(at);
+    }
+    if (joins.isEmpty) {
+      setStatus('Переход можно поставить только на стык двух клипов без разрыва.');
+      return;
+    }
+    joins.sort((a, b) =>
+        (a - playheadSeconds).abs().compareTo((b - playheadSeconds).abs()));
+    final at = joins.first;
+    final type = selectedType ?? await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: Text('Переход на ${time(Duration(milliseconds: (at * 1000).round()))}'),
+        children: [
+          for (final value in _timelineTransitionTypes)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(dialogContext).pop(value),
+              child: Text(value),
+            ),
+        ],
+      ),
+    );
+    if (!mounted || type == null) return;
+    _applyTimelineTransitionAt(type, at);
+  }
+
+  double _maxTransitionDurationAt(double at) {
+    final pair = _transitionPairForAt(at);
+    if (pair == null) return 0.0;
+    return TransitionTimeline.maxDuration(
+      TimelineClipRange(pair.outgoing.start, pair.outgoing.end,
+          timelineStart: pair.outgoing.timelineStart),
+      TimelineClipRange(pair.incoming.start, pair.incoming.end,
+          timelineStart: pair.incoming.timelineStart),
+    );
+  }
+
+  void _setTransitionDuration(int index, double value) {
+    if (index < 0 || index >= timelineTransitions.length) return;
+    final transition = timelineTransitions[index];
+    final pair = _transitionPairForAt(transition.at);
+    if (pair == null) return;
+    final maximum = _maxTransitionDurationAt(transition.at);
+    final nextDuration = value
+        .clamp(TransitionTimeline.minimumDuration, maximum)
+        .toDouble();
+    _performTimelineEdit(() {
+      transition.duration = nextDuration;
+      pair.incoming.timelineStart = transition.at - nextDuration;
+    });
+    _transitionPreviewFrames.removeWhere(
+      (key, _) => key == _transitionPreviewKey(transition),
+    );
+    unawaited(_prepareTransitionPreviewFrames(transition));
+  }
+
+  void _removeTimelineTransition(int index) {
+    if (index < 0 || index >= timelineTransitions.length) return;
+    final transition = timelineTransitions[index];
+    final pair = _transitionPairForAt(transition.at);
+    _performTimelineEdit(() {
+      if (pair != null) pair.incoming.timelineStart = transition.at;
+      timelineTransitions.removeAt(index);
+      selectedTransitionIndex = -1;
+      _transitionPlaybackIndex = -1;
+      _selectedCanvasObject = 'video';
+      status = 'Переход удалён, обычная склейка восстановлена.';
+    });
+  }
+
+  void _startTransitionResize(int index) {
+    if (_timelinePanPointer != null || index < 0 || index >= timelineTransitions.length) return;
+    _transitionResizeBefore = _captureTimelineSnapshot();
+    _transitionResizeIndex = index;
+    _transitionResizeOriginalDuration = timelineTransitions[index].duration;
+    _transitionResizePointerX = 0;
+    setState(() {
+      selectedTransitionIndex = index;
+      selectedEffectClipIndex = -1;
+      selectedAudioClip = false;
+      selectedPhotoOverlay = -1;
+      _selectedCanvasObject = 'timeline-transition';
+    });
+  }
+
+  void _updateTransitionResize(DragUpdateDetails details) {
+    final index = _transitionResizeIndex;
+    if (_timelinePanPointer != null || index < 0 || index >= timelineTransitions.length) return;
+    _transitionResizePointerX += details.delta.dx;
+    final transition = timelineTransitions[index];
+    final pair = _transitionPairForAt(transition.at);
+    if (pair == null) return;
+    final maximum = _maxTransitionDurationAt(transition.at);
+    final requested = _transitionResizeOriginalDuration -
+        _transitionResizePointerX / zoom;
+    final nextDuration = requested
+        .clamp(TransitionTimeline.minimumDuration, maximum)
+        .toDouble();
+    setState(() {
+      transition.duration = nextDuration;
+      pair.incoming.timelineStart = transition.at - nextDuration;
+      projectDirty = true;
+    });
+  }
+
+  void _finishTransitionResize() {
+    final before = _transitionResizeBefore;
+    final index = _transitionResizeIndex;
+    _transitionResizeBefore = null;
+    _transitionResizeIndex = -1;
+    _transitionResizePointerX = 0;
+    if (before == null) return;
+    _reconcileTimelineAnnotations();
+    final after = _captureTimelineSnapshot();
+    _timelineHistory.record(before: before, after: after);
+    if (index >= 0 && index < timelineTransitions.length) {
+      unawaited(_prepareTransitionPreviewFrames(timelineTransitions[index]));
+    }
+    if (mounted) setState(() => status = 'Длительность перехода изменена.');
   }
 
   Future<void> showEffectClipMenu(Offset position, int index) async {
@@ -4755,20 +4869,16 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       _performTimelineEdit(() { timelineTransitions[index].type = type; status = 'Тип перехода изменён на «$type».'; });
       return;
     }
-    _performTimelineEdit(() {
-      if (action == 'delete') {
-        timelineTransitions.removeAt(index);
-        selectedTransitionIndex = -1;
-        status = 'Переход удалён.';
-      } else {
-        final transition = timelineTransitions[index];
-        final maxDuration = _maxTransitionDurationAt(transition.at);
-        transition.duration = action == 'longer'
-            ? math.min(maxDuration, transition.duration + 0.1).toDouble()
-            : math.max(0.1, transition.duration - 0.1).toDouble();
-        status = 'Длительность перехода изменена.';
-      }
-    });
+    if (action == 'delete') {
+      _removeTimelineTransition(index);
+      return;
+    }
+    final transition = timelineTransitions[index];
+    final maxDuration = _maxTransitionDurationAt(transition.at);
+    final nextDuration = action == 'longer'
+        ? math.min(maxDuration, transition.duration + 0.1).toDouble()
+        : math.max(TransitionTimeline.minimumDuration, transition.duration - 0.1).toDouble();
+    _setTransitionDuration(index, nextDuration);
   }
 
   void _startEffectClipMove(int index) {
@@ -4935,13 +5045,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       return;
     }
     if (selectedTransitionIndex >= 0 && selectedTransitionIndex < timelineTransitions.length) {
-      final index = selectedTransitionIndex;
-      _performTimelineEdit(() {
-        timelineTransitions.removeAt(index);
-        selectedTransitionIndex = -1;
-        _selectedCanvasObject = 'video';
-        status = 'Выбранный переход удалён.';
-      });
+      _removeTimelineTransition(selectedTransitionIndex);
       return;
     }
     if (selectedPhotoOverlay >= 0 && selectedPhotoOverlay < photoOverlays.length) {
