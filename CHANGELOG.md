@@ -8,6 +8,7 @@
 - Replace effect/transition quick-apply controls with named thumbnail cards, animated source-frame previews, right-side duration settings and an explicit Add to timeline action.
 - Keep the preview and export canvas black by default; blurred duplicate-video backgrounds are generated only when the dedicated option is enabled.
 - Bump the app and Windows installer version to 0.3.80 and upgrade the project document schema to v4.
+- Add a local Windows release script that builds and publishes installers from the developer's PC; GitHub Actions is reserved for Dart analysis and Flutter tests.
 
 ## GifCut v0.3.79 — 2026-11-01
 
