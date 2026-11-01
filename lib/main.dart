@@ -4633,6 +4633,21 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           .toDouble();
       pair.incoming.timelineStart = transition.at - transition.duration;
     }
+
+    // A clip trim or move can invalidate the cut that owned a transition.
+    // Never leave an unlabelled overlap behind: restore it to a hard cut.
+    for (var i = 1; i < videoClips.length; i++) {
+      final outgoing = videoClips[i - 1];
+      final incoming = videoClips[i];
+      final overlap = outgoing.timelineEnd - incoming.timelineStart;
+      if (overlap <= TransitionTimeline.epsilon) continue;
+      final hasMatchingTransition = timelineTransitions.any((transition) =>
+          (transition.at - outgoing.timelineEnd).abs() <= TransitionTimeline.epsilon &&
+          (transition.duration - overlap).abs() <= TransitionTimeline.epsilon);
+      if (!hasMatchingTransition) {
+        incoming.timelineStart = outgoing.timelineEnd;
+      }
+    }
     if (selectedEffectClipIndex >= effectClips.length) selectedEffectClipIndex = -1;
     if (selectedTransitionIndex >= timelineTransitions.length) selectedTransitionIndex = -1;
   }
