@@ -1460,6 +1460,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       _transitionPlaybackIndex = -1;
       // Older project files recorded a transition at a hard cut. Migrate
       // those cuts to the same overlap geometry used by new transitions.
+      var migratedLegacyTransitions = false;
       for (final transition in timelineTransitions) {
         final pair = _transitionPairForAt(transition.at);
         if (pair != null &&
@@ -1470,10 +1471,17 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                 .clamp(TransitionTimeline.minimumDuration, maximum)
                 .toDouble();
             pair.incoming.timelineStart = transition.at - transition.duration;
+            migratedLegacyTransitions = true;
           }
         }
       }
       _reconcileTimelineAnnotations();
+      if (migratedLegacyTransitions && mounted) {
+        setState(() {
+          projectDirty = true;
+          status = 'Старые переходы обновлены. Сохраните проект, чтобы записать новую структуру.';
+        });
+      }
       _transitionPreviewFrames.clear();
       unawaited(_prepareAllTransitionPreviewFrames());
       if (document.audioPath != null) {
@@ -3534,7 +3542,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           isExpanded: true, initialValue: t.type,
           decoration: const InputDecoration(labelText: 'Тип перехода', isDense: true, border: OutlineInputBorder()),
           items: (_timelineTransitionTypes.toList()..sort()).map((v) => DropdownMenuItem(value: v, child: Text(v, style: const TextStyle(fontSize: 11)))).toList(),
-          onChanged: (v) { if (v != null) _performTimelineEdit(() { t.type = v; status = 'Переход изменён: $v'; }); },
+          onChanged: (v) {
+            if (v != null) _changeTransitionType(selectedTransitionIndex, v);
+          },
         ),
         _adjustmentSlider('Длительность', t.duration, TransitionTimeline.minimumDuration, maxDuration, (v) => _setTransitionDuration(selectedTransitionIndex, v)),
         property('Участок', '${(t.at - t.duration).toStringAsFixed(2)}–${t.at.toStringAsFixed(2)} с'),
@@ -4169,7 +4179,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               for (var cut = 1; cut < videoClips.length; cut++)
                 if (_transitionPairForAt(videoClips[cut - 1].timelineEnd) != null)
                   Positioned(
-                    left: (videoClips[cut - 1].timelineEnd * zoom - 18)
+                    left: (videoClips[cut - 1].timelineEnd * zoom + 2)
                         .clamp(0.0, math.max(0.0, timelineWidth - 36))
                         .toDouble(),
                     top: 4,
@@ -4621,6 +4631,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       projectDirty = true;
       status = 'Действие отменено.';
     });
+    unawaited(_prepareAllTransitionPreviewFrames());
   }
 
   void redoTimelineEdit() {
@@ -4631,6 +4642,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       projectDirty = true;
       status = 'Действие повторено.';
     });
+    unawaited(_prepareAllTransitionPreviewFrames());
   }
 
   Future<void> showAudioClipMenu(Offset position) async {
@@ -4851,6 +4863,17 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     );
   }
 
+  void _changeTransitionType(int index, String type) {
+    if (index < 0 || index >= timelineTransitions.length) return;
+    final transition = timelineTransitions[index];
+    if (transition.type == type) return;
+    _performTimelineEdit(() {
+      transition.type = type;
+      status = 'Переход изменён: $type';
+    });
+    unawaited(_prepareTransitionPreviewFrames(transition));
+  }
+
   void _setTransitionDuration(int index, double value) {
     if (index < 0 || index >= timelineTransitions.length) return;
     final transition = timelineTransitions[index];
@@ -5016,7 +5039,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         ),
       );
       if (!mounted || type == null) return;
-      _performTimelineEdit(() { timelineTransitions[index].type = type; status = 'Тип перехода изменён на «$type».'; });
+      _changeTransitionType(index, type);
       return;
     }
     if (action == 'delete') {
