@@ -105,7 +105,7 @@ class GifCutApp extends StatelessWidget {
   const GifCutApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'GifCut v0.3.80',
+        title: 'GifCut — Video Editor',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           useMaterial3: true,
@@ -180,7 +180,7 @@ class ExportTimelineSegment {
 }
 
 class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.80');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.81');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -247,9 +247,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   int _gapNextClipIndex = -1;
   bool _gapResumePending = false;
   bool _suppressPlayerStateEvents = false;
-  double _mediaPanelWidth = 270;
-  double _inspectorPanelWidth = 220;
-  double _timelinePanelHeight = 252;
+  double _mediaPanelWidth = 286;
+  double _inspectorPanelWidth = 286;
+  double _timelinePanelHeight = 286;
   final Map<String, Offset> _resizeHandleLastGlobal = {};
   double frameRate = 30.0;
   bool snappingEnabled = true;
@@ -2044,7 +2044,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       );
 
   Widget topBar() => Container(
-        height: 56,
+        height: 58,
         color: const Color(0xFF191B21),
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(children: [
@@ -2052,7 +2052,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           const SizedBox(width: 9),
           const Text('GifCut', style: TextStyle(fontSize: 17, letterSpacing: -.5, fontWeight: FontWeight.w900)),
           const SizedBox(width: 6),
-          const Text('v0.3.80', style: TextStyle(color: accent, fontSize: 10, fontWeight: FontWeight.w800)),
+          const Text('v0.3.81', style: TextStyle(color: accent, fontSize: 10, fontWeight: FontWeight.w800)),
           const SizedBox(width: 18),
           Flexible(child: Text(
             (projectFilePath == null ? 'Новый проект' : p.basenameWithoutExtension(projectFilePath!)) + (projectDirty ? ' •' : ''),
@@ -2075,7 +2075,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       );
 
   Widget libraryCategoryRail() => Container(
-        width: 76,
+        width: 82,
         color: const Color(0xFF17191F),
         child: SingleChildScrollView(
           child: Column(children: [
@@ -2571,11 +2571,11 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         color: const Color(0xFF101217),
         child: Column(children: [
           Container(
-            height: 39,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
+            height: 42,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: const BoxDecoration(color: Color(0xFF171820), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
             child: LayoutBuilder(builder: (context, constraints) => Row(children: [
-              const Text('ПРЕДПРОСМОТР', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
+              const Text('ПРЕДПРОСМОТР', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.35, fontWeight: FontWeight.w800)),
               if (constraints.maxWidth > 260) ...[
                 const SizedBox(width: 6),
                 _canvasBackgroundControl(),
@@ -3358,7 +3358,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         color: const Color(0xFF12151B),
         child: Column(children: [
           Container(
-            height: 43,
+            height: 46,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: const BoxDecoration(color: Color(0xFF191A22), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
             child: LayoutBuilder(
