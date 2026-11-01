@@ -138,7 +138,7 @@ void main() {
 
       final decoded = ProjectDocument.decode(original.encode());
 
-      expect(decoded.textOverlays, original.textOverlays);
+      expect(decoded.textOverlays.map((item) => item.toJson()).toList(), original.textOverlays.map((item) => item.toJson()).toList());
       expect(decoded.mediaLibraryPaths, original.mediaLibraryPaths);
     });
 
