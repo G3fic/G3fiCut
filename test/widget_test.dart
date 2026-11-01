@@ -214,11 +214,11 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('application title exposes the 0.3.80 version', (tester) async {
+  testWidgets('application title exposes the 0.3.81 version', (tester) async {
     await tester.pumpWidget(const GifCutApp());
     await tester.pump();
 
-    expect(find.text('v0.3.80'), findsOneWidget);
+    expect(find.text('v0.3.81'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
