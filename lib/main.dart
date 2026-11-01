@@ -2207,15 +2207,17 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
                     decoration: BoxDecoration(color: const Color(0xFF202630), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF454958))),
-                    child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      Icon(Icons.cloud_upload_outlined, size: 34, color: accent),
-                      SizedBox(height: 9),
-                      Text('Перетащите файлы', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                      SizedBox(height: 4),
-                      Text('или выберите их с компьютера', style: TextStyle(color: muted, fontSize: 10), textAlign: TextAlign.center),
-                      SizedBox(height: 12),
-                      Text('MP4 · MOV · PNG · JPG · MP3 · WAV', style: TextStyle(color: muted, fontSize: 9), textAlign: TextAlign.center),
-                    ]),
+                    child: SingleChildScrollView(
+                      child: const Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
+                        Icon(Icons.cloud_upload_outlined, size: 34, color: accent),
+                        SizedBox(height: 9),
+                        Text('Перетащите файлы', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                        SizedBox(height: 4),
+                        Text('или выберите их с компьютера', style: TextStyle(color: muted, fontSize: 10), textAlign: TextAlign.center),
+                        SizedBox(height: 12),
+                        Text('MP4 · MOV · PNG · JPG · MP3 · WAV', style: TextStyle(color: muted, fontSize: 9), textAlign: TextAlign.center),
+                      ]),
+                    ),
                   ),
                 ),
         )
@@ -2575,7 +2577,10 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: const BoxDecoration(color: Color(0xFF171820), border: Border(bottom: BorderSide(color: Color(0xFF292B36)))),
             child: LayoutBuilder(builder: (context, constraints) => Row(children: [
-              const Text('ПРЕДПРОСМОТР', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.35, fontWeight: FontWeight.w800)),
+              if (constraints.maxWidth < 170)
+                const Icon(Icons.visibility_outlined, size: 16, color: muted)
+              else
+                const Text('ПРЕДПРОСМОТР', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.35, fontWeight: FontWeight.w800)),
               if (constraints.maxWidth > 260) ...[
                 const SizedBox(width: 6),
                 _canvasBackgroundControl(),
@@ -2955,6 +2960,12 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                 icon: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 21),
                 visualDensity: VisualDensity.compact,
               );
+              if (constraints.maxWidth < 220) {
+                return Row(children: [
+                  playButton,
+                  Expanded(child: seekSlider),
+                ]);
+              }
               if (compact) {
                 return Row(children: [
                   Text(time(position), style: const TextStyle(fontSize: 10, color: Color(0xFFD7D7E3))),
