@@ -5330,6 +5330,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       final sourceHasAudio =
           '${sourceProbe.stdout}\\n${sourceProbe.stderr}'.contains('Audio:');
       var encoder = await _detectH264Encoder(ffmpeg);
+      var encoderFallbackUsed = false;
       if (mounted) {
         setState(() {
           status = encoder == 'libx264'
@@ -5407,6 +5408,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             encoder != 'libopenh264' && encoder != 'libx264') {
           final failedEncoder = encoder;
           encoder = 'h264_mf_sw';
+          encoderFallbackUsed = true;
           if (mounted) {
             setState(() => status =
                 '$failedEncoder завершился с ошибкой; пробую Media Foundation на CPU.');
@@ -5567,6 +5569,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             encoder != 'libx264') {
           final failedEncoder = encoder;
           encoder = 'h264_mf_sw';
+          encoderFallbackUsed = true;
           if (mounted) {
             setState(() => status =
                 '$failedEncoder не поддержал экспорт фрагмента; перехожу на Media Foundation (CPU).');
@@ -5613,7 +5616,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         defaultTransitionDuration: transitionDuration,
       );
       final useTransitionGraph = transitionPlan.any((step) => step.hasTransition);
-      if (!useTransitionGraph) {
+      final useJoinGraph = useTransitionGraph || encoderFallbackUsed;
+      if (!useJoinGraph) {
         final concatResult = await Process.run(ffmpeg, [
           '-hide_banner',
           '-y',
