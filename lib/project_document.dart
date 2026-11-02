@@ -1,4 +1,5 @@
 import 'effect_catalog.dart';
+import 'transition_pipeline.dart' show transitionCutTolerance;
 
 import 'dart:convert';
 
@@ -209,12 +210,25 @@ class ProjectDocument {
           transition.duration > 5) {
         throw FormatException('Некорректный переход ${i + 1}.');
       }
-      final hasJoin = videoClips.any((left) => videoClips.any((right) =>
-          (left.timelineEnd - transition.at).abs() < 0.025 &&
-          (right.timelineStart - transition.at).abs() < 0.025 &&
-          left.timelineStart != right.timelineStart));
-      if (!hasJoin) {
-        throw FormatException('Переход ${i + 1} не привязан к стыку двух видеоклипов.');
+      final orderedClips = List<ProjectClipRange>.of(videoClips)
+        ..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
+      var hasAdjacentJoin = false;
+      for (var clipIndex = 1; clipIndex < orderedClips.length; clipIndex++) {
+        final left = orderedClips[clipIndex - 1];
+        final right = orderedClips[clipIndex];
+        if ((left.timelineEnd - right.timelineStart).abs() <= transitionCutTolerance &&
+            (right.timelineStart - transition.at).abs() <= transitionCutTolerance) {
+          hasAdjacentJoin = true;
+          break;
+        }
+      }
+      if (!hasAdjacentJoin) {
+        throw FormatException('Переход ${i + 1} не привязан к стыку соседних видеоклипов.');
+      }
+      for (var previousIndex = 0; previousIndex < i; previousIndex++) {
+        if ((transitions[previousIndex].at - transition.at).abs() <= transitionCutTolerance) {
+          throw FormatException('На одном стыке не может находиться несколько переходов.');
+        }
       }
     }
 
