@@ -2947,7 +2947,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       } else if (filter == 'fadewhite') {
         result = ColorFiltered(
           colorFilter: ColorFilter.mode(
-            Colors.white.withValues(alpha: math.sin(progress * math.pi) * 0.92),
+            Colors.white.withValues(alpha: progress * 0.92),
             BlendMode.screen,
           ),
           child: result,
@@ -2959,6 +2959,11 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             sigmaY: progress * 12,
           ),
           child: Opacity(opacity: 1.0 - progress * 0.55, child: result),
+        );
+      } else if (filter == 'zoomin') {
+        result = Transform.scale(
+          scale: 1.0 + progress * 0.55,
+          child: Opacity(opacity: 1.0 - progress, child: result),
         );
       } else if (filter == 'slideleft' || filter == 'slideright' ||
           filter == 'slideup' || filter == 'slidedown') {
