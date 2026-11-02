@@ -435,6 +435,179 @@ class _TransitionThumbnailPainter extends CustomPainter {
       oldDelegate.color != color;
 }
 
+class _AppliedTransitionClipper extends CustomClipper<Path> {
+  const _AppliedTransitionClipper({
+    required this.type,
+    required this.progress,
+  });
+
+  final String type;
+  final double progress;
+
+  Path _rectPath(Rect rect) => Path()..addRect(rect);
+
+  Path _outsideRect(Rect bounds, Rect removed) =>
+      Path.combine(PathOperation.difference, _rectPath(bounds), _rectPath(removed));
+
+  @override
+  Path getClip(Size size) {
+    final bounds = Offset.zero & size;
+    final amount = progress.clamp(0.0, 1.0).toDouble();
+    if (amount <= 0 || size.isEmpty) return _rectPath(bounds);
+    if (amount >= 1) return Path();
+
+    final filter = transitionFilterName(type);
+    if (filter == 'circleclose') {
+      return Path()
+        ..addOval(Rect.fromCircle(
+          center: Offset(size.width / 2, size.height / 2),
+          radius: size.longestSide * (1.0 - amount) * 0.72,
+        ));
+    }
+    if (filter == 'circleopen' || filter == 'circlecrop' ||
+        filter == 'radial' || filter == 'distance') {
+      final reveal = Path()
+        ..addOval(Rect.fromCircle(
+          center: Offset(size.width / 2, size.height / 2),
+          radius: size.longestSide * amount * 0.72,
+        ));
+      return Path.combine(PathOperation.difference, _rectPath(bounds), reveal);
+    }
+    if (filter == 'rectcrop') {
+      final reveal = Rect.fromLTWH(
+        size.width * (1.0 - amount) / 2,
+        size.height * (1.0 - amount) / 2,
+        size.width * amount,
+        size.height * amount,
+      );
+      return _outsideRect(bounds, reveal);
+    }
+    if (filter == 'horzopen' || filter == 'horzclose' ||
+        filter == 'vertopen' || filter == 'vertclose' ||
+        filter == 'squeezeh' || filter == 'squeezev') {
+      final horizontal = filter == 'horzopen' || filter == 'horzclose' ||
+          filter == 'squeezeh';
+      final revealAmount = filter.endsWith('close') ? 1.0 - amount : amount;
+      final reveal = horizontal
+          ? Rect.fromLTWH(
+              size.width * (1.0 - revealAmount) / 2,
+              0,
+              size.width * revealAmount,
+              size.height,
+            )
+          : Rect.fromLTWH(
+              0,
+              size.height * (1.0 - revealAmount) / 2,
+              size.width,
+              size.height * revealAmount,
+            );
+      return _outsideRect(bounds, reveal);
+    }
+
+    if (filter == 'hlslice' || filter == 'hrslice' ||
+        filter == 'vuslice' || filter == 'vdslice' ||
+        filter == 'hlwind' || filter == 'hrwind' ||
+        filter == 'vuwind' || filter == 'vdwind') {
+      final horizontal = filter == 'hlslice' || filter == 'hrslice' ||
+          filter == 'hlwind' || filter == 'hrwind';
+      final reverse = filter == 'hrslice' || filter == 'vdslice' ||
+          filter == 'hrwind' || filter == 'vdwind';
+      final bands = filter.endsWith('wind') ? 12 : 8;
+      final remaining = Path();
+      for (var index = 0; index < bands; index++) {
+        final delay = (index % 3) * (filter.endsWith('wind') ? 0.04 : 0.075);
+        final local = ((amount - delay) / (1.0 - delay))
+            .clamp(0.0, 1.0).toDouble();
+        if (horizontal) {
+          final width = size.width * (1.0 - local);
+          remaining.addRect(Rect.fromLTWH(
+            reverse ? 0 : size.width - width,
+            size.height * index / bands,
+            width,
+            size.height / bands + 0.5,
+          ));
+        } else {
+          final height = size.height * (1.0 - local);
+          remaining.addRect(Rect.fromLTWH(
+            size.width * index / bands,
+            reverse ? 0 : size.height - height,
+            size.width / bands + 0.5,
+            height,
+          ));
+        }
+      }
+      return remaining;
+    }
+
+    if (filter.startsWith('wipe') || filter.startsWith('smooth') ||
+        filter.startsWith('cover') || filter.startsWith('reveal') ||
+        filter.startsWith('diag')) {
+      final removed = Path();
+      if (filter == 'diagtl' || filter == 'diagtr' ||
+          filter == 'diagbl' || filter == 'diagbr' ||
+          filter == 'wipetl' || filter == 'wipetr' ||
+          filter == 'wipebl' || filter == 'wipebr') {
+        final fromRight = filter.endsWith('tr') || filter.endsWith('br');
+        final fromBottom = filter.endsWith('bl') || filter.endsWith('br');
+        final x = size.width * amount;
+        final y = size.height * amount;
+        final triangle = Path();
+        if (!fromRight && !fromBottom) {
+          triangle..moveTo(0, 0)..lineTo(x, 0)..lineTo(0, y)..close();
+        } else if (fromRight && !fromBottom) {
+          triangle..moveTo(size.width, 0)
+            ..lineTo(size.width - x, 0)..lineTo(size.width, y)..close();
+        } else if (!fromRight && fromBottom) {
+          triangle..moveTo(0, size.height)
+            ..lineTo(x, size.height)..lineTo(0, size.height - y)..close();
+        } else {
+          triangle..moveTo(size.width, size.height)
+            ..lineTo(size.width - x, size.height)
+            ..lineTo(size.width, size.height - y)..close();
+        }
+        return Path.combine(PathOperation.difference, _rectPath(bounds), triangle);
+      }
+
+      String direction = 'left';
+      if (filter.endsWith('right')) {
+        direction = 'right';
+      } else if (filter.endsWith('up')) {
+        direction = 'up';
+      } else if (filter.endsWith('down')) {
+        direction = 'down';
+      } else if (filter.startsWith('wipe')) {
+        direction = filter.substring(4);
+      } else if (filter.startsWith('smooth')) {
+        direction = filter.substring(6);
+      } else if (filter.startsWith('cover')) {
+        direction = filter.substring(5);
+      } else if (filter.startsWith('reveal')) {
+        direction = filter.substring(6);
+      }
+      switch (direction) {
+        case 'right':
+          removed.addRect(Rect.fromLTWH(0, 0, size.width * amount, size.height));
+          break;
+        case 'up':
+          removed.addRect(Rect.fromLTWH(0, size.height * (1.0 - amount), size.width, size.height * amount));
+          break;
+        case 'down':
+          removed.addRect(Rect.fromLTWH(0, 0, size.width, size.height * amount));
+          break;
+        default:
+          removed.addRect(Rect.fromLTWH(size.width * (1.0 - amount), 0, size.width * amount, size.height));
+      }
+      return Path.combine(PathOperation.difference, _rectPath(bounds), removed);
+    }
+
+    return _rectPath(bounds);
+  }
+
+  @override
+  bool shouldReclip(covariant _AppliedTransitionClipper oldClipper) =>
+      oldClipper.type != type || oldClipper.progress != progress;
+}
+
 class _ShortcutRow extends StatelessWidget {
   const _ShortcutRow(this.shortcut, this.description);
   final String shortcut;
@@ -712,38 +885,39 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     return _timelineEffectColorMatrix(resolved);
   }
 
-  ({Color color, double opacity}) get previewTransitionOverlay {
+  ({String type, double progress})? get previewTransitionOverlay {
     final seconds = position.inMilliseconds / 1000;
-    var opacity = 0.0;
-    var color = Colors.black;
+    TimelineTransition? active;
     for (final transition in timelineTransitions) {
-      final half = transition.duration / 2;
-      final progress = 1 - (seconds - transition.at).abs() / math.max(0.05, half);
-      if (progress <= 0) continue;
-      if (transition.type == 'Белая вспышка' || transition.type == 'Растворение через белый') {
-        color = Colors.white;
-      } else if (transition.type == 'Затемнение' || transition.type == 'Растворение через чёрный' || transition.type == 'Растворение') {
-        color = Colors.black;
-      } else {
-        color = const Color(0xFFB7A1E8);
+      final start = transition.at - transition.duration;
+      if (seconds >= start && seconds < transition.at) {
+        active = transition;
+        break;
       }
-      opacity = math.max(opacity, progress.clamp(0.0, 0.72)).toDouble();
     }
-    // Keep the legacy inspector transition as a fallback for projects that
-    // use the global transition setting but have no per-cut transition clips.
-    if (timelineTransitions.isEmpty && transitionEffect != 'Нет' && videoClips.length > 1) {
-      for (var i = 0; i < videoClips.length; i++) {
-        final clip = videoClips[i];
-        if (i > 0 && seconds >= clip.timelineStart && seconds < clip.timelineStart + transitionDuration) {
-          opacity = math.max(opacity, 1 - (seconds - clip.timelineStart) / transitionDuration).toDouble();
-        }
-        if (i < videoClips.length - 1 && seconds > clip.timelineEnd - transitionDuration && seconds <= clip.timelineEnd) {
-          opacity = math.max(opacity, (seconds - (clip.timelineEnd - transitionDuration)) / transitionDuration).toDouble();
+    if (active != null) {
+      final progress = ((seconds - (active.at - active.duration)) / active.duration)
+          .clamp(0.0, 1.0).toDouble();
+      return (type: active.type, progress: progress);
+    }
+
+    // Preserve the older inspector control for projects that predate
+    // per-cut transition blocks.
+    if (timelineTransitions.isEmpty && transitionEffect != 'Нет' &&
+        videoClips.length > 1 && transitionDuration > 0) {
+      for (var i = 1; i < videoClips.length; i++) {
+        final cut = videoClips[i].timelineStart;
+        final start = cut - transitionDuration;
+        if (seconds >= start && seconds < cut) {
+          return (
+            type: transitionEffect,
+            progress: ((seconds - start) / transitionDuration)
+                .clamp(0.0, 1.0).toDouble(),
+          );
         }
       }
-      color = transitionEffect == 'Белая вспышка' ? Colors.white : Colors.black;
     }
-    return (color: color, opacity: opacity.clamp(0.0, 1.0).toDouble());
+    return null;
   }
   String inspectorTab = 'video';
   String mediaPanelTab = 'media';
@@ -2760,6 +2934,59 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         );
       }
     }
+
+    final transition = previewTransitionOverlay;
+    if (transition != null) {
+      final filter = transitionFilterName(transition.type);
+      final progress = transition.progress;
+      if (filter == 'fadeblack' || filter == 'fade' ||
+          filter == 'fadefast' || filter == 'fadeslow' ||
+          filter == 'fadegrays' || filter == 'dissolve' ||
+          filter == 'pixelize') {
+        result = Opacity(opacity: 1.0 - progress, child: result);
+      } else if (filter == 'fadewhite') {
+        result = ColorFiltered(
+          colorFilter: ColorFilter.mode(
+            Colors.white.withValues(alpha: math.sin(progress * math.pi) * 0.92),
+            BlendMode.screen,
+          ),
+          child: result,
+        );
+      } else if (filter == 'hblur') {
+        result = ImageFiltered(
+          imageFilter: ui.ImageFilter.blur(
+            sigmaX: progress * 12,
+            sigmaY: progress * 12,
+          ),
+          child: Opacity(opacity: 1.0 - progress * 0.55, child: result),
+        );
+      } else if (filter == 'slideleft' || filter == 'slideright' ||
+          filter == 'slideup' || filter == 'slidedown') {
+        final shift = math.max(0.0, math.min(1.0, progress));
+        final dx = filter == 'slideleft'
+            ? -shift
+            : filter == 'slideright'
+                ? shift
+                : 0.0;
+        final dy = filter == 'slideup'
+            ? -shift
+            : filter == 'slidedown'
+                ? shift
+                : 0.0;
+        result = FractionalTranslation(
+          translation: Offset(dx, dy),
+          child: result,
+        );
+      } else {
+        result = ClipPath(
+          clipper: _AppliedTransitionClipper(
+            type: transition.type,
+            progress: progress,
+          ),
+          child: result,
+        );
+      }
+    }
     return result;
   }
 
@@ -3138,8 +3365,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                                           ),
                                         ),
                                       ),
-                                    if (previewTransitionOverlay.opacity > 0)
-                                      Positioned.fill(child: IgnorePointer(child: ColoredBox(color: previewTransitionOverlay.color.withValues(alpha: previewTransitionOverlay.opacity)))),
+
                                     if (_playheadInGap)
                                       const Positioned.fill(child: IgnorePointer(child: ColoredBox(color: Colors.black))),
                                   ]),
