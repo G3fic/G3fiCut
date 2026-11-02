@@ -119,7 +119,7 @@ jobs:
           ) -join [Environment]::NewLine
           Set-Content -Path (Join-Path $release 'FFmpeg-LICENSE-NOTICE.txt') -Value $notice -Encoding utf8
 
-      - name: Verify required FFmpeg filters
+      - name: Verify required FFmpeg filters and every transition
         shell: pwsh
         run: |
           $ffmpeg = Join-Path $PWD 'build/windows/x64/runner/Release/ffmpeg.exe'
@@ -130,11 +130,32 @@ jobs:
               throw "The bundled FFmpeg build does not include required filter: $filter"
             }
           }
+
+          $catalog = Get-Content 'lib/effect_catalog.dart' -Raw
+          $mapStart = $catalog.IndexOf('const Map<String, String> builtinTransitionFilters = {')
+          if ($mapStart -lt 0) { throw 'Could not find the built-in transition filter map.' }
+          $mapEnd = $catalog.IndexOf('};', $mapStart)
+          if ($mapEnd -lt 0) { throw 'Could not find the end of the built-in transition filter map.' }
+          $transitionMap = $catalog.Substring($mapStart, $mapEnd - $mapStart)
+          $transitionNames = @(
+            [regex]::Matches($transitionMap, ":\s*'(?<name>[a-z]+)'") |
+              ForEach-Object { $_.Groups['name'].Value } |
+              Sort-Object -Unique
+          )
+          if ($transitionNames.Count -lt 50) {
+            throw "Only $($transitionNames.Count) FFmpeg transition names were discovered; expected the complete transition catalog."
+          }
+
           & $ffmpeg -hide_banner -h filter=xfade 2>&1 | Out-File "$env:RUNNER_TEMP/xfade-help.txt"
           $xfade = Get-Content "$env:RUNNER_TEMP/xfade-help.txt" -Raw
-          foreach ($transition in @('circlecrop', 'radial', 'smoothleft', 'zoomin', 'coverleft', 'revealright')) {
+          foreach ($transition in $transitionNames) {
             if ($xfade -notmatch "(?m)\b$transition\b") {
               throw "The bundled FFmpeg xfade filter is missing transition: $transition"
+            }
+            $transitionGraph = "[0:v]settb=AVTB,setpts=PTS-STARTPTS,fps=30,format=yuv420p[a];[1:v]settb=AVTB,setpts=PTS-STARTPTS,fps=30,format=yuv420p[b];[a][b]xfade=transition=$transition:duration=0.4:offset=0.8[out]"
+            & $ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=64x64:rate=30:duration=2' -f lavfi -i 'smptebars=size=64x64:rate=30:duration=2' -filter_complex $transitionGraph -map '[out]' -frames:v 48 -f null NUL
+            if ($LASTEXITCODE -ne 0) {
+              throw "FFmpeg failed to render the built-in transition: $transition"
             }
           }
 
