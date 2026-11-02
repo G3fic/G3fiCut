@@ -4352,17 +4352,49 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     }
     effectClips.removeWhere((effect) => effect.end <= effect.start + 0.05);
 
-    timelineTransitions.removeWhere((transition) {
-      final join = _findVideoJoinAt(transition.at);
-      if (join == null) return true;
-      final maximum = math.min(5.0, math.min(join.left.length / 2, join.right.length / 2))
+    final orderedClips = List<TimelineClip>.of(videoClips)
+      ..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
+    final joins = <({double at, TimelineClip left, TimelineClip right})>[];
+    for (var i = 1; i < orderedClips.length; i++) {
+      final left = orderedClips[i - 1];
+      final right = orderedClips[i];
+      if ((left.timelineEnd - right.timelineStart).abs() <= transitionCutTolerance) {
+        joins.add((at: right.timelineStart, left: left, right: right));
+      }
+    }
+
+    final sortedTransitions = List<TimelineTransition>.of(timelineTransitions)
+      ..sort((a, b) => a.at.compareTo(b.at));
+    final reattachedTransitions = <TimelineTransition>[];
+    final usedJoinTimes = <double>[];
+    for (final transition in sortedTransitions) {
+      ({double at, TimelineClip left, TimelineClip right})? nearest;
+      var nearestDistance = double.infinity;
+      for (final join in joins) {
+        if (usedJoinTimes.any((used) => (used - join.at).abs() <= transitionCutTolerance)) {
+          continue;
+        }
+        final distance = (join.at - transition.at).abs();
+        if (distance < nearestDistance) {
+          nearest = join;
+          nearestDistance = distance;
+        }
+      }
+
+      // Keep a transition attached when a nearby trim/ripple edit moves its
+      // cut. A distant unrelated cut is not a valid replacement.
+      if (nearest == null || nearestDistance > 1.0) continue;
+      final maximum = math.min(5.0, math.min(nearest.left.length / 2, nearest.right.length / 2))
           .toDouble();
-      if (maximum < 0.1) return true;
-      // Keep the annotation anchored to the exact cut after trims and snapping.
-      transition.at = join.at;
+      if (maximum < 0.1) continue;
+      transition.at = nearest.at;
       if (transition.duration > maximum) transition.duration = maximum;
-      return false;
-    });
+      reattachedTransitions.add(transition);
+      usedJoinTimes.add(nearest.at);
+    }
+    timelineTransitions
+      ..clear()
+      ..addAll(reattachedTransitions);
     if (selectedEffectClipIndex >= effectClips.length) selectedEffectClipIndex = -1;
     if (selectedTransitionIndex >= timelineTransitions.length) selectedTransitionIndex = -1;
   }
