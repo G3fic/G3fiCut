@@ -161,6 +161,62 @@ void main() {
       }
     });
 
+    test('uses the inspector default transition at every contiguous cut', () {
+      final plan = buildTransitionPipeline(
+        segments: const [
+          TransitionPipelineSegment(start: 0, end: 4),
+          TransitionPipelineSegment(start: 4, end: 8),
+          TransitionPipelineSegment(start: 8, end: 12),
+        ],
+        transitions: const [],
+        frameRate: 30,
+        defaultTransitionType: 'wipeleft',
+        defaultTransitionDuration: 0.6,
+      );
+
+      expect(plan, hasLength(2));
+      expect(plan[0].type, 'wipeleft');
+      expect(plan[0].offset, closeTo(3.4, 1e-9));
+      expect(plan[1].type, 'wipeleft');
+      expect(plan[1].offset, closeTo(6.8, 1e-9));
+    });
+
+    test('per-cut transition overrides the inspector default only at its cut', () {
+      final plan = buildTransitionPipeline(
+        segments: const [
+          TransitionPipelineSegment(start: 0, end: 4),
+          TransitionPipelineSegment(start: 4, end: 8),
+          TransitionPipelineSegment(start: 8, end: 12),
+        ],
+        transitions: const [
+          TransitionPipelineMarker(type: 'circleopen', at: 4, duration: 0.3),
+        ],
+        frameRate: 30,
+        defaultTransitionType: 'wipeleft',
+        defaultTransitionDuration: 0.6,
+      );
+
+      expect(plan[0].type, 'circleopen');
+      expect(plan[0].duration, closeTo(0.3, 1e-9));
+      expect(plan[1].type, 'wipeleft');
+    });
+
+    test('does not apply the inspector default across timeline gaps', () {
+      final plan = buildTransitionPipeline(
+        segments: const [
+          TransitionPipelineSegment(start: 0, end: 4),
+          TransitionPipelineSegment(start: 4, end: 4.5, isGap: true),
+          TransitionPipelineSegment(start: 4.5, end: 8.5),
+        ],
+        transitions: const [],
+        frameRate: 30,
+        defaultTransitionType: 'wipeleft',
+        defaultTransitionDuration: 0.5,
+      );
+
+      expect(plan.every((step) => !step.hasTransition), isTrue);
+    });
+
     test('rejects overlapping or invalid segments before building a graph', () {
       expect(
         () => buildTransitionPipeline(
