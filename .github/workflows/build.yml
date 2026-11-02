@@ -131,7 +131,15 @@ jobs:
             Write-Output $encoders
             throw 'The bundled FFmpeg build contains no supported Windows hardware H.264 encoder.'
           }
+          if ($encoders -notmatch '(?m)\bh264_mf\b') {
+            Write-Output $encoders
+            throw 'The bundled FFmpeg build is missing Media Foundation H.264 (used as software fallback when no GPU is usable).'
+          }
           Write-Output "Bundled hardware H.264 encoders: $($availableHardwareEncoders -join ', ')"
+          & $ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=128x128:rate=30' -frames:v 2 -an -c:v h264_mf -hw_encoding 0 -quality 85 -pix_fmt yuv420p -f null NUL
+          if ($LASTEXITCODE -ne 0) {
+            throw 'The bundled Media Foundation H.264 software fallback failed its smoke test.'
+          }
 
           foreach ($filter in @('xfade', 'lut3d', 'noise', 'chromashift', 'rgbashift', 'vignette', 'unsharp', 'colorchannelmixer', 'colorbalance', 'hue', 'lutrgb')) {
             if ($filters -notmatch "(?m)\b$filter\b") {
