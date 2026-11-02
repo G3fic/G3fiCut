@@ -219,9 +219,13 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "FFmpeg effect smoke test failed: $filter" }
           }
 
-          $canvasGraph = "[0:v]split=2[fitSource][backdropSource];[backdropSource]scale=64:96:force_original_aspect_ratio=increase,crop=64:96,gblur=sigma=18,lutrgb=r='clip(val*0.62,0,255)':g='clip(val*0.62,0,255)':b='clip(val*0.62,0,255)',hue=s=0.82[backdrop];[fitSource]scale=64:96:force_original_aspect_ratio=decrease,format=rgba,pad=64:96:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1[foreground];[backdrop][foreground]overlay=(W-w)/2:(H-h)/2:shortest=1,setsar=1,format=yuv420p[out]"
+          $canvasGraph = "[0:v]split=2[fitSource][backdropSource];[backdropSource]setpts=PTS-STARTPTS,scale=64:96:force_original_aspect_ratio=increase:flags=lanczos,crop=64:96,setsar=1,gblur=sigma=26,lutrgb=r='clip(val*0.62,0,255)':g='clip(val*0.62,0,255)':b='clip(val*0.62,0,255)',hue=s=0.82[backdrop];[fitSource]setpts=PTS-STARTPTS,scale=64:96:force_original_aspect_ratio=decrease:flags=lanczos,setsar=1,scale=iw*1.25:ih*0.80:flags=lanczos,format=rgba,rotate=0.15:c=none:ow=rotw(iw):oh=roth(ih)[foreground];[backdrop][foreground]overlay=x=(W-w)/2+(0.10)*W:y=(H-h)/2+(-0.05)*H:shortest=1,setsar=1,format=yuv420p[out]"
           & $ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=96x64:rate=30:duration=1' -filter_complex $canvasGraph -map '[out]' -frames:v 1 -f null NUL
           if ($LASTEXITCODE -ne 0) { throw 'Blurred aspect-ratio canvas composition smoke test failed.' }
+
+          $blackCanvasGraph = '[0:v]setpts=PTS-STARTPTS,scale=64:96:force_original_aspect_ratio=decrease:flags=lanczos,setsar=1,scale=iw*1.25:ih*0.80:flags=lanczos,format=rgba[foreground];color=c=black:s=64x96:r=30:d=1[backdrop];[backdrop][foreground]overlay=x=(W-w)/2+(0.10)*W:y=(H-h)/2+(-0.05)*H:shortest=1,setsar=1,format=yuv420p[out]'
+          & $ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=96x64:rate=30:duration=1' -filter_complex $blackCanvasGraph -map '[out]' -frames:v 1 -f null NUL
+          if ($LASTEXITCODE -ne 0) { throw 'Black aspect-ratio canvas composition smoke test failed.' }
 
           $transitionGraph = '[0:v]settb=AVTB,setpts=PTS-STARTPTS,fps=30,setsar=1,format=yuv444p[a];[1:v]settb=AVTB,setpts=PTS-STARTPTS,fps=30,setsar=1,format=yuv444p[b];[a][b]xfade=transition=radial:duration=0.3:offset=0.5[joined];[joined]format=yuv420p[out]'
           & $ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=64x64:rate=30:duration=1' -f lavfi -i 'smptebars=size=64x64:rate=30:duration=1' -filter_complex $transitionGraph -map '[out]' -frames:v 1 -f null NUL
