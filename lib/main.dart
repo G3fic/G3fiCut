@@ -29,6 +29,387 @@ void main() {
   runApp(const GifCutApp());
 }
 
+
+class _TransitionThumbnailPainter extends CustomPainter {
+  const _TransitionThumbnailPainter({
+    required this.type,
+    required this.progress,
+    required this.color,
+  });
+
+  final String type;
+  final double progress;
+  final Color color;
+
+  void _drawScene(
+    Canvas canvas,
+    Rect bounds, {
+    required bool incoming,
+    double opacity = 1,
+  }) {
+    final alpha = opacity.clamp(0.0, 1.0).toDouble();
+    if (alpha <= 0) return;
+
+    final background = incoming ? color : const Color(0xFF252A37);
+    canvas.drawRect(
+      bounds,
+      Paint()..color = background.withValues(alpha: alpha),
+    );
+
+    final foreground = incoming ? Colors.white : const Color(0xFF8E9AAF);
+    final shapePaint = Paint()
+      ..color = foreground.withValues(alpha: alpha * 0.82);
+    canvas.drawCircle(
+      Offset(bounds.left + bounds.width * 0.28, bounds.top + bounds.height * 0.48),
+      bounds.height * 0.22,
+      shapePaint,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          bounds.left + bounds.width * 0.55,
+          bounds.top + bounds.height * 0.25,
+          bounds.width * 0.32,
+          bounds.height * 0.16,
+        ),
+        const Radius.circular(2),
+      ),
+      Paint()..color = foreground.withValues(alpha: alpha * 0.72),
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(
+        bounds.left + bounds.width * 0.52,
+        bounds.top + bounds.height * 0.57,
+        bounds.width * 0.38,
+        bounds.height * 0.09,
+      ),
+      Paint()..color = foreground.withValues(alpha: alpha * 0.46),
+    );
+  }
+
+  Rect _wipeRect(Size size, String direction, double amount) {
+    final width = size.width * amount;
+    final height = size.height * amount;
+    switch (direction) {
+      case 'right':
+        return Rect.fromLTWH(size.width - width, 0, width, size.height);
+      case 'up':
+        return Rect.fromLTWH(0, 0, size.width, height);
+      case 'down':
+        return Rect.fromLTWH(0, size.height - height, size.width, height);
+      default:
+        return Rect.fromLTWH(0, 0, width, size.height);
+    }
+  }
+
+  void _revealRect(Canvas canvas, Size size, Rect reveal) {
+    canvas.save();
+    canvas.clipRect(reveal);
+    _drawScene(canvas, Offset.zero & size, incoming: true);
+    canvas.restore();
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+    final amount = progress.clamp(0.0, 1.0).toDouble();
+    final bounds = Offset.zero & size;
+    final filter = transitionFilterName(type);
+
+    canvas.save();
+    canvas.clipRect(bounds);
+    _drawScene(canvas, bounds, incoming: false);
+
+    if (filter == 'fadeblack' || filter == 'fadewhite') {
+      _drawScene(canvas, bounds, incoming: true, opacity: amount);
+      final veil = filter == 'fadewhite' ? Colors.white : Colors.black;
+      canvas.drawRect(
+        bounds,
+        Paint()..color = veil.withValues(alpha: math.sin(math.pi * amount) * 0.38),
+      );
+    } else if (filter == 'fade' || filter == 'fadefast' || filter == 'fadeslow' ||
+        filter == 'fadegrays') {
+      _drawScene(canvas, bounds, incoming: true, opacity: amount);
+      if (filter == 'fadegrays') {
+        canvas.drawRect(
+          bounds,
+          Paint()..color = Colors.grey.withValues(alpha: math.sin(math.pi * amount) * 0.28),
+        );
+      }
+    } else if (filter == 'dissolve') {
+      const columns = 10;
+      const rows = 5;
+      for (var row = 0; row < rows; row++) {
+        for (var column = 0; column < columns; column++) {
+          final order = ((column * 37 + row * 61 + column * row * 13) % 97) / 97;
+          if (order >= amount) continue;
+          final cell = Rect.fromLTWH(
+            size.width * column / columns,
+            size.height * row / rows,
+            size.width / columns + 0.5,
+            size.height / rows + 0.5,
+          );
+          _revealRect(canvas, size, cell);
+        }
+      }
+    } else if (filter == 'pixelize') {
+      const columns = 10;
+      const rows = 5;
+      for (var row = 0; row < rows; row++) {
+        for (var column = 0; column < columns; column++) {
+          final order = ((column * 29 + row * 43 + column * row * 7) % 89) / 89;
+          if (order < amount) {
+            _revealRect(
+              canvas,
+              size,
+              Rect.fromLTWH(
+                size.width * column / columns,
+                size.height * row / rows,
+                size.width / columns + 0.5,
+                size.height / rows + 0.5,
+              ),
+            );
+          }
+        }
+      }
+      final gridPaint = Paint()
+        ..color = Colors.white.withValues(alpha: (1 - amount) * 0.28)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.55;
+      for (var column = 1; column < columns; column++) {
+        final x = size.width * column / columns;
+        canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
+      }
+      for (var row = 1; row < rows; row++) {
+        final y = size.height * row / rows;
+        canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+      }
+    } else if (filter == 'circleclose') {
+      _drawScene(canvas, bounds, incoming: true);
+      canvas.save();
+      canvas.clipPath(Path()
+        ..addOval(Rect.fromCircle(
+          center: Offset(size.width / 2, size.height / 2),
+          radius: size.longestSide * (1 - amount) * 0.72,
+        )));
+      _drawScene(canvas, bounds, incoming: false);
+      canvas.restore();
+    } else if (filter == 'circleopen' || filter == 'circlecrop' ||
+        filter == 'radial' || filter == 'distance') {
+      canvas.save();
+      canvas.clipPath(Path()
+        ..addOval(Rect.fromCircle(
+          center: Offset(size.width / 2, size.height / 2),
+          radius: size.longestSide * amount * 0.72,
+        )));
+      _drawScene(canvas, bounds, incoming: true);
+      canvas.restore();
+      if (filter == 'distance' || filter == 'radial') {
+        canvas.drawCircle(
+          Offset(size.width / 2, size.height / 2),
+          size.longestSide * amount * 0.72,
+          Paint()
+            ..color = Colors.white.withValues(alpha: (1 - amount) * 0.55)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.2,
+        );
+      }
+    } else if (filter == 'horzopen' || filter == 'horzclose' ||
+        filter == 'vertopen' || filter == 'vertclose' ||
+        filter == 'squeezeh' || filter == 'squeezev') {
+      final horizontal = filter == 'horzopen' || filter == 'horzclose' ||
+          filter == 'squeezeh';
+      final centered = filter == 'horzopen' || filter == 'horzclose' ||
+          filter == 'vertopen' || filter == 'vertclose' ||
+          filter == 'squeezeh' || filter == 'squeezev';
+      final revealAmount = filter.endsWith('close') ? 1 - amount : amount;
+      final reveal = horizontal
+          ? Rect.fromLTWH(
+              size.width * (1 - revealAmount) / 2,
+              0,
+              size.width * revealAmount,
+              size.height,
+            )
+          : Rect.fromLTWH(
+              0,
+              size.height * (1 - revealAmount) / 2,
+              size.width,
+              size.height * revealAmount,
+            );
+      _revealRect(canvas, size, centered ? reveal : bounds);
+    } else if (filter == 'zoomin') {
+      canvas.save();
+      final scale = 1.55 - 0.55 * amount;
+      canvas.translate(size.width / 2, size.height / 2);
+      canvas.scale(scale);
+      canvas.translate(-size.width / 2, -size.height / 2);
+      _drawScene(canvas, bounds, incoming: true, opacity: amount);
+      canvas.restore();
+    } else if (filter == 'slideleft' || filter == 'slideright' ||
+        filter == 'slideup' || filter == 'slidedown') {
+      final dx = filter == 'slideleft'
+          ? size.width * (1 - amount)
+          : filter == 'slideright'
+              ? -size.width * (1 - amount)
+              : 0.0;
+      final dy = filter == 'slideup'
+          ? size.height * (1 - amount)
+          : filter == 'slidedown'
+              ? -size.height * (1 - amount)
+              : 0.0;
+      canvas.save();
+      canvas.translate(dx, dy);
+      _drawScene(canvas, bounds, incoming: true);
+      canvas.restore();
+      final edge = filter == 'slideleft'
+          ? Offset(dx, 0)
+          : filter == 'slideright'
+              ? Offset(size.width + dx, 0)
+              : filter == 'slideup'
+                  ? Offset(0, dy)
+                  : Offset(0, size.height + dy);
+      canvas.drawCircle(
+        edge,
+        1.8,
+        Paint()..color = Colors.white.withValues(alpha: 0.82),
+      );
+    } else if (filter == 'hlslice' || filter == 'hrslice' ||
+        filter == 'vuslice' || filter == 'vdslice') {
+      final horizontal = filter == 'hlslice' || filter == 'hrslice';
+      const slices = 8;
+      for (var index = 0; index < slices; index++) {
+        final delay = (index % 3) * 0.075;
+        final local = ((amount - delay) / (1 - delay)).clamp(0.0, 1.0).toDouble();
+        final start = (horizontal ? size.height : size.width) * index / slices;
+        final extent = (horizontal ? size.height : size.width) / slices + 0.5;
+        final direction = filter == 'hrslice' || filter == 'vdslice' ? -1 : 1;
+        final clip = horizontal
+            ? Rect.fromLTWH(
+                direction > 0 ? 0 : size.width * (1 - local),
+                start,
+                size.width * local,
+                extent,
+              )
+            : Rect.fromLTWH(
+                start,
+                direction > 0 ? 0 : size.height * (1 - local),
+                extent,
+                size.height * local,
+              );
+        _revealRect(canvas, size, clip);
+      }
+    } else if (filter == 'hblur') {
+      _drawScene(canvas, bounds, incoming: true, opacity: amount);
+      final bands = Paint()
+        ..color = Colors.white.withValues(alpha: (1 - amount) * 0.3);
+      for (var row = 0; row < 5; row++) {
+        final y = size.height * row / 5;
+        canvas.drawRect(
+          Rect.fromLTWH(0, y + math.sin(amount * math.pi * 2 + row) * 2, size.width, 1),
+          bands,
+        );
+      }
+    } else if (filter == 'hlwind' || filter == 'hrwind' ||
+        filter == 'vuwind' || filter == 'vdwind') {
+      final horizontal = filter == 'hlwind' || filter == 'hrwind';
+      final reverse = filter == 'hrwind' || filter == 'vdwind';
+      const strips = 12;
+      for (var index = 0; index < strips; index++) {
+        final local = ((amount * 1.25 - index / strips * 0.45).clamp(0.0, 1.0)).toDouble();
+        final offset = (reverse ? 1 - local : local) *
+            (horizontal ? size.width : size.height);
+        final clip = horizontal
+            ? Rect.fromLTWH(
+                reverse ? offset : 0,
+                size.height * index / strips,
+                horizontal ? size.width * local : size.width,
+                size.height / strips + 0.5,
+              )
+            : Rect.fromLTWH(
+                size.width * index / strips,
+                reverse ? offset : 0,
+                size.width / strips + 0.5,
+                size.height * local,
+              );
+        _revealRect(canvas, size, clip);
+      }
+    } else if (filter.startsWith('wipe') || filter.startsWith('smooth') ||
+        filter.startsWith('cover') || filter.startsWith('reveal')) {
+      var direction = 'left';
+      if (filter.endsWith('right') || filter.endsWith('tr') ||
+          filter.endsWith('br')) {
+        direction = 'right';
+      } else if (filter.endsWith('up') || filter.endsWith('tl') ||
+          filter.endsWith('tr')) {
+        direction = 'up';
+      } else if (filter.endsWith('down') || filter.endsWith('bl') ||
+          filter.endsWith('br')) {
+        direction = 'down';
+      }
+      if (filter.startsWith('wipe') && filter.length == 6) {
+        direction = filter.substring(4);
+      }
+      if (filter.startsWith('smooth')) {
+        direction = filter.substring(6);
+      }
+      if (filter.startsWith('cover') || filter.startsWith('reveal')) {
+        direction = filter.substring(filter.startsWith('cover') ? 5 : 6);
+      }
+
+      if (filter.startsWith('wipe') && filter.length == 5 &&
+          (filter == 'wipetl' || filter == 'wipetr' ||
+              filter == 'wipebl' || filter == 'wipebr')) {
+        final fromRight = filter.endsWith('tr') || filter.endsWith('br');
+        final fromBottom = filter.endsWith('bl') || filter.endsWith('br');
+        final x = size.width * amount;
+        final y = size.height * amount;
+        final path = Path();
+        if (!fromRight && !fromBottom) {
+          path..moveTo(0, 0)..lineTo(x, 0)..lineTo(0, y)..close();
+        } else if (fromRight && !fromBottom) {
+          path..moveTo(size.width, 0)..lineTo(size.width - x, 0)..lineTo(size.width, y)..close();
+        } else if (!fromRight && fromBottom) {
+          path..moveTo(0, size.height)..lineTo(x, size.height)..lineTo(0, size.height - y)..close();
+        } else {
+          path..moveTo(size.width, size.height)..lineTo(size.width - x, size.height)..lineTo(size.width, size.height - y)..close();
+        }
+        canvas.save();
+        canvas.clipPath(path);
+        _drawScene(canvas, bounds, incoming: true);
+        canvas.restore();
+      } else {
+        final clip = _wipeRect(size, direction, amount);
+        _revealRect(canvas, size, clip);
+        final isHorizontal = direction == 'left' || direction == 'right';
+        final edgeX = direction == 'right' ? size.width * (1 - amount) : size.width * amount;
+        final edgeY = direction == 'down' ? size.height * (1 - amount) : size.height * amount;
+        final line = Paint()
+          ..color = Colors.white.withValues(alpha: (1 - amount) * 0.72)
+          ..strokeWidth = filter.startsWith('smooth') ? 1.4 : 0.8;
+        if (isHorizontal) {
+          canvas.drawLine(Offset(edgeX, 0), Offset(edgeX, size.height), line);
+        } else {
+          canvas.drawLine(Offset(0, edgeY), Offset(size.width, edgeY), line);
+        }
+      }
+    } else {
+      _revealRect(
+        canvas,
+        size,
+        Rect.fromLTWH(0, 0, size.width * amount, size.height),
+      );
+    }
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _TransitionThumbnailPainter oldDelegate) =>
+      oldDelegate.type != type ||
+      oldDelegate.progress != progress ||
+      oldDelegate.color != color;
+}
+
 class _ShortcutRow extends StatelessWidget {
   const _ShortcutRow(this.shortcut, this.description);
   final String shortcut;
@@ -2049,6 +2430,40 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     required bool transition,
   }) {
     final hovering = _hoveredLibraryPreview == key;
+    if (transition) {
+      final type = key.startsWith('transition:')
+          ? key.substring('transition:'.length)
+          : key;
+      return AnimatedContainer(
+        key: ValueKey('hover-preview-$key'),
+        duration: const Duration(milliseconds: 220),
+        width: 58,
+        height: 27,
+        decoration: BoxDecoration(
+          color: hovering ? color.withValues(alpha: 0.18) : const Color(0xFF151720),
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(
+            color: hovering ? color.withValues(alpha: 0.9) : const Color(0xFF3A3D4A),
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0, end: hovering ? 1 : 0),
+          duration: const Duration(milliseconds: 520),
+          curve: Curves.easeInOutCubic,
+          builder: (context, progress, _) => CustomPaint(
+            key: ValueKey('transition-preview-painter-$type'),
+            painter: _TransitionThumbnailPainter(
+              type: type,
+              progress: progress,
+              color: color,
+            ),
+            child: const SizedBox.expand(),
+          ),
+        ),
+      );
+    }
+
     return AnimatedContainer(
       key: ValueKey('hover-preview-$key'),
       duration: const Duration(milliseconds: 220),
@@ -2066,7 +2481,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         Positioned.fill(
           child: Row(children: [
             Expanded(child: ColoredBox(color: color.withValues(alpha: hovering ? 0.32 : 0.12))),
-            Expanded(child: ColoredBox(color: Colors.white.withValues(alpha: hovering && transition ? 0.24 : 0.04))),
+            const Expanded(child: ColoredBox(color: Color(0x0AFFFFFF))),
           ]),
         ),
         AnimatedPositioned(
@@ -2078,9 +2493,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           width: 18,
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: transition
-                  ? Colors.white.withValues(alpha: hovering ? 0.94 : 0.45)
-                  : color.withValues(alpha: hovering ? 0.96 : 0.5),
+              color: color.withValues(alpha: hovering ? 0.96 : 0.5),
               borderRadius: BorderRadius.circular(3),
             ),
             child: Icon(icon, size: 12, color: hovering ? Colors.black87 : Colors.white),
