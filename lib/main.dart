@@ -5514,7 +5514,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         for (var i = 0; i < exportSegments.length; i++) {
           args.addAll(['-i', exportSegments[i].path]);
           graph.add(
-            '[$i:v]settb=AVTB,setpts=PTS-STARTPTS,fps=${frameRate.toStringAsFixed(3)},format=yuv420p[v$i]',
+            '[$i:v]settb=AVTB,setpts=PTS-STARTPTS,fps=${frameRate.toStringAsFixed(3)},setsar=1,format=yuv444p[v$i]',
           );
           if (sourceHasAudio) graph.add('[$i:a]asetpts=PTS-STARTPTS[a$i]');
         }
@@ -5544,6 +5544,11 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           activeVideo = videoOutput;
           if (sourceHasAudio) activeAudio = audioOutput;
         }
+
+        // FFmpeg xfade operates on 4:4:4 formats. Convert back to the
+        // broadly compatible 4:2:0 format only after every cut is composed.
+        graph.add('[$activeVideo]setsar=1,format=yuv420p[vjoined]');
+        activeVideo = 'vjoined';
 
         final graphOutputArgs = <String>[
           ...args,
