@@ -1,8 +1,8 @@
 name: gifcut
 description: A Windows-first video editor with timeline-based audio extraction.
 publish_to: "none"
-version: 0.3.84+92
-# Release GifCut v0.3.84
+version: 0.3.85+93
+# Release GifCut v0.3.85
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
