@@ -3787,8 +3787,12 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               Positioned.fill(child: CustomPaint(painter: TimelineGridPainter(seconds: timelineSeconds, pixelsPerSecond: zoom))),
               for (var i = 0; i < timelineTransitions.length; i++)
                 Positioned(
-                  left: (timelineTransitions[i].at * zoom - 24).clamp(0.0, math.max(0.0, timelineWidth - 48)).toDouble(),
-                  top: 3, bottom: 3, width: 48,
+                  left: ((timelineTransitions[i].at - timelineTransitions[i].duration) * zoom)
+                      .clamp(0.0, timelineWidth).toDouble(),
+                  top: 3,
+                  bottom: 3,
+                  width: math.max(18.0, timelineTransitions[i].duration * zoom)
+                      .clamp(18.0, math.max(18.0, timelineWidth)).toDouble(),
                   child: GestureDetector(
                     onTap: () => setState(() {
                       selectedTransitionIndex = i;
