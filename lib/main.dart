@@ -22,6 +22,7 @@ import 'project_document.dart';
 import 'canvas_snapping.dart';
 import 'effect_catalog.dart';
 import 'release_assets.dart';
+import 'transition_pipeline.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -4122,8 +4123,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     effectClips.removeWhere((effect) => effect.end <= effect.start + 0.05);
 
     timelineTransitions.removeWhere((transition) {
-      final maximum = _maxTransitionDurationAt(transition.at);
+      final join = _findVideoJoinAt(transition.at);
+      if (join == null) return true;
+      final maximum = math.min(5.0, math.min(join.left.length / 2, join.right.length / 2))
+          .toDouble();
       if (maximum < 0.1) return true;
+      // Keep the annotation anchored to the exact cut after trims and snapping.
+      transition.at = join.at;
       if (transition.duration > maximum) transition.duration = maximum;
       return false;
     });
@@ -4284,45 +4290,75 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     });
   }
 
+  ({double at, TimelineClip left, TimelineClip right})? _findVideoJoinAt(double at) {
+    if (!at.isFinite) return null;
+    final ordered = List<TimelineClip>.of(videoClips)
+      ..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
+    ({double at, TimelineClip left, TimelineClip right})? nearest;
+    var nearestDistance = double.infinity;
+    for (var i = 1; i < ordered.length; i++) {
+      final left = ordered[i - 1];
+      final right = ordered[i];
+      final cut = right.timelineStart;
+      final distance = (cut - at).abs();
+      if (distance <= transitionCutTolerance &&
+          (left.timelineEnd - cut).abs() <= transitionCutTolerance &&
+          distance < nearestDistance) {
+        nearest = (at: cut, left: left, right: right);
+        nearestDistance = distance;
+      }
+    }
+    return nearest;
+  }
+
   Future<void> addTimelineTransition([String? selectedType]) async {
     if (videoClips.length < 2 || busy) {
       setStatus('Для перехода нужны два видеоклипа на таймлайне.');
       return;
     }
-    final clips = List<TimelineClip>.of(videoClips)..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
+    final clips = List<TimelineClip>.of(videoClips)
+      ..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
     final joins = <({double at, TimelineClip left, TimelineClip right})>[];
     for (var i = 1; i < clips.length; i++) {
       final previous = clips[i - 1];
       final next = clips[i];
-      if ((previous.timelineEnd - next.timelineStart).abs() <= 0.025) {
+      final limit = math.min(previous.length / 2, next.length / 2);
+      if ((previous.timelineEnd - next.timelineStart).abs() <= transitionCutTolerance &&
+          limit >= 0.1) {
         joins.add((at: next.timelineStart, left: previous, right: next));
       }
     }
     if (joins.isEmpty) {
-      setStatus('Переход можно поставить только на стык двух клипов без разрыва.');
+      setStatus('Не найден стык двух клипов с достаточной длиной для перехода.');
       return;
     }
-    joins.sort((a, b) => (a.at - playheadSeconds).abs().compareTo((b.at - playheadSeconds).abs()));
+    joins.sort((a, b) =>
+        (a.at - playheadSeconds).abs().compareTo((b.at - playheadSeconds).abs()));
     final join = joins.first;
     final type = selectedType ?? await showDialog<String>(
       context: context,
       builder: (dialogContext) => SimpleDialog(
         title: Text('Переход на ${time(Duration(milliseconds: (join.at * 1000).round()))}'),
         children: [
-          for (final value in _timelineTransitionTypes)
-            SimpleDialogOption(onPressed: () => Navigator.of(dialogContext).pop(value), child: Text(value)),
+          for (final value in (_timelineTransitionTypes.toList()..sort()))
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(dialogContext).pop(value),
+              child: Text(value),
+            ),
         ],
       ),
     );
     if (!mounted || type == null) return;
-    final limit = math.min(join.left.length / 2, join.right.length / 2);
-    if (limit < 0.1) {
-      setStatus('Эти клипы слишком короткие для перехода. Увеличьте их длину.');
+    if (!_timelineTransitionTypes.contains(type)) {
+      setStatus('Неизвестный тип перехода: $type.');
       return;
     }
+    final limit = math.min(join.left.length / 2, join.right.length / 2);
     final length = math.min(0.6, limit).toDouble();
     _performTimelineEdit(() {
-      final existing = timelineTransitions.indexWhere((item) => (item.at - join.at).abs() <= 0.025);
+      final existing = timelineTransitions.indexWhere(
+        (item) => (item.at - join.at).abs() <= transitionCutTolerance,
+      );
       final transition = TimelineTransition(type: type, at: join.at, duration: length);
       if (existing >= 0) {
         timelineTransitions[existing] = transition;
@@ -4335,20 +4371,15 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       selectedAudioClip = false;
       selectedPhotoOverlay = -1;
       _selectedCanvasObject = 'timeline-transition';
-      status = 'Переход «$type» добавлен между видеоклипами.';
+      status = 'Переход «$type» привязан к стыку ${time(Duration(milliseconds: (join.at * 1000).round()))}.';
     });
   }
 
   double _maxTransitionDurationAt(double at) {
-    final ordered = List<TimelineClip>.of(videoClips)..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
-    for (var i = 1; i < ordered.length; i++) {
-      final left = ordered[i - 1];
-      final right = ordered[i];
-      if ((left.timelineEnd - at).abs() <= 0.025 && (right.timelineStart - at).abs() <= 0.025) {
-        return math.min(5.0, math.min(left.length / 2, right.length / 2)).toDouble();
-      }
-    }
-    return 0.0;
+    final join = _findVideoJoinAt(at);
+    if (join == null) return 0.0;
+    return math.min(5.0, math.min(join.left.length / 2, join.right.length / 2))
+        .toDouble();
   }
 
   Future<void> showEffectClipMenu(Offset position, int index) async {
