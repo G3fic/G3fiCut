@@ -5312,6 +5312,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         }
         lines.add("file '${gapPath.replaceAll('\\', '/')}'");
         exportSegments.add(ExportTimelineSegment(path: gapPath, start: sequenceCursor, end: sequenceCursor + gapSeconds, isGap: true));
+        sequenceCursor += gapSeconds;
       }
 
       for (var i = 0; i < orderedClips.length; i++) {
