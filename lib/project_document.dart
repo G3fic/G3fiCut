@@ -227,7 +227,7 @@ class ProjectDocument {
       }
       for (var previousIndex = 0; previousIndex < i; previousIndex++) {
         if ((transitions[previousIndex].at - transition.at).abs() <= transitionCutTolerance) {
-          throw FormatException('На одном стыке не может находиться несколько переходов.');
+          throw const FormatException('На одном стыке не может находиться несколько переходов.');
         }
       }
     }
