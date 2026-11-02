@@ -24,6 +24,28 @@ void main() {
       expect(plan.single.outputDuration, closeTo(7.4, 1e-9));
     });
 
+    test('treats sub-tolerance gaps and overlaps as one snapped cut', () {
+      for (final rightStart in [4.02, 3.98]) {
+        final plan = buildTransitionPipeline(
+          segments: [
+            const TransitionPipelineSegment(start: 0, end: 4),
+            TransitionPipelineSegment(start: rightStart, end: rightStart + 4),
+          ],
+          transitions: [
+            TransitionPipelineMarker(
+              type: 'wipeleft',
+              at: rightStart,
+              duration: 0.6,
+            ),
+          ],
+          frameRate: 30,
+        );
+
+        expect(plan.single.hasTransition, isTrue);
+        expect(plan.single.type, 'wipeleft');
+      }
+    });
+
     test('ignores stale markers that no longer match a clip cut', () {
       final plan = buildTransitionPipeline(
         segments: const [
