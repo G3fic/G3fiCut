@@ -5266,6 +5266,20 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     _ => 'libx264 (CPU fallback)',
   };
 
+  List<String> _withoutAutomaticHardwareDecode(List<String> arguments) {
+    final result = <String>[];
+    for (var i = 0; i < arguments.length; i++) {
+      if (arguments[i] == '-hwaccel' &&
+          i + 1 < arguments.length &&
+          arguments[i + 1] == 'auto') {
+        i++;
+        continue;
+      }
+      result.add(arguments[i]);
+    }
+    return result;
+  }
+
   List<String> _videoEncoderArguments(String encoder) {
     switch (encoder) {
       case 'h264_nvenc':
@@ -5558,7 +5572,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                 '$failedEncoder не поддержал экспорт фрагмента; перехожу на Media Foundation (CPU).');
           }
           result = await Process.run(ffmpeg, [
-            ...args,
+            ..._withoutAutomaticHardwareDecode(args),
             ..._videoEncoderArguments(encoder),
             ...commonOutputArgs,
           ]);
@@ -5697,7 +5711,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
                 '$failedEncoder не поддержал сборку переходов; перехожу на Media Foundation (CPU).');
           }
           joinResult = await Process.run(ffmpeg, [
-            ...graphOutputArgs,
+            ..._withoutAutomaticHardwareDecode(graphOutputArgs),
             ..._videoEncoderArguments(encoder),
             '-movflags',
             '+faststart',
