@@ -86,6 +86,7 @@ List<TransitionPipelineStep> buildTransitionPipeline({
     }
   }
 
+  // Segment exporters cap output with -frames:v, using the same rounded count.
   double frameAligned(double seconds) => (seconds * frameRate).round() / frameRate;
 
   final segmentDurations = segments
