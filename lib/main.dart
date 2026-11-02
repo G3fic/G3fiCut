@@ -5177,11 +5177,52 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
   Future<String> _detectH264Encoder(String ffmpeg) async {
     try {
-      final result = await Process.run(ffmpeg, ['-hide_banner', '-encoders']);
-      if (result.exitCode == 0) {
-        final output = '${result.stdout}\\n${result.stderr}';
-        for (final encoder in ['h264_nvenc', 'h264_qsv', 'h264_amf']) {
-          if (output.contains(encoder)) return encoder;
+      final result = await Process.run(
+        ffmpeg,
+        ['-hide_banner', '-encoders'],
+        runInShell: false,
+      ).timeout(const Duration(seconds: 10));
+      if (result.exitCode != 0) return 'libx264';
+      final output = '${result.stdout}\\n${result.stderr}';
+      const candidates = [
+        'h264_nvenc',
+        'h264_qsv',
+        'h264_amf',
+        'h264_mf',
+      ];
+      for (final candidate in candidates) {
+        final available = RegExp(
+          '(?<![A-Za-z0-9_])${RegExp.escape(candidate)}(?![A-Za-z0-9_])',
+        ).hasMatch(output);
+        if (!available) continue;
+        try {
+          // Encoder presence alone is not proof that a GPU and its driver are
+          // usable. Run a tiny real encode before choosing the hardware path.
+          final probe = await Process.run(
+            ffmpeg,
+            [
+              '-hide_banner',
+              '-loglevel',
+              'error',
+              '-f',
+              'lavfi',
+              '-i',
+              'testsrc2=size=128x128:rate=30',
+              '-frames:v',
+              '2',
+              '-an',
+              ..._videoEncoderArguments(candidate),
+              '-pix_fmt',
+              'yuv420p',
+              '-f',
+              'null',
+              '-',
+            ],
+            runInShell: false,
+          ).timeout(const Duration(seconds: 12));
+          if (probe.exitCode == 0) return candidate;
+        } catch (_) {
+          // Try the next hardware backend if this device/driver is unavailable.
         }
       }
     } catch (_) {
@@ -5189,6 +5230,14 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     }
     return 'libx264';
   }
+
+  String _videoEncoderLabel(String encoder) => switch (encoder) {
+    'h264_nvenc' => 'NVIDIA NVENC (GPU)',
+    'h264_qsv' => 'Intel Quick Sync (GPU)',
+    'h264_amf' => 'AMD AMF (GPU)',
+    'h264_mf' => 'Windows Media Foundation (GPU)',
+    _ => 'libx264 (CPU)',
+  };
 
   List<String> _videoEncoderArguments(String encoder) {
     switch (encoder) {
@@ -5198,6 +5247,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         return ['-c:v', encoder, '-preset', 'medium', '-global_quality', '18'];
       case 'h264_amf':
         return ['-c:v', encoder, '-quality', 'quality', '-qp_i', '18', '-qp_p', '18'];
+      case 'h264_mf':
+        return ['-c:v', encoder, '-hw_encoding', '1', '-quality', '85'];
       default:
         return ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18'];
     }
@@ -5233,7 +5284,14 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       final sourceProbe = await Process.run(ffmpeg, ['-hide_banner', '-i', source]);
       final sourceHasAudio =
           '${sourceProbe.stdout}\\n${sourceProbe.stderr}'.contains('Audio:');
-      final encoder = await _detectH264Encoder(ffmpeg);
+      var encoder = await _detectH264Encoder(ffmpeg);
+      if (mounted) {
+        setState(() {
+          status = encoder == 'libx264'
+              ? 'Аппаратный H.264-кодировщик не найден — экспорт через CPU.'
+              : 'Экспорт с аппаратным кодированием: ${_videoEncoderLabel(encoder)}…';
+        });
+      }
 
       final outputSize = const {
         '16:9': '1920:1080',
@@ -5301,14 +5359,15 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           ...audioArgs,
         ]);
         if (result.exitCode != 0 && encoder != 'libx264') {
+          final failedEncoder = encoder;
+          encoder = 'libx264';
+          if (mounted) {
+            setState(() => status =
+                '$failedEncoder не смог обработать пустой участок; перехожу на CPU (libx264).');
+          }
           result = await Process.run(ffmpeg, [
             ...baseArgs,
-            '-c:v',
-            'libx264',
-            '-preset',
-            'veryfast',
-            '-crf',
-            '18',
+            ..._videoEncoderArguments(encoder),
             ...audioArgs,
           ]);
         }
@@ -5342,6 +5401,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         final args = <String>[
           '-hide_banner',
           '-y',
+          '-hwaccel',
+          'auto',
           '-ss',
           clip.start.toStringAsFixed(3),
           '-i',
@@ -5368,25 +5429,35 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         final effectPrefix = foregroundEffects == 'null'
             ? ''
             : '$foregroundEffects,';
+        // Match the preview's order: contain-fit the source into the canvas,
+        // then apply the user's independent X/Y scale, rotation and offset.
+        // The backdrop is optional in the preview, so export must honour the
+        // same toggle rather than always adding a blurred copy underneath.
         final foregroundTransforms = <String>[
-          'format=rgba',
-          if (videoScaleX != 1.0 || videoScaleY != 1.0)
-            'scale=iw*${videoScaleX.toStringAsFixed(3)}:ih*${videoScaleY.toStringAsFixed(3)}:flags=lanczos',
+          'scale=$outputWidth:$outputHeight:force_original_aspect_ratio=decrease:flags=lanczos',
+          'setsar=1',
+          'scale=iw*${videoScaleX.toStringAsFixed(4)}:ih*${videoScaleY.toStringAsFixed(4)}:flags=lanczos',
           if (videoRotation.abs() > 0.01)
             'rotate=${(videoRotation * math.pi / 180).toStringAsFixed(5)}:c=none:ow=rotw(iw):oh=roth(ih)',
-          'scale=$outputWidth:$outputHeight:force_original_aspect_ratio=decrease',
           'format=rgba',
-          'pad=$outputWidth:$outputHeight:(ow-iw)/2:(oh-ih)/2:color=black@0',
-          'setsar=1',
         ].join(',');
         final graph = <String>[
-          '[0:v]split=2[fitSource][backdropSource]',
-          '[backdropSource]scale=$outputWidth:$outputHeight:force_original_aspect_ratio=increase,'
-              'crop=$outputWidth:$outputHeight,gblur=sigma=18,'
-              "lutrgb=r='clip(val*0.62,0,255)':g='clip(val*0.62,0,255)':b='clip(val*0.62,0,255)',"
-              'hue=s=0.82[backdrop]',
-          '[fitSource]$effectPrefix$foregroundTransforms[foreground]',
-          '[backdrop][foreground]overlay=(W-w)/2:(H-h)/2:shortest=1[base0]',
+          if (canvasBackgroundBlurEnabled) ...[
+            '[0:v]split=2[fitSource][backdropSource]',
+            '[backdropSource]setpts=PTS-STARTPTS,'
+                'scale=$outputWidth:$outputHeight:force_original_aspect_ratio=increase:flags=lanczos,'
+                'crop=$outputWidth:$outputHeight,gblur=sigma=26,'
+                "lutrgb=r='clip(val*0.62,0,255)':g='clip(val*0.62,0,255)':b='clip(val*0.62,0,255)',"
+                'hue=s=0.82[backdrop]',
+          ] else ...[
+            '[0:v]setpts=PTS-STARTPTS[fitSource]',
+            'color=c=black:s=${outputWidth}x$outputHeight:r=${frameRate.toStringAsFixed(3)}:d=${clip.length.toStringAsFixed(3)}[backdrop]',
+          ],
+          '[fitSource]setpts=PTS-STARTPTS,$effectPrefix$foregroundTransforms[foreground]',
+          '[backdrop][foreground]overlay='
+              'x=(W-w)/2+(${videoOffsetX.toStringAsFixed(4)})*W:'
+              'y=(H-h)/2+(${videoOffsetY.toStringAsFixed(4)})*H:'
+              'shortest=1[base0]',
         ];
         var previous = 'base0';
         for (var overlayIndex = 0;
@@ -5447,9 +5518,15 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         ]);
         if ((result.exitCode != 0 || !await File(segmentPath).exists()) &&
             encoder != 'libx264') {
+          final failedEncoder = encoder;
+          encoder = 'libx264';
+          if (mounted) {
+            setState(() => status =
+                '$failedEncoder не поддержал экспорт фрагмента; перехожу на CPU (libx264).');
+          }
           result = await Process.run(ffmpeg, [
             ...args,
-            ..._videoEncoderArguments('libx264'),
+            ..._videoEncoderArguments(encoder),
             ...commonOutputArgs,
           ]);
         }
@@ -5464,7 +5541,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         sequenceCursor = clip.timelineEnd;
         if (mounted) {
           setState(() {
-            status = 'Экспортирую фрагмент ${i + 1} из ${orderedClips.length}…';
+            status = 'Экспортирую фрагмент ${i + 1} из ${orderedClips.length} · ${_videoEncoderLabel(encoder)}…';
           });
         }
       }
@@ -5512,7 +5589,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         final graph = <String>[];
         final args = <String>['-hide_banner', '-y'];
         for (var i = 0; i < exportSegments.length; i++) {
-          args.addAll(['-i', exportSegments[i].path]);
+          args.addAll(['-hwaccel', 'auto', '-i', exportSegments[i].path]);
           graph.add(
             '[$i:v]settb=AVTB,setpts=PTS-STARTPTS,fps=${frameRate.toStringAsFixed(3)},setsar=1,format=yuv444p[v$i]',
           );
@@ -5579,9 +5656,15 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           joinedVideo,
         ]);
         if (joinResult.exitCode != 0 && encoder != 'libx264') {
+          final failedEncoder = encoder;
+          encoder = 'libx264';
+          if (mounted) {
+            setState(() => status =
+                '$failedEncoder не поддержал сборку переходов; перехожу на CPU (libx264).');
+          }
           joinResult = await Process.run(ffmpeg, [
             ...graphOutputArgs,
-            ..._videoEncoderArguments('libx264'),
+            ..._videoEncoderArguments(encoder),
             '-movflags',
             '+faststart',
             joinedVideo,
