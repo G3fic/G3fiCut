@@ -111,7 +111,7 @@ class _TransitionThumbnailPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (size.isEmpty) return;
+    if (size.width <= 0 || size.height <= 0) return;
     final amount = progress.clamp(0.0, 1.0).toDouble();
     final bounds = Offset.zero & size;
     final filter = transitionFilterName(type);
@@ -334,7 +334,8 @@ class _TransitionThumbnailPainter extends CustomPainter {
         _revealRect(canvas, size, clip);
       }
     } else if (filter.startsWith('wipe') || filter.startsWith('smooth') ||
-        filter.startsWith('cover') || filter.startsWith('reveal')) {
+        filter.startsWith('cover') || filter.startsWith('reveal') ||
+        filter.startsWith('diag')) {
       var direction = 'left';
       if (filter.endsWith('right') || filter.endsWith('tr') ||
           filter.endsWith('br')) {
@@ -356,24 +357,34 @@ class _TransitionThumbnailPainter extends CustomPainter {
         direction = filter.substring(filter.startsWith('cover') ? 5 : 6);
       }
 
-      if (filter.startsWith('wipe') && filter.length == 5 &&
-          (filter == 'wipetl' || filter == 'wipetr' ||
-              filter == 'wipebl' || filter == 'wipebr')) {
+      final isDiagonal = const {
+        'diagtl', 'diagtr', 'diagbl', 'diagbr',
+        'wipetl', 'wipetr', 'wipebl', 'wipebr',
+      }.contains(filter);
+      if (isDiagonal) {
         final fromRight = filter.endsWith('tr') || filter.endsWith('br');
         final fromBottom = filter.endsWith('bl') || filter.endsWith('br');
-        final x = size.width * amount;
-        final y = size.height * amount;
-        final path = Path();
-        if (!fromRight && !fromBottom) {
-          path..moveTo(0, 0)..lineTo(x, 0)..lineTo(0, y)..close();
-        } else if (fromRight && !fromBottom) {
-          path..moveTo(size.width, 0)..lineTo(size.width - x, 0)..lineTo(size.width, y)..close();
-        } else if (!fromRight && fromBottom) {
-          path..moveTo(0, size.height)..lineTo(x, size.height)..lineTo(0, size.height - y)..close();
-        } else {
-          path..moveTo(size.width, size.height)..lineTo(size.width - x, size.height)..lineTo(size.width, size.height - y)..close();
-        }
         canvas.save();
+        if (fromRight) {
+          canvas.translate(size.width, 0);
+          canvas.scale(-1, 1);
+        }
+        if (fromBottom) {
+          canvas.translate(0, size.height);
+          canvas.scale(1, -1);
+        }
+        final distance = amount * (size.width + size.height);
+        final path = Path()..moveTo(0, 0);
+        path.lineTo(math.min(size.width, distance).toDouble(), 0);
+        if (distance > size.width) {
+          path.lineTo(size.width, math.min(size.height, distance - size.width).toDouble());
+        }
+        if (distance > size.height) {
+          path.lineTo(math.max(0.0, distance - size.height).toDouble(), size.height);
+        }
+        path
+          ..lineTo(0, math.min(size.height, distance).toDouble())
+          ..close();
         canvas.clipPath(path);
         _drawScene(canvas, bounds, incoming: true);
         canvas.restore();
