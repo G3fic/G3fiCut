@@ -86,7 +86,12 @@ List<TransitionPipelineStep> buildTransitionPipeline({
     }
   }
 
-  var accumulatedDuration = segments.first.duration;
+  double frameAligned(double seconds) => (seconds * frameRate).round() / frameRate;
+
+  final segmentDurations = segments
+      .map((segment) => frameAligned(segment.duration))
+      .toList(growable: false);
+  var accumulatedDuration = segmentDurations.first;
   final steps = <TransitionPipelineStep>[];
 
   for (var i = 1; i < segments.length; i++) {
@@ -117,9 +122,11 @@ List<TransitionPipelineStep> buildTransitionPipeline({
     var transitionDuration = 0.0;
     String? transitionType;
     if (marker != null) {
-      final maximum = previous.duration < current.duration
-          ? previous.duration / 2
-          : current.duration / 2;
+      final previousDuration = segmentDurations[i - 1];
+      final currentDuration = segmentDurations[i];
+      final maximum = previousDuration < currentDuration
+          ? previousDuration / 2
+          : currentDuration / 2;
       final requested = marker.duration < maximum ? marker.duration : maximum;
       final maximumFrames = (maximum * frameRate + 1e-9).floor();
       if (maximumFrames >= 1 && requested > 0) {
@@ -138,7 +145,7 @@ List<TransitionPipelineStep> buildTransitionPipeline({
       transitionType = null;
     }
 
-    accumulatedDuration += current.duration - transitionDuration;
+    accumulatedDuration += segmentDurations[i] - transitionDuration;
     steps.add(TransitionPipelineStep(
       segmentIndex: i,
       type: transitionType,
