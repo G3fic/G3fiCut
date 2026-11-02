@@ -5322,12 +5322,12 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
       for (var i = 0; i < orderedClips.length; i++) {
         final clip = orderedClips[i];
-        if (clip.timelineStart < sequenceCursor - 0.015) {
+        if (clip.timelineStart < sequenceCursor - transitionCutTolerance) {
           throw StateError(
             'Клипы перекрываются на таймлайне. Разместите их последовательно перед экспортом.',
           );
         }
-        if (clip.timelineStart > sequenceCursor + 0.015) {
+        if (clip.timelineStart > sequenceCursor + transitionCutTolerance) {
           await appendGapSegment(clip.timelineStart - sequenceCursor);
         }
 
