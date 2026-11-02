@@ -201,6 +201,31 @@ void main() {
       expect(plan[1].type, 'wipeleft');
     });
 
+    test('keeps transitions on later cuts after a clip is split into many parts', () {
+      final plan = buildTransitionPipeline(
+        segments: const [
+          TransitionPipelineSegment(start: 0, end: 5),
+          TransitionPipelineSegment(start: 5, end: 10),
+          TransitionPipelineSegment(start: 10, end: 15),
+          TransitionPipelineSegment(start: 15, end: 20),
+        ],
+        transitions: const [
+          TransitionPipelineMarker(type: 'circleopen', at: 10, duration: 0.4),
+        ],
+        frameRate: 30,
+        defaultTransitionType: 'wipeleft',
+        defaultTransitionDuration: 0.4,
+      );
+
+      expect(plan, hasLength(3));
+      expect(plan.map((step) => step.type),
+          ['wipeleft', 'circleopen', 'wipeleft']);
+      expect(plan.every((step) => step.hasTransition), isTrue);
+      expect(plan[0].offset, closeTo(4.6, 1e-9));
+      expect(plan[1].offset, closeTo(9.2, 1e-9));
+      expect(plan[2].offset, closeTo(13.8, 1e-9));
+    });
+
     test('does not apply the inspector default across timeline gaps', () {
       final plan = buildTransitionPipeline(
         segments: const [
