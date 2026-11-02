@@ -5176,78 +5176,84 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   }
 
   Future<String> _detectH264Encoder(String ffmpeg) async {
+    final listing;
     try {
-      final result = await Process.run(
+      listing = await Process.run(
         ffmpeg,
         ['-hide_banner', '-encoders'],
         runInShell: false,
       ).timeout(const Duration(seconds: 10));
-      if (result.exitCode != 0) return 'libx264';
-      final output = '${result.stdout}\\n${result.stderr}';
-      const candidates = [
-        'h264_nvenc',
-        'h264_qsv',
-        'h264_amf',
-        'h264_mf',
-      ];
-      Future<bool> canEncode(String candidate) async {
-        try {
-          // An encoder listed by FFmpeg may still fail on this device. Test
-          // the actual driver path with a tiny encode before using it.
-          final probe = await Process.run(
-            ffmpeg,
-            [
-              '-hide_banner',
-              '-loglevel',
-              'error',
-              '-f',
-              'lavfi',
-              '-i',
-              'testsrc2=size=128x128:rate=30',
-              '-frames:v',
-              '2',
-              '-an',
-              ..._videoEncoderArguments(candidate),
-              '-pix_fmt',
-              'yuv420p',
-              '-f',
-              'null',
-              '-',
-            ],
-            runInShell: false,
-          ).timeout(const Duration(seconds: 12));
-          return probe.exitCode == 0;
-        } catch (_) {
-          return false;
-        }
-      }
+    } catch (error) {
+      throw StateError('Не удалось проверить кодировщики FFmpeg: $error');
+    }
+    if (listing.exitCode != 0) {
+      throw StateError('FFmpeg не смог показать доступные видеокодировщики.');
+    }
+    final output = '${listing.stdout}\\n${listing.stderr}';
+    const candidates = [
+      'h264_nvenc',
+      'h264_qsv',
+      'h264_amf',
+      'h264_mf',
+    ];
 
-      bool hasEncoder(String name) => RegExp(
-        '(?<![A-Za-z0-9_])${RegExp.escape(name)}(?![A-Za-z0-9_])',
-      ).hasMatch(output);
+    Future<bool> canEncode(String candidate) async {
+      try {
+        // Test the actual driver/backend with a tiny encode. An encoder
+        // merely appearing in "ffmpeg -encoders" is not sufficient.
+        final probe = await Process.run(
+          ffmpeg,
+          [
+            '-hide_banner',
+            '-loglevel',
+            'error',
+            '-f',
+            'lavfi',
+            '-i',
+            'testsrc2=size=128x128:rate=30',
+            '-frames:v',
+            '2',
+            '-an',
+            ..._videoEncoderArguments(candidate),
+            '-pix_fmt',
+            'yuv420p',
+            '-f',
+            'null',
+            '-',
+          ],
+          runInShell: false,
+        ).timeout(const Duration(seconds: 12));
+        return probe.exitCode == 0;
+      } catch (_) {
+        return false;
+      }
+    }
 
-      for (final candidate in candidates) {
-        if (hasEncoder(candidate) && await canEncode(candidate)) {
-          return candidate;
-        }
-      }
+    bool hasEncoder(String name) => RegExp(
+      '(?<![A-Za-z0-9_])${RegExp.escape(name)}(?![A-Za-z0-9_])',
+    ).hasMatch(output);
 
-      // Media Foundation can encode in software when no compatible GPU/driver
-      // is available. This is the portable CPU fallback in the LGPL bundle;
-      // it does not rely on libx264, which is GPL-only.
-      if (hasEncoder('h264_mf') && await canEncode('h264_mf_sw')) {
-        return 'h264_mf_sw';
+    for (final candidate in candidates) {
+      if (hasEncoder(candidate) && await canEncode(candidate)) {
+        return candidate;
       }
-      if (hasEncoder('libopenh264') && await canEncode('libopenh264')) {
-        return 'libopenh264';
-      }
-      if (hasEncoder('libx264') && await canEncode('libx264')) {
-        return 'libx264';
-      }
-      throw StateError(
-        'FFmpeg не нашёл работающий аппаратный H.264-кодировщик '
-        'или совместимый программный резервный кодировщик.',
-      );
+    }
+
+    // Media Foundation supports both hardware and software H.264 encoding.
+    // Keep a tested CPU fallback without requiring GPL-only libx264.
+    if (hasEncoder('h264_mf') && await canEncode('h264_mf_sw')) {
+      return 'h264_mf_sw';
+    }
+    if (hasEncoder('libopenh264') && await canEncode('libopenh264')) {
+      return 'libopenh264';
+    }
+    if (hasEncoder('libx264') && await canEncode('libx264')) {
+      return 'libx264';
+    }
+    throw StateError(
+      'FFmpeg не нашёл работающий аппаратный H.264-кодировщик '
+      'или совместимый программный резервный кодировщик.',
+    );
   }
 
   String _videoEncoderLabel(String encoder) => switch (encoder) {
