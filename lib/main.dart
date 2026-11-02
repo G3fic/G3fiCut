@@ -5190,14 +5190,10 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         'h264_amf',
         'h264_mf',
       ];
-      for (final candidate in candidates) {
-        final available = RegExp(
-          '(?<![A-Za-z0-9_])${RegExp.escape(candidate)}(?![A-Za-z0-9_])',
-        ).hasMatch(output);
-        if (!available) continue;
+      Future<bool> canEncode(String candidate) async {
         try {
-          // Encoder presence alone is not proof that a GPU and its driver are
-          // usable. Run a tiny real encode before choosing the hardware path.
+          // An encoder listed by FFmpeg may still fail on this device. Test
+          // the actual driver path with a tiny encode before using it.
           final probe = await Process.run(
             ffmpeg,
             [
@@ -5220,15 +5216,38 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             ],
             runInShell: false,
           ).timeout(const Duration(seconds: 12));
-          if (probe.exitCode == 0) return candidate;
+          return probe.exitCode == 0;
         } catch (_) {
-          // Try the next hardware backend if this device/driver is unavailable.
+          return false;
         }
       }
-    } catch (_) {
-      // Capability probing must never prevent a software export.
-    }
-    return 'libx264';
+
+      bool hasEncoder(String name) => RegExp(
+        '(?<![A-Za-z0-9_])${RegExp.escape(name)}(?![A-Za-z0-9_])',
+      ).hasMatch(output);
+
+      for (final candidate in candidates) {
+        if (hasEncoder(candidate) && await canEncode(candidate)) {
+          return candidate;
+        }
+      }
+
+      // Media Foundation can encode in software when no compatible GPU/driver
+      // is available. This is the portable CPU fallback in the LGPL bundle;
+      // it does not rely on libx264, which is GPL-only.
+      if (hasEncoder('h264_mf') && await canEncode('h264_mf_sw')) {
+        return 'h264_mf_sw';
+      }
+      if (hasEncoder('libopenh264') && await canEncode('libopenh264')) {
+        return 'libopenh264';
+      }
+      if (hasEncoder('libx264') && await canEncode('libx264')) {
+        return 'libx264';
+      }
+      throw StateError(
+        'FFmpeg не нашёл работающий аппаратный H.264-кодировщик '
+        'или совместимый программный резервный кодировщик.',
+      );
   }
 
   String _videoEncoderLabel(String encoder) => switch (encoder) {
@@ -5236,7 +5255,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     'h264_qsv' => 'Intel Quick Sync (GPU)',
     'h264_amf' => 'AMD AMF (GPU)',
     'h264_mf' => 'Windows Media Foundation (GPU)',
-    _ => 'libx264 (CPU)',
+    'h264_mf_sw' => 'Media Foundation (CPU fallback)',
+    'libopenh264' => 'OpenH264 (CPU fallback)',
+    _ => 'libx264 (CPU fallback)',
   };
 
   List<String> _videoEncoderArguments(String encoder) {
@@ -5248,7 +5269,11 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       case 'h264_amf':
         return ['-c:v', encoder, '-quality', 'quality', '-qp_i', '18', '-qp_p', '18'];
       case 'h264_mf':
-        return ['-c:v', encoder, '-hw_encoding', '1', '-quality', '85'];
+        return ['-c:v', 'h264_mf', '-hw_encoding', '1', '-quality', '85'];
+      case 'h264_mf_sw':
+        return ['-c:v', 'h264_mf', '-hw_encoding', '0', '-quality', '85'];
+      case 'libopenh264':
+        return ['-c:v', 'libopenh264', '-b:v', '8M'];
       default:
         return ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18'];
     }
@@ -5358,12 +5383,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           ..._videoEncoderArguments(encoder),
           ...audioArgs,
         ]);
-        if (result.exitCode != 0 && encoder != 'libx264') {
+        if (result.exitCode != 0 && encoder != 'h264_mf_sw' &&
+            encoder != 'libopenh264' && encoder != 'libx264') {
           final failedEncoder = encoder;
-          encoder = 'libx264';
+          encoder = 'h264_mf_sw';
           if (mounted) {
             setState(() => status =
-                '$failedEncoder не смог обработать пустой участок; перехожу на CPU (libx264).');
+                '$failedEncoder завершился с ошибкой; пробую Media Foundation на CPU.');
           }
           result = await Process.run(ffmpeg, [
             ...baseArgs,
@@ -5446,7 +5472,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             '[0:v]split=2[fitSource][backdropSource]',
             '[backdropSource]setpts=PTS-STARTPTS,'
                 'scale=$outputWidth:$outputHeight:force_original_aspect_ratio=increase:flags=lanczos,'
-                'crop=$outputWidth:$outputHeight,gblur=sigma=26,'
+                'crop=$outputWidth:$outputHeight,setsar=1,gblur=sigma=26,'
                 "lutrgb=r='clip(val*0.62,0,255)':g='clip(val*0.62,0,255)':b='clip(val*0.62,0,255)',"
                 'hue=s=0.82[backdrop]',
           ] else ...[
@@ -5517,12 +5543,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           ...commonOutputArgs,
         ]);
         if ((result.exitCode != 0 || !await File(segmentPath).exists()) &&
+            encoder != 'h264_mf_sw' && encoder != 'libopenh264' &&
             encoder != 'libx264') {
           final failedEncoder = encoder;
-          encoder = 'libx264';
+          encoder = 'h264_mf_sw';
           if (mounted) {
             setState(() => status =
-                '$failedEncoder не поддержал экспорт фрагмента; перехожу на CPU (libx264).');
+                '$failedEncoder не поддержал экспорт фрагмента; перехожу на Media Foundation (CPU).');
           }
           result = await Process.run(ffmpeg, [
             ...args,
@@ -5655,12 +5682,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           '+faststart',
           joinedVideo,
         ]);
-        if (joinResult.exitCode != 0 && encoder != 'libx264') {
+        if (joinResult.exitCode != 0 && encoder != 'h264_mf_sw' &&
+            encoder != 'libopenh264' && encoder != 'libx264') {
           final failedEncoder = encoder;
-          encoder = 'libx264';
+          encoder = 'h264_mf_sw';
           if (mounted) {
             setState(() => status =
-                '$failedEncoder не поддержал сборку переходов; перехожу на CPU (libx264).');
+                '$failedEncoder не поддержал сборку переходов; перехожу на Media Foundation (CPU).');
           }
           joinResult = await Process.run(ffmpeg, [
             ...graphOutputArgs,
