@@ -5248,7 +5248,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       var segmentNumber = 0;
 
       Future<void> appendGapSegment(double gapSeconds) async {
-        if (gapSeconds < 0.015) return;
+        if (gapSeconds <= transitionCutTolerance) return;
         final dimensions = outputSize.split(':');
         final gapPath = p.join(
           temp!.path,
@@ -5275,6 +5275,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           gapSeconds.toStringAsFixed(3),
           '-r',
           frameRate.toStringAsFixed(3),
+          '-frames:v',
+          math.max(1, (gapSeconds * frameRate).round()).toString(),
         ];
         final audioArgs = <String>[
           if (sourceHasAudio) ...[
@@ -5419,6 +5421,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         final commonOutputArgs = <String>[
           '-r',
           frameRate.toStringAsFixed(3),
+          '-frames:v',
+          math.max(1, (clip.length * frameRate).round()).toString(),
           if (sourceHasAudio) ...[
             '-af',
             'volume=${exportVolume.toStringAsFixed(2)}',
