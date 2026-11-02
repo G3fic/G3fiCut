@@ -79,6 +79,23 @@ void main() {
       expect(plan.single.outputDuration, closeTo(0.8, 1e-9));
     });
 
+    test('frame-aligns source segment durations before cumulative offsets', () {
+      final plan = buildTransitionPipeline(
+        segments: const [
+          TransitionPipelineSegment(start: 0, end: 1.01),
+          TransitionPipelineSegment(start: 1.01, end: 2.03),
+        ],
+        transitions: const [
+          TransitionPipelineMarker(type: 'fade', at: 1.01, duration: 0.3),
+        ],
+        frameRate: 30,
+      );
+
+      expect(plan.single.duration, closeTo(0.3, 1e-9));
+      expect(plan.single.offset, closeTo(0.7, 1e-9));
+      expect(plan.single.outputDuration, closeTo(1.7333333333, 1e-8));
+    });
+
     test('calculates offsets cumulatively for multiple consecutive transitions', () {
       final plan = buildTransitionPipeline(
         segments: const [
