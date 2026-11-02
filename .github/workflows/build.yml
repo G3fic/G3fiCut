@@ -159,6 +159,14 @@ jobs:
             }
           }
 
+          # Regression test for a split clip with several consecutive cuts.
+          # Every xfade must keep receiving the accumulated output timeline.
+          $multiSegmentGraph = '[0:v]settb=AVTB,setpts=PTS-STARTPTS,fps=30,setsar=1,format=yuv444p[v0];[1:v]settb=AVTB,setpts=PTS-STARTPTS,fps=30,setsar=1,format=yuv444p[v1];[2:v]settb=AVTB,setpts=PTS-STARTPTS,fps=30,setsar=1,format=yuv444p[v2];[3:v]settb=AVTB,setpts=PTS-STARTPTS,fps=30,setsar=1,format=yuv444p[v3];[v0][v1]xfade=transition=wipeleft:duration=0.4:offset=1.6[vjoin1];[vjoin1][v2]xfade=transition=circleopen:duration=0.4:offset=3.2[vjoin2];[vjoin2][v3]xfade=transition=slideright:duration=0.4:offset=4.8[vjoin3];[vjoin3]format=yuv420p[out]'
+          & $ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=128x128:rate=30:duration=2' -f lavfi -i 'smptebars=size=128x128:rate=30:duration=2' -f lavfi -i 'testsrc=size=128x128:rate=30:duration=2' -f lavfi -i 'smptehdbars=size=128x128:rate=30:duration=2' -filter_complex $multiSegmentGraph -map '[out]' -frames:v 204 -f null NUL
+          if ($LASTEXITCODE -ne 0) {
+            throw 'FFmpeg failed to render consecutive transitions across a split multi-segment timeline.'
+          }
+
       - name: Download CC BY 4.0 cinematic LUT presets
         shell: pwsh
         run: |
