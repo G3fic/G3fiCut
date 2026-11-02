@@ -235,7 +235,7 @@ class _TransitionThumbnailPainter extends CustomPainter {
       final centered = filter == 'horzopen' || filter == 'horzclose' ||
           filter == 'vertopen' || filter == 'vertclose' ||
           filter == 'squeezeh' || filter == 'squeezev';
-      final revealAmount = filter.endsWith('close') ? 1 - amount : amount;
+      final revealAmount = filter.endsWith('close') ? 1.0 - amount : amount;
       final reveal = horizontal
           ? Rect.fromLTWH(
               size.width * (1.0 - revealAmount) / 2,
