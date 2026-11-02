@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gifcut/timeline_editing.dart';
 import 'package:gifcut/timeline_history.dart';
+import 'package:gifcut/transition_pipeline.dart';
 
 void main() {
   group('TimelineEditing', () {
@@ -15,6 +16,30 @@ void main() {
         const TimelineClipRange(8, 10, timelineStart: 4),
         const TimelineClipRange(10, 12, timelineStart: 6),
       ]);
+    });
+
+    test('repeatedly splitting one source clip keeps a transition at every new cut', () {
+      var clips = [
+        const TimelineClipRange(0, 12, timelineStart: 0),
+      ];
+      clips = TimelineEditing.splitAt(clips, 0, 4);
+      clips = TimelineEditing.splitAt(clips, 1, 8);
+
+      final plan = buildTransitionPipeline(
+        segments: clips.map((clip) => TransitionPipelineSegment(
+          start: clip.timelineStart,
+          end: clip.timelineEnd,
+        )).toList(),
+        transitions: const [],
+        frameRate: 30,
+        defaultTransitionType: 'wipeleft',
+        defaultTransitionDuration: 0.4,
+      );
+
+      expect(clips, hasLength(3));
+      expect(plan, hasLength(2));
+      expect(plan.every((step) => step.type == 'wipeleft' && step.hasTransition),
+          isTrue);
     });
 
     test('duplicate inserts after selection and shifts following clips', () {
