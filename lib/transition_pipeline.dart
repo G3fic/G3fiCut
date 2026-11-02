@@ -68,6 +68,8 @@ List<TransitionPipelineStep> buildTransitionPipeline({
   required List<TransitionPipelineSegment> segments,
   required List<TransitionPipelineMarker> transitions,
   required double frameRate,
+  String? defaultTransitionType,
+  double defaultTransitionDuration = 0.0,
 }) {
   if (segments.length < 2) return const [];
   if (!frameRate.isFinite || frameRate <= 0) {
@@ -117,6 +119,20 @@ List<TransitionPipelineStep> buildTransitionPipeline({
                 (marker.at - current.start).abs()) {
           marker = candidate;
         }
+      }
+
+      // The inspector's default transition is a fallback for every real cut.
+      // A per-cut timeline marker always wins over this global setting.
+      if (marker == null &&
+          defaultTransitionType != null &&
+          defaultTransitionType.isNotEmpty &&
+          defaultTransitionDuration.isFinite &&
+          defaultTransitionDuration > 0) {
+        marker = TransitionPipelineMarker(
+          type: defaultTransitionType,
+          at: current.start,
+          duration: defaultTransitionDuration,
+        );
       }
     }
 
