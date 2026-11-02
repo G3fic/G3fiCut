@@ -5201,7 +5201,20 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       final joinedVideo = audioPath == null
           ? savePath
           : p.join(temp.path, 'joined_video.mp4');
-      final useTransitionGraph = timelineTransitions.isNotEmpty && exportSegments.length > 1;
+      final transitionPlan = buildTransitionPipeline(
+        segments: exportSegments.map((segment) => TransitionPipelineSegment(
+          start: segment.start,
+          end: segment.end,
+          isGap: segment.isGap,
+        )).toList(),
+        transitions: timelineTransitions.map((transition) => TransitionPipelineMarker(
+          type: transition.type,
+          at: transition.at,
+          duration: transition.duration,
+        )).toList(),
+        frameRate: frameRate,
+      );
+      final useTransitionGraph = transitionPlan.any((step) => step.hasTransition);
       if (!useTransitionGraph) {
         final concatResult = await Process.run(ffmpeg, [
           '-hide_banner',
@@ -5219,7 +5232,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           joinedVideo,
         ]);
         if (concatResult.exitCode != 0) {
-          throw Exception(concatResult.stderr.toString().split('\n').last);
+          throw Exception(concatResult.stderr.toString().split('\\n').last);
         }
       } else {
         final graph = <String>[];
@@ -5234,49 +5247,25 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
         var activeVideo = 'v0';
         var activeAudio = 'a0';
-        var accumulatedDuration = exportSegments.first.duration;
-        for (var i = 1; i < exportSegments.length; i++) {
-          final previousSegment = exportSegments[i - 1];
-          final currentSegment = exportSegments[i];
-          TimelineTransition? transition;
-          if (!previousSegment.isGap &&
-              !currentSegment.isGap &&
-              (previousSegment.end - currentSegment.start).abs() <= 0.025) {
-            for (final candidate in timelineTransitions) {
-              if ((candidate.at - currentSegment.start).abs() <= 0.025) {
-                transition = candidate;
-                break;
-              }
-            }
-          }
-
-          final durationForTransition = transition == null
-              ? 0.0
-              : math.min(
-                  transition.duration,
-                  math.min(previousSegment.duration / 2, currentSegment.duration / 2),
-                ).toDouble();
-          final canTransition = transition != null && durationForTransition >= 0.05;
+        for (final step in transitionPlan) {
+          final i = step.segmentIndex;
           final videoOutput = 'vjoin$i';
           final audioOutput = 'ajoin$i';
-          if (canTransition) {
-            final name = _transitionFilterName(transition.type);
-            final offset = math.max(0.0, accumulatedDuration - durationForTransition).toDouble();
+          if (step.hasTransition) {
+            final name = _transitionFilterName(step.type!);
             graph.add(
-              '[$activeVideo][v$i]xfade=transition=$name:duration=${durationForTransition.toStringAsFixed(3)}:offset=${offset.toStringAsFixed(3)}[$videoOutput]',
+              '[$activeVideo][v$i]xfade=transition=$name:duration=${step.duration.toStringAsFixed(6)}:offset=${step.offset.toStringAsFixed(6)}[$videoOutput]',
             );
             if (sourceHasAudio) {
               graph.add(
-                '[$activeAudio][a$i]acrossfade=d=${durationForTransition.toStringAsFixed(3)}:c1=tri:c2=tri[$audioOutput]',
+                '[$activeAudio][a$i]acrossfade=d=${step.duration.toStringAsFixed(6)}:c1=tri:c2=tri[$audioOutput]',
               );
             }
-            accumulatedDuration += currentSegment.duration - durationForTransition;
           } else {
             graph.add('[$activeVideo][v$i]concat=n=2:v=1:a=0[$videoOutput]');
             if (sourceHasAudio) {
               graph.add('[$activeAudio][a$i]concat=n=2:v=0:a=1[$audioOutput]');
             }
-            accumulatedDuration += currentSegment.duration;
           }
           activeVideo = videoOutput;
           if (sourceHasAudio) activeAudio = audioOutput;
