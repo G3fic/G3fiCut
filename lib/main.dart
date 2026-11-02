@@ -173,7 +173,7 @@ class _TransitionThumbnailPainter extends CustomPainter {
         }
       }
       final gridPaint = Paint()
-        ..color = Colors.white.withValues(alpha: (1 - amount) * 0.28)
+        ..color = Colors.white.withValues(alpha: (1.0 - amount) * 0.28)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 0.55;
       for (var column = 1; column < columns; column++) {
@@ -184,13 +184,26 @@ class _TransitionThumbnailPainter extends CustomPainter {
         final y = size.height * row / rows;
         canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
       }
+    } else if (filter == 'rectcrop') {
+      final cropWidth = size.width * amount;
+      final cropHeight = size.height * amount;
+      _revealRect(
+        canvas,
+        size,
+        Rect.fromLTWH(
+          (size.width - cropWidth) / 2,
+          (size.height - cropHeight) / 2,
+          cropWidth,
+          cropHeight,
+        ),
+      );
     } else if (filter == 'circleclose') {
       _drawScene(canvas, bounds, incoming: true);
       canvas.save();
       canvas.clipPath(Path()
         ..addOval(Rect.fromCircle(
           center: Offset(size.width / 2, size.height / 2),
-          radius: size.longestSide * (1 - amount) * 0.72,
+          radius: size.longestSide * (1.0 - amount) * 0.72,
         )));
       _drawScene(canvas, bounds, incoming: false);
       canvas.restore();
@@ -209,7 +222,7 @@ class _TransitionThumbnailPainter extends CustomPainter {
           Offset(size.width / 2, size.height / 2),
           size.longestSide * amount * 0.72,
           Paint()
-            ..color = Colors.white.withValues(alpha: (1 - amount) * 0.55)
+            ..color = Colors.white.withValues(alpha: (1.0 - amount) * 0.55)
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1.2,
         );
@@ -225,14 +238,14 @@ class _TransitionThumbnailPainter extends CustomPainter {
       final revealAmount = filter.endsWith('close') ? 1 - amount : amount;
       final reveal = horizontal
           ? Rect.fromLTWH(
-              size.width * (1 - revealAmount) / 2,
+              size.width * (1.0 - revealAmount) / 2,
               0,
               size.width * revealAmount,
               size.height,
             )
           : Rect.fromLTWH(
               0,
-              size.height * (1 - revealAmount) / 2,
+              size.height * (1.0 - revealAmount) / 2,
               size.width,
               size.height * revealAmount,
             );
@@ -248,14 +261,14 @@ class _TransitionThumbnailPainter extends CustomPainter {
     } else if (filter == 'slideleft' || filter == 'slideright' ||
         filter == 'slideup' || filter == 'slidedown') {
       final dx = filter == 'slideleft'
-          ? size.width * (1 - amount)
+          ? size.width * (1.0 - amount)
           : filter == 'slideright'
-              ? -size.width * (1 - amount)
+              ? -size.width * (1.0 - amount)
               : 0.0;
       final dy = filter == 'slideup'
-          ? size.height * (1 - amount)
+          ? size.height * (1.0 - amount)
           : filter == 'slidedown'
-              ? -size.height * (1 - amount)
+              ? -size.height * (1.0 - amount)
               : 0.0;
       canvas.save();
       canvas.translate(dx, dy);
@@ -279,20 +292,20 @@ class _TransitionThumbnailPainter extends CustomPainter {
       const slices = 8;
       for (var index = 0; index < slices; index++) {
         final delay = (index % 3) * 0.075;
-        final local = ((amount - delay) / (1 - delay)).clamp(0.0, 1.0).toDouble();
+        final local = ((amount - delay) / (1.0 - delay)).clamp(0.0, 1.0).toDouble();
         final start = (horizontal ? size.height : size.width) * index / slices;
         final extent = (horizontal ? size.height : size.width) / slices + 0.5;
         final direction = filter == 'hrslice' || filter == 'vdslice' ? -1 : 1;
         final clip = horizontal
             ? Rect.fromLTWH(
-                direction > 0 ? 0 : size.width * (1 - local),
+                direction > 0 ? 0 : size.width * (1.0 - local),
                 start,
                 size.width * local,
                 extent,
               )
             : Rect.fromLTWH(
                 start,
-                direction > 0 ? 0 : size.height * (1 - local),
+                direction > 0 ? 0 : size.height * (1.0 - local),
                 extent,
                 size.height * local,
               );
@@ -301,7 +314,7 @@ class _TransitionThumbnailPainter extends CustomPainter {
     } else if (filter == 'hblur') {
       _drawScene(canvas, bounds, incoming: true, opacity: amount);
       final bands = Paint()
-        ..color = Colors.white.withValues(alpha: (1 - amount) * 0.3);
+        ..color = Colors.white.withValues(alpha: (1.0 - amount) * 0.3);
       for (var row = 0; row < 5; row++) {
         final y = size.height * row / 5;
         canvas.drawRect(
@@ -316,7 +329,7 @@ class _TransitionThumbnailPainter extends CustomPainter {
       const strips = 12;
       for (var index = 0; index < strips; index++) {
         final local = ((amount * 1.25 - index / strips * 0.45).clamp(0.0, 1.0)).toDouble();
-        final offset = (reverse ? 1 - local : local) *
+        final offset = (reverse ? 1.0 - local : local) *
             (horizontal ? size.width : size.height);
         final clip = horizontal
             ? Rect.fromLTWH(
@@ -392,10 +405,10 @@ class _TransitionThumbnailPainter extends CustomPainter {
         final clip = _wipeRect(size, direction, amount);
         _revealRect(canvas, size, clip);
         final isHorizontal = direction == 'left' || direction == 'right';
-        final edgeX = direction == 'right' ? size.width * (1 - amount) : size.width * amount;
-        final edgeY = direction == 'down' ? size.height * (1 - amount) : size.height * amount;
+        final edgeX = direction == 'right' ? size.width * (1.0 - amount) : size.width * amount;
+        final edgeY = direction == 'down' ? size.height * (1.0 - amount) : size.height * amount;
         final line = Paint()
-          ..color = Colors.white.withValues(alpha: (1 - amount) * 0.72)
+          ..color = Colors.white.withValues(alpha: (1.0 - amount) * 0.72)
           ..strokeWidth = filter.startsWith('smooth') ? 1.4 : 0.8;
         if (isHorizontal) {
           canvas.drawLine(Offset(edgeX, 0), Offset(edgeX, size.height), line);
