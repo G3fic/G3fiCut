@@ -5176,7 +5176,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   }
 
   Future<String> _detectH264Encoder(String ffmpeg) async {
-    final listing;
+    late final ProcessResult listing;
     try {
       listing = await Process.run(
         ffmpeg,
