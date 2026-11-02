@@ -124,6 +124,15 @@ jobs:
         run: |
           $ffmpeg = Join-Path $PWD 'build/windows/x64/runner/Release/ffmpeg.exe'
           $filters = & $ffmpeg -hide_banner -filters 2>&1 | Out-String
+          $encoders = & $ffmpeg -hide_banner -encoders 2>&1 | Out-String
+          $hardwareH264Encoders = @('h264_nvenc', 'h264_qsv', 'h264_amf', 'h264_mf')
+          $availableHardwareEncoders = @($hardwareH264Encoders | Where-Object { $encoders -match "(?m)\b$_\b" })
+          if ($availableHardwareEncoders.Count -eq 0) {
+            Write-Output $encoders
+            throw 'The bundled FFmpeg build contains no supported Windows hardware H.264 encoder.'
+          }
+          Write-Output "Bundled hardware H.264 encoders: $($availableHardwareEncoders -join ', ')"
+
           foreach ($filter in @('xfade', 'lut3d', 'noise', 'chromashift', 'rgbashift', 'vignette', 'unsharp', 'colorchannelmixer', 'colorbalance', 'hue', 'lutrgb')) {
             if ($filters -notmatch "(?m)\b$filter\b") {
               Write-Output $filters
