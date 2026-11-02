@@ -901,12 +901,23 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       return (type: active.type, progress: progress);
     }
 
-    // Preserve the older inspector control for projects that predate
-    // per-cut transition blocks.
-    if (timelineTransitions.isEmpty && transitionEffect != 'Нет' &&
+    // The inspector's default transition applies to every real cut that
+    // does not already have a per-cut override on the timeline.
+    if (transitionEffect != 'Нет' &&
         videoClips.length > 1 && transitionDuration > 0) {
-      for (var i = 1; i < videoClips.length; i++) {
-        final cut = videoClips[i].timelineStart;
+      final ordered = List<TimelineClip>.of(videoClips)
+        ..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
+      for (var i = 1; i < ordered.length; i++) {
+        final previous = ordered[i - 1];
+        final next = ordered[i];
+        final cut = next.timelineStart;
+        if ((previous.timelineEnd - cut).abs() > transitionCutTolerance) {
+          continue;
+        }
+        final hasOverride = timelineTransitions.any(
+          (value) => (value.at - cut).abs() <= transitionCutTolerance,
+        );
+        if (hasOverride) continue;
         final start = cut - transitionDuration;
         if (seconds >= start && seconds < cut) {
           return (
@@ -5161,17 +5172,6 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         );
       }
     }
-    if (transitionEffect != 'Нет' && videoClips.length > 1) {
-      final durationForClip = math.min(transitionDuration, math.max(0.1, clip.length / 2)).toDouble();
-      final color = transitionEffect == 'Белая вспышка' ? 'white' : 'black';
-      final hasIncomingOverride = timelineTransitions.any((value) => (value.at - clip.timelineStart).abs() <= 0.025);
-      final hasOutgoingOverride = timelineTransitions.any((value) => (value.at - clip.timelineEnd).abs() <= 0.025);
-      if (index > 0 && !hasIncomingOverride) filters.add('fade=t=in:st=0:d=${durationForClip.toStringAsFixed(2)}:color=$color');
-      if (index < videoClips.length - 1 && !hasOutgoingOverride) {
-        final start = math.max(0, clip.length - durationForClip).toDouble();
-        filters.add('fade=t=out:st=${start.toStringAsFixed(2)}:d=${durationForClip.toStringAsFixed(2)}:color=$color');
-      }
-    }
     return filters.isEmpty ? 'null' : filters.join(',');
   }
 
@@ -5485,6 +5485,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           duration: transition.duration,
         )).toList(),
         frameRate: frameRate,
+        defaultTransitionType: transitionEffect == 'Нет' ? null : transitionEffect,
+        defaultTransitionDuration: transitionDuration,
       );
       final useTransitionGraph = transitionPlan.any((step) => step.hasTransition);
       if (!useTransitionGraph) {
