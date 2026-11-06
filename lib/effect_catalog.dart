@@ -67,6 +67,19 @@ const Map<String, String> builtinTransitionFilters = {
   'Появление снизу': 'revealdown',
 };
 
+/// A deliberately small set of polished, clip-to-clip transitions shown in the UI.
+/// The full legacy map above remains available so older project files still open.
+const Map<String, String> featuredTransitionFilters = {
+  'Плавное смешивание': 'fade',
+  'Сдвиг влево': 'slideleft',
+  'Сдвиг вправо': 'slideright',
+  'Смахивание влево': 'wipeleft',
+  'Смахивание вправо': 'wiperight',
+  'Круговое открытие': 'circleopen',
+  'Приближение': 'zoomin',
+  'Пикселизация': 'pixelize',
+};
+
 const Set<String> builtinEffectTypes = {
   'Чёрно-белый',
   'Сепия',
@@ -180,7 +193,7 @@ const Map<String, List<double>> lutPreviewMatrices = {
 };
 
 String transitionFilterName(String type) =>
-    builtinTransitionFilters[type] ?? 'fadeblack';
+    builtinTransitionFilters[type] ?? 'fade';
 
 
 String applyEnableToFilterChain(String filterChain, String expression) {
