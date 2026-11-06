@@ -2414,7 +2414,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       final previous = ordered[i - 1];
       final next = ordered[i];
       if ((next.timelineStart - cut).abs() > transitionCutTolerance ||
-          (previous.timelineEnd - next.timelineStart).abs() > transitionCutTolerance) continue;
+          (previous.timelineEnd - next.timelineStart).abs() > transitionCutTolerance) {
+        continue;
+      }
       var requested = transitionEffect == 'Нет' ? 0.0 : transitionDuration;
       for (final marker in timelineTransitions) {
         if ((marker.at - cut).abs() <= transitionCutTolerance) {
@@ -2451,7 +2453,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     final incoming = ordered[incomingIndex];
     final transitionStart = transition.at - transition.duration / 2;
     final incomingSourceSeconds = incoming.start + (playheadSeconds - transitionStart).clamp(0.0, transition.duration);
-    final key = source + '|' + transition.at.toString() + '|' + transition.type + '|' + incoming.start.toString();
+    final key = '$source|${transition.at}|${transition.type}|${incoming.start}';
     final isNewTransition = _transitionPreviewKey != key;
     if (isNewTransition) {
       _transitionPreviewKey = key;
