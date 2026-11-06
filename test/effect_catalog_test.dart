@@ -27,6 +27,8 @@ void main() {
 
     test('unknown transition uses a safe fallback', () {
       expect(transitionFilterName('unknown'), 'fade');
+      expect(transitionFilterName('Затемнение'), 'fade');
+      expect(transitionFilterName('Белая вспышка'), 'fade');
     });
   });
 
