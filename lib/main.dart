@@ -2248,6 +2248,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               : () => unawaited(transition ? addTimelineTransition(type) : addTimelineEffect(type)),
           borderRadius: BorderRadius.circular(8),
           child: Container(
+            key: ValueKey('hover-preview-$key'),
             decoration: BoxDecoration(
               color: selected ? const Color(0xFF29384B) : const Color(0xFF202630),
               border: Border.all(color: selected ? accent : const Color(0xFF343A47)),
@@ -2272,7 +2273,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       const SizedBox(height: 7),
       GridView.count(
         crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 6, mainAxisSpacing: 6, childAspectRatio: 0.78,
+        crossAxisSpacing: 6, mainAxisSpacing: 6, childAspectRatio: 0.60,
         children: [for (final type in (_timelineEffectTypes.toList()..sort())) tile(type, transition: false)],
       ),
       const Divider(height: 22),
@@ -2280,7 +2281,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       const SizedBox(height: 7),
       GridView.count(
         crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 6, mainAxisSpacing: 6, childAspectRatio: 0.78,
+        crossAxisSpacing: 6, mainAxisSpacing: 6, childAspectRatio: 0.60,
         children: [for (final type in (_timelineTransitionTypes.toList()..sort())) tile(type, transition: true)],
       ),
       const SizedBox(height: 8),
