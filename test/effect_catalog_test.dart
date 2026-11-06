@@ -19,7 +19,7 @@ void main() {
       expect(featuredTransitionFilters.length, 8);
       expect(featuredTransitionFilters.values, containsAll([
         'fade', 'slideleft', 'slideright', 'wipeleft',
-        'wiperight', 'circleopen', 'zoomin', 'pixelize',
+        'wiperight', 'circleopen', 'zoomin', 'dissolve',
       ]));
       expect(featuredTransitionFilters.values, isNot(contains('fadeblack')));
       expect(featuredTransitionFilters.values, isNot(contains('fadewhite')));
