@@ -347,7 +347,7 @@ class ExportTimelineSegment {
 }
 
 class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.79');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.87');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -481,7 +481,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     return _timelineEffectColorMatrix(resolved);
   }
 
-  ({String type, double progress})? get previewTransitionOverlay {
+  ({String type, double progress, bool incoming})? get previewTransitionOverlay {
     final seconds = position.inMilliseconds / 1000;
     TimelineTransition? active;
     for (final transition in timelineTransitions) {
@@ -495,7 +495,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     if (active != null) {
       final progress = ((seconds - (active.at - active.duration / 2)) / active.duration)
           .clamp(0.0, 1.0).toDouble();
-      return (type: active.type, progress: progress);
+      return (type: active.type, progress: progress, incoming: seconds >= active.at);
     }
 
     // The inspector's default transition applies to every real cut that
@@ -522,6 +522,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             type: transitionEffect,
             progress: ((seconds - start) / transitionDuration)
                 .clamp(0.0, 1.0).toDouble(),
+            incoming: seconds >= cut,
           );
         }
       }
@@ -2418,11 +2419,20 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           filter == 'fadefast' || filter == 'fadeslow' ||
           filter == 'fadegrays' || filter == 'dissolve' ||
           filter == 'pixelize') {
-        result = Opacity(opacity: 1.0 - progress, child: result);
+        // The player switches to the incoming clip at the cut. Fade the
+        // outgoing clip to black during the first half, then fade the new
+        // clip in during the second half (matching FFmpeg xfade timing).
+        final fadeOpacity = transition.incoming
+            ? ((progress - 0.5) * 2).clamp(0.0, 1.0).toDouble()
+            : (1.0 - progress * 2).clamp(0.0, 1.0).toDouble();
+        result = Opacity(opacity: fadeOpacity, child: result);
       } else if (filter == 'fadewhite') {
+        final whiteOpacity = transition.incoming
+            ? (1.0 - (progress - 0.5) * 2).clamp(0.0, 1.0).toDouble()
+            : (progress * 2).clamp(0.0, 1.0).toDouble();
         result = ColorFiltered(
           colorFilter: ColorFilter.mode(
-            Colors.white.withValues(alpha: progress * 0.92),
+            Colors.white.withValues(alpha: whiteOpacity * 0.92),
             BlendMode.screen,
           ),
           child: result,
@@ -4753,11 +4763,21 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       case 'h264_amf':
         return ['-c:v', encoder, '-quality', 'quality', '-qp_i', '18', '-qp_p', '18'];
       case 'h264_mf':
-        return ['-c:v', 'h264_mf', '-hw_encoding', '1', '-quality', '85'];
+        return [
+          '-c:v', 'h264_mf',
+          '-hw_encoding', '1',
+          '-rate_control', 'pc_vbr',
+          '-quality', '100',
+        ];
       case 'h264_mf_sw':
-        return ['-c:v', 'h264_mf', '-hw_encoding', '0', '-quality', '85'];
+        return [
+          '-c:v', 'h264_mf',
+          '-hw_encoding', '0',
+          '-rate_control', 'pc_vbr',
+          '-quality', '100',
+        ];
       case 'libopenh264':
-        return ['-c:v', 'libopenh264', '-b:v', '8M'];
+        return ['-c:v', 'libopenh264', '-b:v', '20M', '-maxrate', '24M', '-bufsize', '40M'];
       default:
         return ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18'];
     }
