@@ -1538,6 +1538,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       } else {
         await activePlayer.pause();
       }
+      unawaited(_syncTransitionPreview());
       return;
     }
     if (_playheadInGap || _clipIndexAtTimelineTime(playheadSeconds) < 0) {
@@ -1553,6 +1554,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       return;
     }
     await activePlayer.play();
+    unawaited(_syncTransitionPreview());
   }
 
   Future<void> _handlePlayerPosition(Duration sourcePosition) async {
@@ -1577,29 +1579,33 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           _startGapPlayback(startSeconds: clip.timelineEnd, nextClipIndex: index + 1);
           return;
         }
+        final transitionDuration = _transitionDurationAtCut(next.timelineStart);
         _activePlaybackClipIndex = index + 1;
-        if ((next.start - clip.end).abs() <= 0.05) {
-          // Split clips share a contiguous source range; seeking here causes
-          // a visible frame flash and a brief audio dropout in media_kit.
+        if ((next.start - clip.end).abs() <= 0.05 && transitionDuration <= 0) {
           setState(() => position = Duration(milliseconds: (next.timelineStart * 1000).round()));
+          unawaited(_syncTransitionPreview());
           return;
         }
         _seekingAcrossCut = true;
         setState(() => position = Duration(milliseconds: (next.timelineStart * 1000).round()));
         try {
-          await activePlayer.seek(Duration(milliseconds: (next.start * 1000).round()));
+          await activePlayer.seek(Duration(milliseconds: ((next.start + transitionDuration / 2) * 1000).round()));
         } finally {
           _seekingAcrossCut = false;
         }
+        unawaited(_syncTransitionPreview());
       } else if (playing) {
         setState(() => position = Duration(milliseconds: (clip.timelineEnd * 1000).round()));
         await activePlayer.pause();
+        unawaited(_syncTransitionPreview());
       }
       return;
     }
     if (sourceSeconds >= clip.start - 0.025) {
-      final sequenceSeconds = clip.timelineStart + math.max(0, sourceSeconds - clip.start);
+      var sequenceSeconds = clip.timelineStart + math.max(0, sourceSeconds - clip.start);
+      if (index > 0) sequenceSeconds -= _transitionDurationAtCut(clip.timelineStart) / 2;
       setState(() => position = Duration(milliseconds: (sequenceSeconds * 1000).round()));
+      unawaited(_syncTransitionPreview());
     }
   }
 
@@ -1705,11 +1711,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       });
       await activePlayer.pause();
       _suppressPlayerStateEvents = false;
+      unawaited(_syncTransitionPreview(forceSeek: true));
       return;
     }
     _stopGapPlayback(clearNext: true);
     final clip = videoClips[index];
-    final sourceSeconds = clip.start + sequenceSeconds - clip.timelineStart;
+    var sourceSeconds = clip.start + sequenceSeconds - clip.timelineStart;
+    if (index > 0) sourceSeconds += _transitionDurationAtCut(clip.timelineStart) / 2;
     _activePlaybackClipIndex = index;
     setState(() {
       position = Duration(milliseconds: ms);
@@ -1725,6 +1733,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     } finally {
       _seekingAcrossCut = false;
       _suppressPlayerStateEvents = false;
+      unawaited(_syncTransitionPreview(forceSeek: true));
     }
   }
 
@@ -2397,6 +2406,25 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           ),
         ),
       );
+
+  double _transitionDurationAtCut(double cut) {
+    final ordered = List<TimelineClip>.of(videoClips)..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
+    for (var i = 1; i < ordered.length; i++) {
+      final previous = ordered[i - 1];
+      final next = ordered[i];
+      if ((next.timelineStart - cut).abs() > transitionCutTolerance ||
+          (previous.timelineEnd - next.timelineStart).abs() > transitionCutTolerance) continue;
+      var requested = transitionEffect == 'Нет' ? 0.0 : transitionDuration;
+      for (final marker in timelineTransitions) {
+        if ((marker.at - cut).abs() <= transitionCutTolerance) {
+          requested = marker.duration;
+          break;
+        }
+      }
+      return math.min(requested, math.min(previous.length / 2, next.length / 2)).toDouble();
+    }
+    return 0;
+  }
 
   Future<void> _syncTransitionPreview({bool forceSeek = false}) async {
     final transition = previewTransitionOverlay;
