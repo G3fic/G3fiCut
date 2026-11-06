@@ -1,5 +1,11 @@
 # Changelog
 
+## GifCut v0.3.87 — 2026-11-06
+
+- Increment the application version for the transition/export and effects-panel work.
+- CI remains the validation gate for Windows build, analyzer, and tests.
+
+
 ## GifCut v0.3.79 — 2026-11-01
 
 - Make the preview canvas black by default instead of filling unused canvas space with a continuously blurred duplicate of the video.
