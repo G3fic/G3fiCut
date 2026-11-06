@@ -928,6 +928,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       playingSub = created.stream.playing.listen((v) {
         if (mounted && !_switchingMedia && !_playheadInGap && !_suppressPlayerStateEvents) {
           setState(() => playing = v);
+          unawaited(_syncTransitionPreview());
         }
       });
       return created;
@@ -2467,6 +2468,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         }
         await previewPlayer.open(Media(source), play: false);
         if (!mounted || generation != _transitionPreviewGeneration) return;
+        await previewPlayer.setVolume(0);
         await previewPlayer.setRate(playbackRate);
         final latestTransition = previewTransitionOverlay;
         if (latestTransition == null || _transitionPreviewKey != key) return;
