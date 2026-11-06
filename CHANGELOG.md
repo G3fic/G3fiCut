@@ -5,7 +5,7 @@
 - Replace the oversized transition picker with eight curated clip-to-clip transitions: dissolve, directional slides and wipes, circle reveal, zoom and dissolve.
 - Keep legacy transition names readable in existing projects, while unknown transition names now fall back to a normal dissolve instead of a black fade.
 - Render the incoming clip on a synchronized second preview decoder so wipes, slides and dissolves reveal the actual next video instead of an empty/black canvas.
-- Align playback and seeking to the overlap consumed by transitions, matching the FFmpeg xfade export timing.
+- Keep the incoming preview decoder synchronized through the cut, including when seeking or pausing.
 
 ## GifCut v0.3.88 — 2026-11-07
 
