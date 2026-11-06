@@ -31,410 +31,6 @@ void main() {
 }
 
 
-class _TransitionThumbnailPainter extends CustomPainter {
-  const _TransitionThumbnailPainter({
-    required this.type,
-    required this.progress,
-    required this.color,
-  });
-
-  final String type;
-  final double progress;
-  final Color color;
-
-  void _drawScene(
-    Canvas canvas,
-    Rect bounds, {
-    required bool incoming,
-    double opacity = 1,
-  }) {
-    final alpha = opacity.clamp(0.0, 1.0).toDouble();
-    if (alpha <= 0) return;
-
-    final background = incoming ? color : const Color(0xFF252A37);
-    canvas.drawRect(
-      bounds,
-      Paint()..color = background.withValues(alpha: alpha),
-    );
-
-    final foreground = incoming ? Colors.white : const Color(0xFF8E9AAF);
-    final shapePaint = Paint()
-      ..color = foreground.withValues(alpha: alpha * 0.82);
-    canvas.drawCircle(
-      Offset(bounds.left + bounds.width * 0.28, bounds.top + bounds.height * 0.48),
-      bounds.height * 0.22,
-      shapePaint,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          bounds.left + bounds.width * 0.55,
-          bounds.top + bounds.height * 0.25,
-          bounds.width * 0.32,
-          bounds.height * 0.16,
-        ),
-        const Radius.circular(2),
-      ),
-      Paint()..color = foreground.withValues(alpha: alpha * 0.72),
-    );
-    canvas.drawRect(
-      Rect.fromLTWH(
-        bounds.left + bounds.width * 0.52,
-        bounds.top + bounds.height * 0.57,
-        bounds.width * 0.38,
-        bounds.height * 0.09,
-      ),
-      Paint()..color = foreground.withValues(alpha: alpha * 0.46),
-    );
-  }
-
-  Rect _wipeRect(Size size, String direction, double amount) {
-    final width = size.width * amount;
-    final height = size.height * amount;
-    switch (direction) {
-      case 'right':
-        return Rect.fromLTWH(size.width - width, 0, width, size.height);
-      case 'up':
-        return Rect.fromLTWH(0, 0, size.width, height);
-      case 'down':
-        return Rect.fromLTWH(0, size.height - height, size.width, height);
-      default:
-        return Rect.fromLTWH(0, 0, width, size.height);
-    }
-  }
-
-  void _revealRect(Canvas canvas, Size size, Rect reveal) {
-    canvas.save();
-    canvas.clipRect(reveal);
-    _drawScene(canvas, Offset.zero & size, incoming: true);
-    canvas.restore();
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (size.width <= 0 || size.height <= 0) return;
-    final amount = progress.clamp(0.0, 1.0).toDouble();
-    final bounds = Offset.zero & size;
-    final filter = transitionFilterName(type);
-
-    canvas.save();
-    canvas.clipRect(bounds);
-    _drawScene(canvas, bounds, incoming: false);
-
-    if (filter == 'fadeblack' || filter == 'fadewhite') {
-      _drawScene(canvas, bounds, incoming: true, opacity: amount);
-      final veil = filter == 'fadewhite' ? Colors.white : Colors.black;
-      canvas.drawRect(
-        bounds,
-        Paint()..color = veil.withValues(alpha: math.sin(math.pi * amount) * 0.38),
-      );
-    } else if (filter == 'fade' || filter == 'fadefast' || filter == 'fadeslow' ||
-        filter == 'fadegrays') {
-      _drawScene(canvas, bounds, incoming: true, opacity: amount);
-      if (filter == 'fadegrays') {
-        canvas.drawRect(
-          bounds,
-          Paint()..color = Colors.grey.withValues(alpha: math.sin(math.pi * amount) * 0.28),
-        );
-      }
-    } else if (filter == 'dissolve') {
-      const columns = 10;
-      const rows = 5;
-      for (var row = 0; row < rows; row++) {
-        for (var column = 0; column < columns; column++) {
-          final order = ((column * 37 + row * 61 + column * row * 13) % 97) / 97;
-          if (order >= amount) continue;
-          final cell = Rect.fromLTWH(
-            size.width * column / columns,
-            size.height * row / rows,
-            size.width / columns + 0.5,
-            size.height / rows + 0.5,
-          );
-          _revealRect(canvas, size, cell);
-        }
-      }
-    } else if (filter == 'pixelize') {
-      const columns = 10;
-      const rows = 5;
-      for (var row = 0; row < rows; row++) {
-        for (var column = 0; column < columns; column++) {
-          final order = ((column * 29 + row * 43 + column * row * 7) % 89) / 89;
-          if (order < amount) {
-            _revealRect(
-              canvas,
-              size,
-              Rect.fromLTWH(
-                size.width * column / columns,
-                size.height * row / rows,
-                size.width / columns + 0.5,
-                size.height / rows + 0.5,
-              ),
-            );
-          }
-        }
-      }
-      final gridPaint = Paint()
-        ..color = Colors.white.withValues(alpha: (1.0 - amount) * 0.28)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 0.55;
-      for (var column = 1; column < columns; column++) {
-        final x = size.width * column / columns;
-        canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
-      }
-      for (var row = 1; row < rows; row++) {
-        final y = size.height * row / rows;
-        canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
-      }
-    } else if (filter == 'rectcrop') {
-      final cropWidth = size.width * amount;
-      final cropHeight = size.height * amount;
-      _revealRect(
-        canvas,
-        size,
-        Rect.fromLTWH(
-          (size.width - cropWidth) / 2,
-          (size.height - cropHeight) / 2,
-          cropWidth,
-          cropHeight,
-        ),
-      );
-    } else if (filter == 'circleclose') {
-      _drawScene(canvas, bounds, incoming: true);
-      canvas.save();
-      canvas.clipPath(Path()
-        ..addOval(Rect.fromCircle(
-          center: Offset(size.width / 2, size.height / 2),
-          radius: size.longestSide * (1.0 - amount) * 0.72,
-        )));
-      _drawScene(canvas, bounds, incoming: false);
-      canvas.restore();
-    } else if (filter == 'circleopen' || filter == 'circlecrop' ||
-        filter == 'radial' || filter == 'distance') {
-      canvas.save();
-      canvas.clipPath(Path()
-        ..addOval(Rect.fromCircle(
-          center: Offset(size.width / 2, size.height / 2),
-          radius: size.longestSide * amount * 0.72,
-        )));
-      _drawScene(canvas, bounds, incoming: true);
-      canvas.restore();
-      if (filter == 'distance' || filter == 'radial') {
-        canvas.drawCircle(
-          Offset(size.width / 2, size.height / 2),
-          size.longestSide * amount * 0.72,
-          Paint()
-            ..color = Colors.white.withValues(alpha: (1.0 - amount) * 0.55)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.2,
-        );
-      }
-    } else if (filter == 'horzopen' || filter == 'horzclose' ||
-        filter == 'vertopen' || filter == 'vertclose' ||
-        filter == 'squeezeh' || filter == 'squeezev') {
-      final horizontal = filter == 'horzopen' || filter == 'horzclose' ||
-          filter == 'squeezeh';
-      final centered = filter == 'horzopen' || filter == 'horzclose' ||
-          filter == 'vertopen' || filter == 'vertclose' ||
-          filter == 'squeezeh' || filter == 'squeezev';
-      final revealAmount = filter.endsWith('close') ? 1.0 - amount : amount;
-      final reveal = horizontal
-          ? Rect.fromLTWH(
-              size.width * (1.0 - revealAmount) / 2,
-              0,
-              size.width * revealAmount,
-              size.height,
-            )
-          : Rect.fromLTWH(
-              0,
-              size.height * (1.0 - revealAmount) / 2,
-              size.width,
-              size.height * revealAmount,
-            );
-      _revealRect(canvas, size, centered ? reveal : bounds);
-    } else if (filter == 'zoomin') {
-      canvas.save();
-      final scale = 1.55 - 0.55 * amount;
-      canvas.translate(size.width / 2, size.height / 2);
-      canvas.scale(scale);
-      canvas.translate(-size.width / 2, -size.height / 2);
-      _drawScene(canvas, bounds, incoming: true, opacity: amount);
-      canvas.restore();
-    } else if (filter == 'slideleft' || filter == 'slideright' ||
-        filter == 'slideup' || filter == 'slidedown') {
-      final dx = filter == 'slideleft'
-          ? size.width * (1.0 - amount)
-          : filter == 'slideright'
-              ? -size.width * (1.0 - amount)
-              : 0.0;
-      final dy = filter == 'slideup'
-          ? size.height * (1.0 - amount)
-          : filter == 'slidedown'
-              ? -size.height * (1.0 - amount)
-              : 0.0;
-      canvas.save();
-      canvas.translate(dx, dy);
-      _drawScene(canvas, bounds, incoming: true);
-      canvas.restore();
-      final edge = filter == 'slideleft'
-          ? Offset(dx, 0)
-          : filter == 'slideright'
-              ? Offset(size.width + dx, 0)
-              : filter == 'slideup'
-                  ? Offset(0, dy)
-                  : Offset(0, size.height + dy);
-      canvas.drawCircle(
-        edge,
-        1.8,
-        Paint()..color = Colors.white.withValues(alpha: 0.82),
-      );
-    } else if (filter == 'hlslice' || filter == 'hrslice' ||
-        filter == 'vuslice' || filter == 'vdslice') {
-      final horizontal = filter == 'hlslice' || filter == 'hrslice';
-      const slices = 8;
-      for (var index = 0; index < slices; index++) {
-        final delay = (index % 3) * 0.075;
-        final local = ((amount - delay) / (1.0 - delay)).clamp(0.0, 1.0).toDouble();
-        final start = (horizontal ? size.height : size.width) * index / slices;
-        final extent = (horizontal ? size.height : size.width) / slices + 0.5;
-        final direction = filter == 'hrslice' || filter == 'vdslice' ? -1 : 1;
-        final clip = horizontal
-            ? Rect.fromLTWH(
-                direction > 0 ? 0 : size.width * (1.0 - local),
-                start,
-                size.width * local,
-                extent,
-              )
-            : Rect.fromLTWH(
-                start,
-                direction > 0 ? 0 : size.height * (1.0 - local),
-                extent,
-                size.height * local,
-              );
-        _revealRect(canvas, size, clip);
-      }
-    } else if (filter == 'hblur') {
-      _drawScene(canvas, bounds, incoming: true, opacity: amount);
-      final bands = Paint()
-        ..color = Colors.white.withValues(alpha: (1.0 - amount) * 0.3);
-      for (var row = 0; row < 5; row++) {
-        final y = size.height * row / 5;
-        canvas.drawRect(
-          Rect.fromLTWH(0, y + math.sin(amount * math.pi * 2 + row) * 2, size.width, 1),
-          bands,
-        );
-      }
-    } else if (filter == 'hlwind' || filter == 'hrwind' ||
-        filter == 'vuwind' || filter == 'vdwind') {
-      final horizontal = filter == 'hlwind' || filter == 'hrwind';
-      final reverse = filter == 'hrwind' || filter == 'vdwind';
-      const strips = 12;
-      for (var index = 0; index < strips; index++) {
-        final local = ((amount * 1.25 - index / strips * 0.45).clamp(0.0, 1.0)).toDouble();
-        final offset = (reverse ? 1.0 - local : local) *
-            (horizontal ? size.width : size.height);
-        final clip = horizontal
-            ? Rect.fromLTWH(
-                reverse ? offset : 0,
-                size.height * index / strips,
-                horizontal ? size.width * local : size.width,
-                size.height / strips + 0.5,
-              )
-            : Rect.fromLTWH(
-                size.width * index / strips,
-                reverse ? offset : 0,
-                size.width / strips + 0.5,
-                size.height * local,
-              );
-        _revealRect(canvas, size, clip);
-      }
-    } else if (filter.startsWith('wipe') || filter.startsWith('smooth') ||
-        filter.startsWith('cover') || filter.startsWith('reveal') ||
-        filter.startsWith('diag')) {
-      var direction = 'left';
-      if (filter.endsWith('right') || filter.endsWith('tr') ||
-          filter.endsWith('br')) {
-        direction = 'right';
-      } else if (filter.endsWith('up') || filter.endsWith('tl') ||
-          filter.endsWith('tr')) {
-        direction = 'up';
-      } else if (filter.endsWith('down') || filter.endsWith('bl') ||
-          filter.endsWith('br')) {
-        direction = 'down';
-      }
-      if (filter.startsWith('wipe') && filter.length == 6) {
-        direction = filter.substring(4);
-      }
-      if (filter.startsWith('smooth')) {
-        direction = filter.substring(6);
-      }
-      if (filter.startsWith('cover') || filter.startsWith('reveal')) {
-        direction = filter.substring(filter.startsWith('cover') ? 5 : 6);
-      }
-
-      final isDiagonal = const {
-        'diagtl', 'diagtr', 'diagbl', 'diagbr',
-        'wipetl', 'wipetr', 'wipebl', 'wipebr',
-      }.contains(filter);
-      if (isDiagonal) {
-        final fromRight = filter.endsWith('tr') || filter.endsWith('br');
-        final fromBottom = filter.endsWith('bl') || filter.endsWith('br');
-        canvas.save();
-        if (fromRight) {
-          canvas.translate(size.width, 0);
-          canvas.scale(-1, 1);
-        }
-        if (fromBottom) {
-          canvas.translate(0, size.height);
-          canvas.scale(1, -1);
-        }
-        final distance = amount * (size.width + size.height);
-        final path = Path()..moveTo(0, 0);
-        path.lineTo(math.min(size.width, distance).toDouble(), 0);
-        if (distance > size.width) {
-          path.lineTo(size.width, math.min(size.height, distance - size.width).toDouble());
-        }
-        if (distance > size.height) {
-          path.lineTo(math.max(0.0, distance - size.height).toDouble(), size.height);
-        }
-        path
-          ..lineTo(0, math.min(size.height, distance).toDouble())
-          ..close();
-        canvas.clipPath(path);
-        _drawScene(canvas, bounds, incoming: true);
-        canvas.restore();
-      } else {
-        final clip = _wipeRect(size, direction, amount);
-        _revealRect(canvas, size, clip);
-        final isHorizontal = direction == 'left' || direction == 'right';
-        final edgeX = direction == 'right' ? size.width * (1.0 - amount) : size.width * amount;
-        final edgeY = direction == 'down' ? size.height * (1.0 - amount) : size.height * amount;
-        final line = Paint()
-          ..color = Colors.white.withValues(alpha: (1.0 - amount) * 0.72)
-          ..strokeWidth = filter.startsWith('smooth') ? 1.4 : 0.8;
-        if (isHorizontal) {
-          canvas.drawLine(Offset(edgeX, 0), Offset(edgeX, size.height), line);
-        } else {
-          canvas.drawLine(Offset(0, edgeY), Offset(size.width, edgeY), line);
-        }
-      }
-    } else {
-      _revealRect(
-        canvas,
-        size,
-        Rect.fromLTWH(0, 0, size.width * amount, size.height),
-      );
-    }
-
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant _TransitionThumbnailPainter oldDelegate) =>
-      oldDelegate.type != type ||
-      oldDelegate.progress != progress ||
-      oldDelegate.color != color;
-}
-
 class _AppliedTransitionClipper extends CustomClipper<Path> {
   const _AppliedTransitionClipper({
     required this.type,
@@ -889,14 +485,15 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     final seconds = position.inMilliseconds / 1000;
     TimelineTransition? active;
     for (final transition in timelineTransitions) {
-      final start = transition.at - transition.duration;
-      if (seconds >= start && seconds < transition.at) {
+      final start = transition.at - transition.duration / 2;
+      final end = transition.at + transition.duration / 2;
+      if (seconds >= start && seconds < end) {
         active = transition;
         break;
       }
     }
     if (active != null) {
-      final progress = ((seconds - (active.at - active.duration)) / active.duration)
+      final progress = ((seconds - (active.at - active.duration / 2)) / active.duration)
           .clamp(0.0, 1.0).toDouble();
       return (type: active.type, progress: progress);
     }
@@ -918,8 +515,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           (value) => (value.at - cut).abs() <= transitionCutTolerance,
         );
         if (hasOverride) continue;
-        final start = cut - transitionDuration;
-        if (seconds >= start && seconds < cut) {
+        final start = cut - transitionDuration / 2;
+        final end = cut + transitionDuration / 2;
+        if (seconds >= start && seconds < end) {
           return (
             type: transitionEffect,
             progress: ((seconds - start) / transitionDuration)
@@ -2633,197 +2231,63 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         ),
       );
 
-  Widget _libraryPreviewIndicator(
-    String key, {
-    required Color color,
-    required IconData icon,
-    required bool transition,
-  }) {
-    final hovering = _hoveredLibraryPreview == key;
-    if (transition) {
-      final type = key.startsWith('transition:')
-          ? key.substring('transition:'.length)
-          : key;
-      return AnimatedContainer(
-        key: ValueKey('hover-preview-$key'),
-        duration: const Duration(milliseconds: 220),
-        width: 58,
-        height: 27,
-        decoration: BoxDecoration(
-          color: hovering ? color.withValues(alpha: 0.18) : const Color(0xFF151720),
-          borderRadius: BorderRadius.circular(5),
-          border: Border.all(
-            color: hovering ? color.withValues(alpha: 0.9) : const Color(0xFF3A3D4A),
-          ),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: TweenAnimationBuilder<double>(
-          tween: Tween<double>(begin: 0, end: hovering ? 1 : 0),
-          duration: const Duration(milliseconds: 520),
-          curve: Curves.easeInOutCubic,
-          builder: (context, progress, _) => CustomPaint(
-            key: ValueKey('transition-preview-painter-$type'),
-            painter: _TransitionThumbnailPainter(
-              type: type,
-              progress: progress,
-              color: color,
+  Widget _effectsLibraryPanel() {
+    Widget tile(String type, {required bool transition}) {
+      final key = '${transition ? 'transition' : 'effect'}:$type';
+      final selected = _hoveredLibraryPreview == key;
+      final icon = transition
+          ? (type.contains('Смах') ? Icons.swipe : type.contains('Раств') ? Icons.blur_on : type.contains('Вспыш') ? Icons.flash_on : Icons.compare_arrows)
+          : (type.contains('Чёр') ? Icons.tonality : type.contains('Сеп') ? Icons.filter_vintage : type.contains('Нег') ? Icons.invert_colors : type.contains('Разм') ? Icons.blur_on : Icons.auto_awesome);
+      final tint = transition ? const Color(0xFF72C8FF) : const Color(0xFFB18CFF);
+      return MouseRegion(
+        onEnter: (_) => setState(() => _hoveredLibraryPreview = key),
+        onExit: (_) { if (_hoveredLibraryPreview == key) setState(() => _hoveredLibraryPreview = null); },
+        child: InkWell(
+          onTap: busy || (transition ? videoClips.length < 2 : videoClips.isEmpty)
+              ? null
+              : () => unawaited(transition ? addTimelineTransition(type) : addTimelineEffect(type)),
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            key: ValueKey('hover-preview-$key'),
+            decoration: BoxDecoration(
+              color: selected ? const Color(0xFF29384B) : const Color(0xFF202630),
+              border: Border.all(color: selected ? accent : const Color(0xFF343A47)),
+              borderRadius: BorderRadius.circular(8),
             ),
-            child: const SizedBox.expand(),
+            padding: const EdgeInsets.all(7),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              AspectRatio(aspectRatio: 1, child: DecoratedBox(
+                decoration: BoxDecoration(color: tint.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(6)),
+                child: Center(child: Icon(icon, size: 28, color: tint)),
+              )),
+              const SizedBox(height: 5),
+              Text(type, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 10, height: 1.15)),
+            ]),
           ),
         ),
       );
     }
-
-    return AnimatedContainer(
-      key: ValueKey('hover-preview-$key'),
-      duration: const Duration(milliseconds: 220),
-      width: 58,
-      height: 27,
-      decoration: BoxDecoration(
-        color: hovering ? color.withValues(alpha: 0.22) : const Color(0xFF151720),
-        borderRadius: BorderRadius.circular(5),
-        border: Border.all(
-          color: hovering ? color.withValues(alpha: 0.9) : const Color(0xFF3A3D4A),
-        ),
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('СТАНДАРТНЫЕ ЭФФЕКТЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 7),
+      GridView.count(
+        crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+        crossAxisSpacing: 6, mainAxisSpacing: 6, childAspectRatio: 0.60,
+        children: [for (final type in (_timelineEffectTypes.toList()..sort())) tile(type, transition: false)],
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(children: [
-        Positioned.fill(
-          child: Row(children: [
-            Expanded(child: ColoredBox(color: color.withValues(alpha: hovering ? 0.32 : 0.12))),
-            const Expanded(child: ColoredBox(color: Color(0x0AFFFFFF))),
-          ]),
-        ),
-        AnimatedPositioned(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOutCubic,
-          left: hovering ? 34 : 3,
-          top: 2,
-          bottom: 2,
-          width: 18,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: hovering ? 0.96 : 0.5),
-              borderRadius: BorderRadius.circular(3),
-            ),
-            child: Icon(icon, size: 12, color: hovering ? Colors.black87 : Colors.white),
-          ),
-        ),
-      ]),
-    );
+      const Divider(height: 22),
+      const Text('СТАНДАРТНЫЕ ПЕРЕХОДЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 7),
+      GridView.count(
+        crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+        crossAxisSpacing: 6, mainAxisSpacing: 6, childAspectRatio: 0.60,
+        children: [for (final type in (_timelineTransitionTypes.toList()..sort())) tile(type, transition: true)],
+      ),
+      const SizedBox(height: 8),
+      const Text('Нажмите на карточку, чтобы добавить её на таймлайн.', style: TextStyle(color: muted, fontSize: 10, height: 1.45)),
+    ]);
   }
-
-  Widget _effectsLibraryPanel() => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('СТАНДАРТНЫЕ ЭФФЕКТЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 7),
-          for (final type in (_timelineEffectTypes.toList()..sort()))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: SizedBox(
-                width: double.infinity,
-                child: MouseRegion(
-                  onEnter: (_) => setState(() => _hoveredLibraryPreview = 'effect:$type'),
-                  onExit: (_) {
-                    if (_hoveredLibraryPreview == 'effect:$type') {
-                      setState(() => _hoveredLibraryPreview = null);
-                    }
-                  },
-                  child: OutlinedButton(
-                    onPressed: busy || videoClips.isEmpty ? null : () => unawaited(addTimelineEffect(type)),
-                    style: OutlinedButton.styleFrom(
-                      alignment: Alignment.centerLeft,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                    ),
-                    child: Row(children: [
-                      const Icon(Icons.add, size: 14),
-                      const SizedBox(width: 5),
-                      Expanded(child: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                      const SizedBox(width: 4),
-                      _libraryPreviewIndicator(
-                        'effect:$type',
-                        color: const {
-                          'Чёрно-белый': Color(0xFFB8C0CC),
-                          'Сепия': Color(0xFFC18B52),
-                          'Негатив': Color(0xFFCE8BFF),
-                          'Тёплый тон': Color(0xFFFFA65A),
-                          'Холодный тон': Color(0xFF63C7FF),
-                          'Размытие': Color(0xFF79D9CF),
-                          'Высокий контраст': Color(0xFF9F8BFF),
-                        }[type] ?? const Color(0xFFB18CFF),
-                        icon: const {
-                          'Чёрно-белый': Icons.tonality,
-                          'Сепия': Icons.filter_vintage,
-                          'Негатив': Icons.invert_colors,
-                          'Тёплый тон': Icons.wb_sunny_outlined,
-                          'Холодный тон': Icons.ac_unit,
-                          'Размытие': Icons.blur_on,
-                          'Высокий контраст': Icons.contrast,
-                        }[type] ?? Icons.auto_awesome,
-                        transition: false,
-                      ),
-                    ]),
-                  ),
-                ),
-              ),
-            ),
-          const Divider(height: 22),
-          const Text('СТАНДАРТНЫЕ ПЕРЕХОДЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 7),
-          for (final type in (_timelineTransitionTypes.toList()..sort()))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: SizedBox(
-                width: double.infinity,
-                child: MouseRegion(
-                  onEnter: (_) => setState(() => _hoveredLibraryPreview = 'transition:$type'),
-                  onExit: (_) {
-                    if (_hoveredLibraryPreview == 'transition:$type') {
-                      setState(() => _hoveredLibraryPreview = null);
-                    }
-                  },
-                  child: OutlinedButton(
-                    onPressed: busy || videoClips.length < 2 ? null : () => unawaited(addTimelineTransition(type)),
-                    style: OutlinedButton.styleFrom(
-                      alignment: Alignment.centerLeft,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                    ),
-                    child: Row(children: [
-                      const Icon(Icons.add, size: 14),
-                      const SizedBox(width: 5),
-                      Expanded(child: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                      const SizedBox(width: 4),
-                      _libraryPreviewIndicator(
-                        'transition:$type',
-                        color: const {
-                          'Затемнение': Color(0xFF8A8D98),
-                          'Белая вспышка': Color(0xFFFFFFFF),
-                          'Растворение': Color(0xFFB79BFF),
-                          'Смахивание влево': Color(0xFF72C8FF),
-                          'Смахивание вправо': Color(0xFF72E0BA),
-                        }[type] ?? const Color(0xFFFFC56B),
-                        icon: const {
-                          'Затемнение': Icons.brightness_3,
-                          'Белая вспышка': Icons.flash_on,
-                          'Растворение': Icons.blur_circular,
-                          'Смахивание влево': Icons.swipe_left,
-                          'Смахивание вправо': Icons.swipe_right,
-                        }[type] ?? Icons.compare_arrows,
-                        transition: true,
-                      ),
-                    ]),
-                  ),
-                ),
-              ),
-            ),
-          const SizedBox(height: 8),
-          const Text(
-            'Наведите курсор на карточку, чтобы увидеть анимированный образец. Добавляйте эффекты на свободные участки таймлайна.',
-            style: TextStyle(color: muted, fontSize: 10, height: 1.45),
-          ),
-        ],
-      );
 
   Widget mediaItem(IconData icon, String name, String kind, Color color, {String? imagePath, bool selected = false, VoidCallback? onTap}) => InkWell(
         onTap: onTap,
@@ -4029,7 +3493,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               Positioned.fill(child: CustomPaint(painter: TimelineGridPainter(seconds: timelineSeconds, pixelsPerSecond: zoom))),
               for (var i = 0; i < timelineTransitions.length; i++)
                 Positioned(
-                  left: ((timelineTransitions[i].at - timelineTransitions[i].duration) * zoom)
+                  left: ((timelineTransitions[i].at - timelineTransitions[i].duration / 2) * zoom)
                       .clamp(0.0, timelineWidth).toDouble(),
                   top: 3,
                   bottom: 3,
