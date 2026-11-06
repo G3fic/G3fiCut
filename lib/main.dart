@@ -889,14 +889,15 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     final seconds = position.inMilliseconds / 1000;
     TimelineTransition? active;
     for (final transition in timelineTransitions) {
-      final start = transition.at - transition.duration;
-      if (seconds >= start && seconds < transition.at) {
+      final start = transition.at - transition.duration / 2;
+      final end = transition.at + transition.duration / 2;
+      if (seconds >= start && seconds < end) {
         active = transition;
         break;
       }
     }
     if (active != null) {
-      final progress = ((seconds - (active.at - active.duration)) / active.duration)
+      final progress = ((seconds - (active.at - active.duration / 2)) / active.duration)
           .clamp(0.0, 1.0).toDouble();
       return (type: active.type, progress: progress);
     }
@@ -918,8 +919,9 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           (value) => (value.at - cut).abs() <= transitionCutTolerance,
         );
         if (hasOverride) continue;
-        final start = cut - transitionDuration;
-        if (seconds >= start && seconds < cut) {
+        final start = cut - transitionDuration / 2;
+        final end = cut + transitionDuration / 2;
+        if (seconds >= start && seconds < end) {
           return (
             type: transitionEffect,
             progress: ((seconds - start) / transitionDuration)
@@ -3974,7 +3976,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
               Positioned.fill(child: CustomPaint(painter: TimelineGridPainter(seconds: timelineSeconds, pixelsPerSecond: zoom))),
               for (var i = 0; i < timelineTransitions.length; i++)
                 Positioned(
-                  left: ((timelineTransitions[i].at - timelineTransitions[i].duration) * zoom)
+                  left: ((timelineTransitions[i].at - timelineTransitions[i].duration / 2) * zoom)
                       .clamp(0.0, timelineWidth).toDouble(),
                   top: 3,
                   bottom: 3,
