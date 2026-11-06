@@ -77,7 +77,7 @@ const Map<String, String> featuredTransitionFilters = {
   'Смахивание вправо': 'wiperight',
   'Круговое открытие': 'circleopen',
   'Приближение': 'zoomin',
-  'Пикселизация': 'pixelize',
+  'Растворение': 'dissolve',
 };
 
 const Set<String> builtinEffectTypes = {
