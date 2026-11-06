@@ -377,6 +377,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   VideoController? _transitionPreviewController;
   String? _transitionPreviewKey;
   int _transitionPreviewGeneration = 0;
+  bool _transitionPreviewLoaded = false;
+  bool? _transitionPreviewIsPlaying;
   StreamSubscription<Duration>? durationSub;
   StreamSubscription<Duration>? positionSub;
   StreamSubscription<bool>? playingSub;
@@ -2435,6 +2437,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     if (transition == null || source == null || _playheadInGap) {
       if (_transitionPreviewKey != null) {
         _transitionPreviewKey = null;
+        _transitionPreviewLoaded = false;
+        _transitionPreviewIsPlaying = false;
         _transitionPreviewGeneration++;
         try { await _transitionPreviewPlayer?.pause(); } catch (_) {}
       }
@@ -2457,6 +2461,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     final isNewTransition = _transitionPreviewKey != key;
     if (isNewTransition) {
       _transitionPreviewKey = key;
+      _transitionPreviewLoaded = false;
+      _transitionPreviewIsPlaying = null;
       final generation = ++_transitionPreviewGeneration;
       try {
         var previewPlayer = _transitionPreviewPlayer;
@@ -2478,23 +2484,30 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
             (playheadSeconds - (latestTransition.at - latestTransition.duration / 2))
                 .clamp(0.0, latestTransition.duration);
         await previewPlayer.seek(Duration(milliseconds: (latestSourceSeconds * 1000).round()));
+        _transitionPreviewLoaded = true;
       } catch (_) {
-        if (_transitionPreviewKey == key) _transitionPreviewKey = null;
+        if (_transitionPreviewKey == key) {
+          _transitionPreviewKey = null;
+          _transitionPreviewLoaded = false;
+        }
         return;
       }
-    } else if (forceSeek) {
+    } else if (forceSeek && _transitionPreviewLoaded) {
       try {
         await _transitionPreviewPlayer?.seek(Duration(milliseconds: (incomingSourceSeconds * 1000).round()));
       } catch (_) {}
     }
     if (!mounted || _transitionPreviewKey != key) return;
-    try {
-      if (playing) {
-        await _transitionPreviewPlayer?.play();
-      } else {
-        await _transitionPreviewPlayer?.pause();
-      }
-    } catch (_) {}
+    if (_transitionPreviewLoaded && _transitionPreviewIsPlaying != playing) {
+      try {
+        if (playing) {
+          await _transitionPreviewPlayer?.play();
+        } else {
+          await _transitionPreviewPlayer?.pause();
+        }
+        _transitionPreviewIsPlaying = playing;
+      } catch (_) {}
+    }
     if (isNewTransition && mounted) setState(() {});
   }
 
@@ -2502,7 +2515,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     final transition = previewTransitionOverlay;
     final filter = transition == null ? '' : transitionFilterName(transition.type);
     final incomingController = _transitionPreviewController;
-    final previewReady = transition != null && incomingController != null && _transitionPreviewKey != null;
+    final previewReady = transition != null && incomingController != null && _transitionPreviewKey != null && _transitionPreviewLoaded;
     Widget current = Video(controller: videoController!, controls: NoVideoControls, fit: BoxFit.contain, fill: Colors.transparent);
     if (previewReady) {
       final progress = transition.progress;
