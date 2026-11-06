@@ -1,5 +1,11 @@
 # Changelog
 
+## GifCut v0.3.88 — 2026-11-07
+
+- Fix the in-app version fallback so local/IDE builds report the current release instead of an obsolete version.
+- Match the preview timing of fade-to-black and fade-to-white transitions to the outgoing/incoming clip boundary.
+- Improve Media Foundation export quality with peak-constrained variable bitrate and maximum quality; raise the OpenH264 fallback bitrate from 8 to 20 Mbps.
+
 ## GifCut v0.3.87 — 2026-11-06
 
 - Increment the application version for the transition/export and effects-panel work.
