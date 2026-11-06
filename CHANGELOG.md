@@ -1,5 +1,12 @@
 # Changelog
 
+## GifCut v0.3.89 — 2026-11-07
+
+- Replace the oversized transition picker with eight curated clip-to-clip transitions: dissolve, directional slides and wipes, circle reveal, zoom and pixelize.
+- Keep legacy transition names readable in existing projects, while unknown transition names now fall back to a normal dissolve instead of a black fade.
+- Render the incoming clip on a synchronized second preview decoder so wipes, slides and dissolves reveal the actual next video instead of an empty/black canvas.
+- Align playback and seeking to the overlap consumed by transitions, matching the FFmpeg xfade export timing.
+
 ## GifCut v0.3.88 — 2026-11-07
 
 - Fix the in-app version fallback so local/IDE builds report the current release instead of an obsolete version.
