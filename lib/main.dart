@@ -2713,117 +2713,62 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     );
   }
 
-  Widget _effectsLibraryPanel() => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('СТАНДАРТНЫЕ ЭФФЕКТЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 7),
-          for (final type in (_timelineEffectTypes.toList()..sort()))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: SizedBox(
-                width: double.infinity,
-                child: MouseRegion(
-                  onEnter: (_) => setState(() => _hoveredLibraryPreview = 'effect:$type'),
-                  onExit: (_) {
-                    if (_hoveredLibraryPreview == 'effect:$type') {
-                      setState(() => _hoveredLibraryPreview = null);
-                    }
-                  },
-                  child: OutlinedButton(
-                    onPressed: busy || videoClips.isEmpty ? null : () => unawaited(addTimelineEffect(type)),
-                    style: OutlinedButton.styleFrom(
-                      alignment: Alignment.centerLeft,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                    ),
-                    child: Row(children: [
-                      const Icon(Icons.add, size: 14),
-                      const SizedBox(width: 5),
-                      Expanded(child: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                      const SizedBox(width: 4),
-                      _libraryPreviewIndicator(
-                        'effect:$type',
-                        color: const {
-                          'Чёрно-белый': Color(0xFFB8C0CC),
-                          'Сепия': Color(0xFFC18B52),
-                          'Негатив': Color(0xFFCE8BFF),
-                          'Тёплый тон': Color(0xFFFFA65A),
-                          'Холодный тон': Color(0xFF63C7FF),
-                          'Размытие': Color(0xFF79D9CF),
-                          'Высокий контраст': Color(0xFF9F8BFF),
-                        }[type] ?? const Color(0xFFB18CFF),
-                        icon: const {
-                          'Чёрно-белый': Icons.tonality,
-                          'Сепия': Icons.filter_vintage,
-                          'Негатив': Icons.invert_colors,
-                          'Тёплый тон': Icons.wb_sunny_outlined,
-                          'Холодный тон': Icons.ac_unit,
-                          'Размытие': Icons.blur_on,
-                          'Высокий контраст': Icons.contrast,
-                        }[type] ?? Icons.auto_awesome,
-                        transition: false,
-                      ),
-                    ]),
-                  ),
-                ),
-              ),
+  Widget _effectsLibraryPanel() {
+    Widget tile(String type, {required bool transition}) {
+      final key = '${transition ? 'transition' : 'effect'}:$type';
+      final selected = _hoveredLibraryPreview == key;
+      final icon = transition
+          ? (type.contains('Смах') ? Icons.swipe : type.contains('Раств') ? Icons.blur_on : type.contains('Вспыш') ? Icons.flash_on : Icons.compare_arrows)
+          : (type.contains('Чёр') ? Icons.tonality : type.contains('Сеп') ? Icons.filter_vintage : type.contains('Нег') ? Icons.invert_colors : type.contains('Разм') ? Icons.blur_on : Icons.auto_awesome);
+      final tint = transition ? const Color(0xFF72C8FF) : const Color(0xFFB18CFF);
+      return MouseRegion(
+        onEnter: (_) => setState(() => _hoveredLibraryPreview = key),
+        onExit: (_) { if (_hoveredLibraryPreview == key) setState(() => _hoveredLibraryPreview = null); },
+        child: InkWell(
+          onTap: busy || (transition ? videoClips.length < 2 : videoClips.isEmpty)
+              ? null
+              : () => unawaited(transition ? addTimelineTransition(type) : addTimelineEffect(type)),
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            decoration: BoxDecoration(
+              color: selected ? const Color(0xFF29384B) : const Color(0xFF202630),
+              border: Border.all(color: selected ? accent : const Color(0xFF343A47)),
+              borderRadius: BorderRadius.circular(8),
             ),
-          const Divider(height: 22),
-          const Text('СТАНДАРТНЫЕ ПЕРЕХОДЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 7),
-          for (final type in (_timelineTransitionTypes.toList()..sort()))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: SizedBox(
-                width: double.infinity,
-                child: MouseRegion(
-                  onEnter: (_) => setState(() => _hoveredLibraryPreview = 'transition:$type'),
-                  onExit: (_) {
-                    if (_hoveredLibraryPreview == 'transition:$type') {
-                      setState(() => _hoveredLibraryPreview = null);
-                    }
-                  },
-                  child: OutlinedButton(
-                    onPressed: busy || videoClips.length < 2 ? null : () => unawaited(addTimelineTransition(type)),
-                    style: OutlinedButton.styleFrom(
-                      alignment: Alignment.centerLeft,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                    ),
-                    child: Row(children: [
-                      const Icon(Icons.add, size: 14),
-                      const SizedBox(width: 5),
-                      Expanded(child: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                      const SizedBox(width: 4),
-                      _libraryPreviewIndicator(
-                        'transition:$type',
-                        color: const {
-                          'Затемнение': Color(0xFF8A8D98),
-                          'Белая вспышка': Color(0xFFFFFFFF),
-                          'Растворение': Color(0xFFB79BFF),
-                          'Смахивание влево': Color(0xFF72C8FF),
-                          'Смахивание вправо': Color(0xFF72E0BA),
-                        }[type] ?? const Color(0xFFFFC56B),
-                        icon: const {
-                          'Затемнение': Icons.brightness_3,
-                          'Белая вспышка': Icons.flash_on,
-                          'Растворение': Icons.blur_circular,
-                          'Смахивание влево': Icons.swipe_left,
-                          'Смахивание вправо': Icons.swipe_right,
-                        }[type] ?? Icons.compare_arrows,
-                        transition: true,
-                      ),
-                    ]),
-                  ),
-                ),
-              ),
-            ),
-          const SizedBox(height: 8),
-          const Text(
-            'Наведите курсор на карточку, чтобы увидеть анимированный образец. Добавляйте эффекты на свободные участки таймлайна.',
-            style: TextStyle(color: muted, fontSize: 10, height: 1.45),
+            padding: const EdgeInsets.all(7),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              AspectRatio(aspectRatio: 1, child: DecoratedBox(
+                decoration: BoxDecoration(color: tint.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(6)),
+                child: Center(child: Icon(icon, size: 28, color: tint)),
+              )),
+              const SizedBox(height: 5),
+              Text(type, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 10, height: 1.15)),
+            ]),
           ),
-        ],
+        ),
       );
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('СТАНДАРТНЫЕ ЭФФЕКТЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 7),
+      GridView.count(
+        crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+        crossAxisSpacing: 6, mainAxisSpacing: 6, childAspectRatio: 0.78,
+        children: [for (final type in (_timelineEffectTypes.toList()..sort())) tile(type, transition: false)],
+      ),
+      const Divider(height: 22),
+      const Text('СТАНДАРТНЫЕ ПЕРЕХОДЫ', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 7),
+      GridView.count(
+        crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+        crossAxisSpacing: 6, mainAxisSpacing: 6, childAspectRatio: 0.78,
+        children: [for (final type in (_timelineTransitionTypes.toList()..sort())) tile(type, transition: true)],
+      ),
+      const SizedBox(height: 8),
+      const Text('Нажмите на карточку, чтобы добавить её на таймлайн.', style: TextStyle(color: muted, fontSize: 10, height: 1.45)),
+    ]);
+  }
 
   Widget mediaItem(IconData icon, String name, String kind, Color color, {String? imagePath, bool selected = false, VoidCallback? onTap}) => InkWell(
         onTap: onTap,
