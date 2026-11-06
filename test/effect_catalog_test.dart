@@ -15,8 +15,18 @@ void main() {
       }
     });
 
+    test('UI exposes a focused set of clip-to-clip transitions without black fades', () {
+      expect(featuredTransitionFilters.length, 8);
+      expect(featuredTransitionFilters.values, containsAll([
+        'fade', 'slideleft', 'slideright', 'wipeleft',
+        'wiperight', 'circleopen', 'zoomin', 'pixelize',
+      ]));
+      expect(featuredTransitionFilters.values, isNot(contains('fadeblack')));
+      expect(featuredTransitionFilters.values, isNot(contains('fadewhite')));
+    });
+
     test('unknown transition uses a safe fallback', () {
-      expect(transitionFilterName('unknown'), 'fadeblack');
+      expect(transitionFilterName('unknown'), 'fade');
     });
   });
 
