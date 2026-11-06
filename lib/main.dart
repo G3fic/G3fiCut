@@ -2468,7 +2468,12 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         await previewPlayer.open(Media(source), play: false);
         if (!mounted || generation != _transitionPreviewGeneration) return;
         await previewPlayer.setRate(playbackRate);
-        await previewPlayer.seek(Duration(milliseconds: (incomingSourceSeconds * 1000).round()));
+        final latestTransition = previewTransitionOverlay;
+        if (latestTransition == null || _transitionPreviewKey != key) return;
+        final latestSourceSeconds = incoming.start +
+            (playheadSeconds - (latestTransition.at - latestTransition.duration / 2))
+                .clamp(0.0, latestTransition.duration);
+        await previewPlayer.seek(Duration(milliseconds: (latestSourceSeconds * 1000).round()));
       } catch (_) {
         if (_transitionPreviewKey == key) _transitionPreviewKey = null;
         return;
@@ -2998,7 +3003,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         DropdownButtonFormField<String>(
           isExpanded: true, initialValue: t.type,
           decoration: const InputDecoration(labelText: 'Тип перехода', isDense: true, border: OutlineInputBorder()),
-          items: (_timelineTransitionTypes.toList()..sort()).map((v) => DropdownMenuItem(value: v, child: Text(v, style: const TextStyle(fontSize: 11)))).toList(),
+          items: ({..._timelineTransitionTypes, t.type}.toList()..sort()).map((v) => DropdownMenuItem(value: v, child: Text(v, style: const TextStyle(fontSize: 11)))).toList(),
           onChanged: (v) { if (v != null) _performTimelineEdit(() { t.type = v; status = 'Переход изменён: $v'; }); },
         ),
         _adjustmentSlider('Длительность', t.duration, 0.1, maxDuration, (v) => _performTimelineEdit(() { t.duration = v; })),
