@@ -192,8 +192,13 @@ const Map<String, List<double>> lutPreviewMatrices = {
   ],
 };
 
-String transitionFilterName(String type) =>
-    builtinTransitionFilters[type] ?? 'fade';
+String transitionFilterName(String type) {
+  final filter = builtinTransitionFilters[type] ?? 'fade';
+  // Legacy fade-through-black/white names are retained for project decoding,
+  // but render as a clip-to-clip dissolve instead of exposing a blank frame.
+  if (filter == 'fadeblack' || filter == 'fadewhite') return 'fade';
+  return filter;
+}
 
 
 String applyEnableToFilterChain(String filterChain, String expression) {
