@@ -204,6 +204,21 @@ class _AppliedTransitionClipper extends CustomClipper<Path> {
       oldClipper.type != type || oldClipper.progress != progress;
 }
 
+class _IncomingTransitionClipper extends CustomClipper<Path> {
+  const _IncomingTransitionClipper({required this.type, required this.progress});
+  final String type;
+  final double progress;
+  @override
+  Path getClip(Size size) {
+    final bounds = Path()..addRect(Offset.zero & size);
+    final outgoing = _AppliedTransitionClipper(type: type, progress: progress).getClip(size);
+    return Path.combine(PathOperation.difference, bounds, outgoing);
+  }
+  @override
+  bool shouldReclip(covariant _IncomingTransitionClipper oldClipper) =>
+      oldClipper.type != type || oldClipper.progress != progress;
+}
+
 class _ShortcutRow extends StatelessWidget {
   const _ShortcutRow(this.shortcut, this.description);
   final String shortcut;
@@ -279,7 +294,7 @@ class GifCutApp extends StatelessWidget {
   const GifCutApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'GifCut v0.3.79',
+        title: 'GifCut v0.3.89',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           useMaterial3: true,
@@ -347,7 +362,7 @@ class ExportTimelineSegment {
 }
 
 class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
-  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.87');
+  static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.3.89');
   static const releaseApi = 'https://api.github.com/repos/G3fic/G3fiCut/releases/latest';
 
   static const panel = Color(0xFF17191F);
@@ -358,6 +373,12 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
 
   Player? player;
   VideoController? videoController;
+  Player? _transitionPreviewPlayer;
+  VideoController? _transitionPreviewController;
+  String? _transitionPreviewKey;
+  int _transitionPreviewGeneration = 0;
+  bool _transitionPreviewLoaded = false;
+  bool? _transitionPreviewIsPlaying;
   StreamSubscription<Duration>? durationSub;
   StreamSubscription<Duration>? positionSub;
   StreamSubscription<bool>? playingSub;
@@ -431,7 +452,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
   String transitionEffect = 'Нет';
   double transitionDuration = 0.4;
   static const _timelineEffectTypes = ProjectEffectClip.supportedTypes;
-  static final _timelineTransitionTypes = ProjectTransition.supportedTypes;
+  static final _timelineTransitionTypes = featuredTransitionFilters.keys.toSet();
 
   String get _exportEffectFilter => _filterForEffect(videoEffect);
 
@@ -481,54 +502,43 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     return _timelineEffectColorMatrix(resolved);
   }
 
-  ({String type, double progress, bool incoming})? get previewTransitionOverlay {
+  ({String type, double progress, bool incoming, double at, double duration})? get previewTransitionOverlay {
     final seconds = position.inMilliseconds / 1000;
     TimelineTransition? active;
     for (final transition in timelineTransitions) {
-      final start = transition.at - transition.duration / 2;
-      final end = transition.at + transition.duration / 2;
-      if (seconds >= start && seconds < end) {
+      final effectiveDuration = math.min(transition.duration, _maxTransitionDurationAt(transition.at)).toDouble();
+      final start = transition.at - effectiveDuration / 2;
+      final end = transition.at + effectiveDuration / 2;
+      if (effectiveDuration > 0 && seconds >= start && seconds < end) {
         active = transition;
         break;
       }
     }
     if (active != null) {
-      final progress = ((seconds - (active.at - active.duration / 2)) / active.duration)
-          .clamp(0.0, 1.0).toDouble();
-      return (type: active.type, progress: progress, incoming: seconds >= active.at);
+      final duration = math.min(active.duration, _maxTransitionDurationAt(active.at)).toDouble();
+      final start = active.at - duration / 2;
+      final progress = ((seconds - start) / duration).clamp(0.0, 1.0).toDouble();
+      return (type: active.type, progress: progress, incoming: seconds >= active.at, at: active.at, duration: duration);
     }
-
-    // The inspector's default transition applies to every real cut that
-    // does not already have a per-cut override on the timeline.
-    if (transitionEffect != 'Нет' &&
-        videoClips.length > 1 && transitionDuration > 0) {
-      final ordered = List<TimelineClip>.of(videoClips)
-        ..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
+    if (transitionEffect != 'Нет' && videoClips.length > 1 && transitionDuration > 0) {
+      final ordered = List<TimelineClip>.of(videoClips)..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
       for (var i = 1; i < ordered.length; i++) {
         final previous = ordered[i - 1];
         final next = ordered[i];
         final cut = next.timelineStart;
-        if ((previous.timelineEnd - cut).abs() > transitionCutTolerance) {
-          continue;
-        }
-        final hasOverride = timelineTransitions.any(
-          (value) => (value.at - cut).abs() <= transitionCutTolerance,
-        );
+        if ((previous.timelineEnd - cut).abs() > transitionCutTolerance) continue;
+        final hasOverride = timelineTransitions.any((value) => (value.at - cut).abs() <= transitionCutTolerance);
         if (hasOverride) continue;
-        final start = cut - transitionDuration / 2;
-        final end = cut + transitionDuration / 2;
-        if (seconds >= start && seconds < end) {
-          return (
-            type: transitionEffect,
-            progress: ((seconds - start) / transitionDuration)
-                .clamp(0.0, 1.0).toDouble(),
-            incoming: seconds >= cut,
-          );
+        final effectiveDuration = math.min(transitionDuration, _maxTransitionDurationAt(cut)).toDouble();
+        final start = cut - effectiveDuration / 2;
+        if (effectiveDuration > 0 && seconds >= start && seconds < cut + effectiveDuration / 2) {
+          return (type: transitionEffect, progress: ((seconds - start) / effectiveDuration).clamp(0.0, 1.0).toDouble(), incoming: seconds >= cut, at: cut, duration: effectiveDuration);
         }
       }
     }
     return null;
   }
+
   String inspectorTab = 'video';
   String mediaPanelTab = 'media';
   List<String> videoThumbnails = [];
@@ -920,6 +930,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       playingSub = created.stream.playing.listen((v) {
         if (mounted && !_switchingMedia && !_playheadInGap && !_suppressPlayerStateEvents) {
           setState(() => playing = v);
+          unawaited(_syncTransitionPreview());
         }
       });
       return created;
@@ -941,6 +952,8 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     timelineVerticalScrollController.dispose();
     final activePlayer = player;
     if (activePlayer != null) unawaited(activePlayer.dispose());
+    final transitionPlayer = _transitionPreviewPlayer;
+    if (transitionPlayer != null) unawaited(transitionPlayer.dispose());
     super.dispose();
   }
 
@@ -1528,6 +1541,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       } else {
         await activePlayer.pause();
       }
+      unawaited(_syncTransitionPreview());
       return;
     }
     if (_playheadInGap || _clipIndexAtTimelineTime(playheadSeconds) < 0) {
@@ -1543,6 +1557,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       return;
     }
     await activePlayer.play();
+    unawaited(_syncTransitionPreview());
   }
 
   Future<void> _handlePlayerPosition(Duration sourcePosition) async {
@@ -1567,29 +1582,33 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
           _startGapPlayback(startSeconds: clip.timelineEnd, nextClipIndex: index + 1);
           return;
         }
+        final transitionDuration = _transitionDurationAtCut(next.timelineStart);
         _activePlaybackClipIndex = index + 1;
-        if ((next.start - clip.end).abs() <= 0.05) {
-          // Split clips share a contiguous source range; seeking here causes
-          // a visible frame flash and a brief audio dropout in media_kit.
+        if ((next.start - clip.end).abs() <= 0.05 && transitionDuration <= 0) {
           setState(() => position = Duration(milliseconds: (next.timelineStart * 1000).round()));
+          unawaited(_syncTransitionPreview());
           return;
         }
         _seekingAcrossCut = true;
         setState(() => position = Duration(milliseconds: (next.timelineStart * 1000).round()));
         try {
-          await activePlayer.seek(Duration(milliseconds: (next.start * 1000).round()));
+          await activePlayer.seek(Duration(milliseconds: ((next.start + transitionDuration / 2) * 1000).round()));
         } finally {
           _seekingAcrossCut = false;
         }
+        unawaited(_syncTransitionPreview());
       } else if (playing) {
         setState(() => position = Duration(milliseconds: (clip.timelineEnd * 1000).round()));
         await activePlayer.pause();
+        unawaited(_syncTransitionPreview());
       }
       return;
     }
     if (sourceSeconds >= clip.start - 0.025) {
-      final sequenceSeconds = clip.timelineStart + math.max(0, sourceSeconds - clip.start);
+      var sequenceSeconds = clip.timelineStart + math.max(0, sourceSeconds - clip.start);
+      if (index > 0) sequenceSeconds -= _transitionDurationAtCut(clip.timelineStart) / 2;
       setState(() => position = Duration(milliseconds: (sequenceSeconds * 1000).round()));
+      unawaited(_syncTransitionPreview());
     }
   }
 
@@ -1695,11 +1714,13 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
       });
       await activePlayer.pause();
       _suppressPlayerStateEvents = false;
+      unawaited(_syncTransitionPreview(forceSeek: true));
       return;
     }
     _stopGapPlayback(clearNext: true);
     final clip = videoClips[index];
-    final sourceSeconds = clip.start + sequenceSeconds - clip.timelineStart;
+    var sourceSeconds = clip.start + sequenceSeconds - clip.timelineStart;
+    if (index > 0) sourceSeconds += _transitionDurationAtCut(clip.timelineStart) / 2;
     _activePlaybackClipIndex = index;
     setState(() {
       position = Duration(milliseconds: ms);
@@ -1715,6 +1736,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
     } finally {
       _seekingAcrossCut = false;
       _suppressPlayerStateEvents = false;
+      unawaited(_syncTransitionPreview(forceSeek: true));
     }
   }
 
@@ -2388,96 +2410,144 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         ),
       );
 
+  double _transitionDurationAtCut(double cut) {
+    final ordered = List<TimelineClip>.of(videoClips)..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
+    for (var i = 1; i < ordered.length; i++) {
+      final previous = ordered[i - 1];
+      final next = ordered[i];
+      if ((next.timelineStart - cut).abs() > transitionCutTolerance ||
+          (previous.timelineEnd - next.timelineStart).abs() > transitionCutTolerance) {
+        continue;
+      }
+      var requested = transitionEffect == 'Нет' ? 0.0 : transitionDuration;
+      for (final marker in timelineTransitions) {
+        if ((marker.at - cut).abs() <= transitionCutTolerance) {
+          requested = marker.duration;
+          break;
+        }
+      }
+      return math.min(requested, math.min(previous.length / 2, next.length / 2)).toDouble();
+    }
+    return 0;
+  }
+
+  Future<void> _syncTransitionPreview({bool forceSeek = false}) async {
+    final transition = previewTransitionOverlay;
+    final source = videoPath;
+    if (transition == null || source == null || _playheadInGap) {
+      if (_transitionPreviewKey != null) {
+        _transitionPreviewKey = null;
+        _transitionPreviewLoaded = false;
+        _transitionPreviewIsPlaying = false;
+        _transitionPreviewGeneration++;
+        try { await _transitionPreviewPlayer?.pause(); } catch (_) {}
+      }
+      return;
+    }
+    final ordered = List<TimelineClip>.of(videoClips)..sort((a, b) => a.timelineStart.compareTo(b.timelineStart));
+    var incomingIndex = -1;
+    for (var i = 1; i < ordered.length; i++) {
+      if ((ordered[i].timelineStart - transition.at).abs() <= transitionCutTolerance &&
+          (ordered[i - 1].timelineEnd - ordered[i].timelineStart).abs() <= transitionCutTolerance) {
+        incomingIndex = i;
+        break;
+      }
+    }
+    if (incomingIndex < 0) return;
+    final incoming = ordered[incomingIndex];
+    final transitionStart = transition.at - transition.duration / 2;
+    final incomingSourceSeconds = incoming.start + (playheadSeconds - transitionStart).clamp(0.0, transition.duration);
+    final key = '$source|${transition.at}|${transition.type}|${incoming.start}';
+    final isNewTransition = _transitionPreviewKey != key;
+    if (isNewTransition) {
+      _transitionPreviewKey = key;
+      _transitionPreviewLoaded = false;
+      _transitionPreviewIsPlaying = null;
+      final generation = ++_transitionPreviewGeneration;
+      try {
+        var previewPlayer = _transitionPreviewPlayer;
+        if (previewPlayer == null) {
+          previewPlayer = Player();
+          _transitionPreviewPlayer = previewPlayer;
+          _transitionPreviewController = VideoController(
+            previewPlayer,
+            configuration: const VideoControllerConfiguration(hwdec: 'auto-safe', enableHardwareAcceleration: true),
+          );
+        }
+        await previewPlayer.open(Media(source), play: false);
+        if (!mounted || generation != _transitionPreviewGeneration) return;
+        await previewPlayer.setVolume(0);
+        await previewPlayer.setRate(playbackRate);
+        final latestTransition = previewTransitionOverlay;
+        if (latestTransition == null || _transitionPreviewKey != key) return;
+        final latestSourceSeconds = incoming.start +
+            (playheadSeconds - (latestTransition.at - latestTransition.duration / 2))
+                .clamp(0.0, latestTransition.duration);
+        await previewPlayer.seek(Duration(milliseconds: (latestSourceSeconds * 1000).round()));
+        _transitionPreviewLoaded = true;
+      } catch (_) {
+        if (_transitionPreviewKey == key) {
+          _transitionPreviewKey = null;
+          _transitionPreviewLoaded = false;
+        }
+        return;
+      }
+    } else if (forceSeek && _transitionPreviewLoaded) {
+      try {
+        await _transitionPreviewPlayer?.seek(Duration(milliseconds: (incomingSourceSeconds * 1000).round()));
+      } catch (_) {}
+    }
+    if (!mounted || _transitionPreviewKey != key) return;
+    if (_transitionPreviewLoaded && _transitionPreviewIsPlaying != playing) {
+      try {
+        if (playing) {
+          await _transitionPreviewPlayer?.play();
+        } else {
+          await _transitionPreviewPlayer?.pause();
+        }
+        _transitionPreviewIsPlaying = playing;
+      } catch (_) {}
+    }
+    if (isNewTransition && mounted) setState(() {});
+  }
+
   Widget _buildPreviewVideo() {
-    Widget result = Video(
-      controller: videoController!,
-      controls: NoVideoControls,
-      fit: BoxFit.contain,
-      fill: Colors.transparent,
-    );
-    final activeEffects = effectClips.where((effect) =>
-        playheadSeconds >= effect.start && playheadSeconds < effect.end);
+    final transition = previewTransitionOverlay;
+    final filter = transition == null ? '' : transitionFilterName(transition.type);
+    final incomingController = _transitionPreviewController;
+    final previewReady = transition != null && incomingController != null && _transitionPreviewKey != null && _transitionPreviewLoaded;
+    Widget current = Video(controller: videoController!, controls: NoVideoControls, fit: BoxFit.contain, fill: Colors.transparent);
+    if (previewReady) {
+      final progress = transition.progress;
+      final incoming = Video(controller: incomingController, controls: NoVideoControls, fit: BoxFit.contain, fill: Colors.transparent);
+      if (progress >= 0.5) {
+        current = incoming;
+      } else {
+        final phase = (progress * 2).clamp(0.0, 1.0).toDouble();
+        Widget incomingLayer;
+        if (filter == 'slideleft' || filter == 'slideright') {
+          final from = filter == 'slideleft' ? 1.0 : -1.0;
+          incomingLayer = FractionalTranslation(translation: Offset(from * (1.0 - phase), 0), child: incoming);
+          current = FractionalTranslation(translation: Offset(filter == 'slideleft' ? -phase : phase, 0), child: current);
+        } else if (filter == 'fade' || filter == 'pixelize' || filter == 'dissolve') {
+          incomingLayer = Opacity(opacity: phase, child: incoming);
+        } else if (filter == 'zoomin') {
+          incomingLayer = Opacity(opacity: phase, child: Transform.scale(scale: 1.25 - phase * 0.25, child: incoming));
+        } else {
+          incomingLayer = ClipPath(clipper: _IncomingTransitionClipper(type: transition.type, progress: phase), child: incoming);
+        }
+        current = Stack(fit: StackFit.expand, children: [current, Positioned.fill(child: incomingLayer)]);
+      }
+    }
+    final activeEffects = effectClips.where((effect) => playheadSeconds >= effect.start && playheadSeconds < effect.end);
     for (final effect in activeEffects) {
       if (effect.type == 'Размытие') {
-        result = ImageFiltered(
-          imageFilter: ui.ImageFilter.blur(sigmaX: 5.5, sigmaY: 5.5),
-          child: result,
-        );
+        current = ImageFiltered(imageFilter: ui.ImageFilter.blur(sigmaX: 5.5, sigmaY: 5.5), child: current);
       } else {
-        result = ColorFiltered(
-          colorFilter: ColorFilter.matrix(_timelineEffectColorMatrix(effect.type)),
-          child: result,
-        );
+        current = ColorFiltered(colorFilter: ColorFilter.matrix(_timelineEffectColorMatrix(effect.type)), child: current);
       }
     }
-
-    final transition = previewTransitionOverlay;
-    if (transition != null) {
-      final filter = transitionFilterName(transition.type);
-      final progress = transition.progress;
-      if (filter == 'fadeblack' || filter == 'fade' ||
-          filter == 'fadefast' || filter == 'fadeslow' ||
-          filter == 'fadegrays' || filter == 'dissolve' ||
-          filter == 'pixelize') {
-        // The player switches to the incoming clip at the cut. Fade the
-        // outgoing clip to black during the first half, then fade the new
-        // clip in during the second half (matching FFmpeg xfade timing).
-        final fadeOpacity = transition.incoming
-            ? ((progress - 0.5) * 2).clamp(0.0, 1.0).toDouble()
-            : (1.0 - progress * 2).clamp(0.0, 1.0).toDouble();
-        result = Opacity(opacity: fadeOpacity, child: result);
-      } else if (filter == 'fadewhite') {
-        final whiteOpacity = transition.incoming
-            ? (1.0 - (progress - 0.5) * 2).clamp(0.0, 1.0).toDouble()
-            : (progress * 2).clamp(0.0, 1.0).toDouble();
-        result = ColorFiltered(
-          colorFilter: ColorFilter.mode(
-            Colors.white.withValues(alpha: whiteOpacity * 0.92),
-            BlendMode.screen,
-          ),
-          child: result,
-        );
-      } else if (filter == 'hblur') {
-        result = ImageFiltered(
-          imageFilter: ui.ImageFilter.blur(
-            sigmaX: progress * 12,
-            sigmaY: progress * 12,
-          ),
-          child: Opacity(opacity: 1.0 - progress * 0.55, child: result),
-        );
-      } else if (filter == 'zoomin') {
-        result = Transform.scale(
-          scale: 1.0 + progress * 0.55,
-          child: Opacity(opacity: 1.0 - progress, child: result),
-        );
-      } else if (filter == 'slideleft' || filter == 'slideright' ||
-          filter == 'slideup' || filter == 'slidedown') {
-        final shift = math.max(0.0, math.min(1.0, progress));
-        final dx = filter == 'slideleft'
-            ? -shift
-            : filter == 'slideright'
-                ? shift
-                : 0.0;
-        final dy = filter == 'slideup'
-            ? -shift
-            : filter == 'slidedown'
-                ? shift
-                : 0.0;
-        result = FractionalTranslation(
-          translation: Offset(dx, dy),
-          child: result,
-        );
-      } else {
-        result = ClipPath(
-          clipper: _AppliedTransitionClipper(
-            type: transition.type,
-            progress: progress,
-          ),
-          child: result,
-        );
-      }
-    }
-    return result;
+    return current;
   }
 
   List<double> _timelineEffectColorMatrix(String type) =>
@@ -2950,7 +3020,7 @@ class _EditorPageState extends State<EditorPage> with WidgetsBindingObserver {
         DropdownButtonFormField<String>(
           isExpanded: true, initialValue: t.type,
           decoration: const InputDecoration(labelText: 'Тип перехода', isDense: true, border: OutlineInputBorder()),
-          items: (_timelineTransitionTypes.toList()..sort()).map((v) => DropdownMenuItem(value: v, child: Text(v, style: const TextStyle(fontSize: 11)))).toList(),
+          items: ({..._timelineTransitionTypes, t.type}.toList()..sort()).map((v) => DropdownMenuItem(value: v, child: Text(v, style: const TextStyle(fontSize: 11)))).toList(),
           onChanged: (v) { if (v != null) _performTimelineEdit(() { t.type = v; status = 'Переход изменён: $v'; }); },
         ),
         _adjustmentSlider('Длительность', t.duration, 0.1, maxDuration, (v) => _performTimelineEdit(() { t.duration = v; })),

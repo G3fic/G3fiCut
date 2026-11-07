@@ -6,8 +6,8 @@ void main() {
   group('Built-in transitions', () {
     test('every supported transition maps to a non-empty FFmpeg xfade name', () {
       expect(ProjectTransition.supportedTypes, builtinTransitionFilters.keys.toSet());
-      expect(builtinTransitionFilters.length, greaterThanOrEqualTo(58));
-      expect(builtinTransitionFilters.values.toSet(), hasLength(58));
+      expect(builtinTransitionFilters.length, greaterThanOrEqualTo(57));
+      expect(builtinTransitionFilters.values.toSet(), hasLength(57));
       for (final entry in builtinTransitionFilters.entries) {
         expect(entry.key, isNotEmpty);
         expect(entry.value, isNotEmpty);
@@ -15,8 +15,20 @@ void main() {
       }
     });
 
+    test('UI exposes a focused set of clip-to-clip transitions without black fades', () {
+      expect(featuredTransitionFilters.length, 8);
+      expect(featuredTransitionFilters.values, containsAll([
+        'fade', 'slideleft', 'slideright', 'wipeleft',
+        'wiperight', 'circleopen', 'zoomin', 'dissolve',
+      ]));
+      expect(featuredTransitionFilters.values, isNot(contains('fadeblack')));
+      expect(featuredTransitionFilters.values, isNot(contains('fadewhite')));
+    });
+
     test('unknown transition uses a safe fallback', () {
-      expect(transitionFilterName('unknown'), 'fadeblack');
+      expect(transitionFilterName('unknown'), 'fade');
+      expect(transitionFilterName('Затемнение'), 'fade');
+      expect(transitionFilterName('Белая вспышка'), 'fade');
     });
   });
 

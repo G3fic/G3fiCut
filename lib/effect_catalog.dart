@@ -18,7 +18,6 @@ const Map<String, String> builtinTransitionFilters = {
   'Сдвиг вниз': 'slidedown',
   'Круговое открытие': 'circleopen',
   'Круговое закрытие': 'circleclose',
-  'Пикселизация': 'pixelize',
   'Диагональное стирание': 'diagtl',
   'Растворение через чёрный': 'fadeblack',
   'Растворение через белый': 'fadewhite',
@@ -65,6 +64,19 @@ const Map<String, String> builtinTransitionFilters = {
   'Появление справа': 'revealright',
   'Появление сверху': 'revealup',
   'Появление снизу': 'revealdown',
+};
+
+/// A deliberately small set of polished, clip-to-clip transitions shown in the UI.
+/// The full legacy map above remains available so older project files still open.
+const Map<String, String> featuredTransitionFilters = {
+  'Плавное смешивание': 'fade',
+  'Сдвиг влево': 'slideleft',
+  'Сдвиг вправо': 'slideright',
+  'Смахивание влево': 'wipeleft',
+  'Смахивание вправо': 'wiperight',
+  'Круговое открытие': 'circleopen',
+  'Приближение': 'zoomin',
+  'Растворение': 'dissolve',
 };
 
 const Set<String> builtinEffectTypes = {
@@ -179,8 +191,13 @@ const Map<String, List<double>> lutPreviewMatrices = {
   ],
 };
 
-String transitionFilterName(String type) =>
-    builtinTransitionFilters[type] ?? 'fadeblack';
+String transitionFilterName(String type) {
+  final filter = builtinTransitionFilters[type] ?? 'fade';
+  // Legacy fade-through-black/white names are retained for project decoding,
+  // but render as a clip-to-clip dissolve instead of exposing a blank frame.
+  if (filter == 'fadeblack' || filter == 'fadewhite') return 'fade';
+  return filter;
+}
 
 
 String applyEnableToFilterChain(String filterChain, String expression) {
