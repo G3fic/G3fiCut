@@ -18,7 +18,6 @@ const Map<String, String> builtinTransitionFilters = {
   'Сдвиг вниз': 'slidedown',
   'Круговое открытие': 'circleopen',
   'Круговое закрытие': 'circleclose',
-  'Растворение': 'dissolve',
   'Диагональное стирание': 'diagtl',
   'Растворение через чёрный': 'fadeblack',
   'Растворение через белый': 'fadewhite',
